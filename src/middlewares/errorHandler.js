@@ -35,6 +35,12 @@ export default function errorHandler(err, req, res, next) {
   } else if (err.name === 'CastError') {
     statusCode = 400;
     errorResponse = { message: `Invalid ${err.path}: ${err.value}` };
+  } else if (err.isAxiosError) {
+    statusCode = err.response?.status || 500;
+    errorResponse = {
+      message: 'External API error: ' + err.response?.data?.message,
+      details: err.response?.data,
+    };
   } else {
     statusCode = err.statusCode || 500;
     errorResponse = { message: err.message || 'Internal Server Error' };
@@ -44,5 +50,5 @@ export default function errorHandler(err, req, res, next) {
     errorResponse.stack = err.stack;
   }
 
-  res.status(statusCode).json({ error: errorResponse });
+  res.status(statusCode).json({ ...errorResponse });
 }
