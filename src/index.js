@@ -6,7 +6,9 @@ import connectDB from './config/db.js';
 import errorHandler from './middlewares/errorHandler.js';
 import requestLogger from './middlewares/requestLogger.js';
 import SwaggerParser from 'swagger-parser';
-import catalogRoutes from './routes/v1/catalogRoutes.js';
+import managerRoutes from './routes/v1/managerRoutes.js';
+import replicationRoutes from './routes/v1/replicationRoutes.js';
+import { admin } from './middlewares/auth.js';
 
 const app = express();
 
@@ -30,7 +32,8 @@ SwaggerParser.bundle('./api/openapi.yaml')
   });
 
 // Routes v1
-app.use('/api/v1/catalog', catalogRoutes);
+app.use('/api/v1/manager', admin, managerRoutes);
+app.use('/api/v1/replications', admin, replicationRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

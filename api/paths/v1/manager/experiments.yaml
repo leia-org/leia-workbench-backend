@@ -1,0 +1,14 @@
+get:
+  tags:
+    - Manager v1
+  summary: Retrieve all Experiments
+  operationId: getAllExperiments
+  responses:
+    '200':
+      description: Successful response with Experiments
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object

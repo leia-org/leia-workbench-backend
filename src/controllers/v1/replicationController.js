@@ -1,0 +1,101 @@
+import ReplicationService from '../../services/v1/ReplicationService.js';
+import {
+  createReplicationValidator,
+  updateReplicationNameValidator,
+  updateReplicationDurationValidator,
+  updateReplicationExperimentValidator,
+  updateReplicationLeiaRunnerConfigValidator,
+} from '../../validators/v1/replicationValidator.js';
+
+export const createReplication = async (req, res, next) => {
+  try {
+    const value = await createReplicationValidator.validateAsync(req.body, {
+      abortEarly: false,
+    });
+    const newReplication = await ReplicationService.create(value);
+    res.status(201).json(newReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getReplicationById = async (req, res, next) => {
+  try {
+    const replication = await ReplicationService.findById(req.params.id);
+    res.json(replication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getAllReplications = async (req, res, next) => {
+  try {
+    const replications = await ReplicationService.findAll();
+    res.json(replications);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateReplicationName = async (req, res, next) => {
+  try {
+    const value = await updateReplicationNameValidator.validateAsync(req.body, {
+      abortEarly: false,
+    });
+    const updatedReplication = await ReplicationService.updateName(req.params.id, value.name);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const regenerateReplicationCode = async (req, res, next) => {
+  try {
+    const updatedReplication = await ReplicationService.regenerateCode(req.params.id);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const toggleReplicationIsActive = async (req, res, next) => {
+  try {
+    const updatedReplication = await ReplicationService.toggleIsActive(req.params.id);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateReplicationDuration = async (req, res, next) => {
+  try {
+    const value = await updateReplicationDurationValidator.validateAsync(req.body, { abortEarly: false });
+    const updatedReplication = await ReplicationService.updateDuration(req.params.id, value.duration);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateReplicationExperiment = async (req, res, next) => {
+  try {
+    const value = await updateReplicationExperimentValidator.validateAsync(req.body, { abortEarly: false });
+    const updatedReplication = await ReplicationService.updateExperiment(req.params.id, value.experiment);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateReplicationLeiaRunnerConfig = async (req, res, next) => {
+  try {
+    const { id, leiaId } = req.params;
+    const value = await updateReplicationLeiaRunnerConfigValidator.validateAsync(req.body, {
+      abortEarly: false,
+    });
+    const updatedReplication = await ReplicationService.updateLeiaRunnerConfig(id, leiaId, value);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};

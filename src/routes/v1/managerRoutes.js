@@ -1,5 +1,5 @@
 import express from 'express';
-import { getAllExperiments, getExperimentById } from '../../controllers/v1/catalogController.js';
+import { getAllExperiments, getExperimentById } from '../../controllers/v1/managerController.js';
 
 const router = express.Router();
 

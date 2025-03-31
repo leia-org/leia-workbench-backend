@@ -1,0 +1,6 @@
+type: object
+properties:
+  provider:
+    type: string
+    description: The provider used for the replication runner.
+    example: 'openai'

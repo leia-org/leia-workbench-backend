@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-class CatalogService {
+class ManagerService {
   async findAllExperiments() {
     const response = await axios.get(`${process.env.CATALOG_URL}/api/v1/experiments`);
     return response.data;
@@ -12,4 +12,4 @@ class CatalogService {
   }
 }
 
-export default new CatalogService();
+export default new ManagerService();

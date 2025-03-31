@@ -1,0 +1,19 @@
+get:
+  tags:
+    - Replications v1
+  summary: Retrieve a replication by ID
+  operationId: getReplicationById
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the replication
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+  responses:
+    '200':
+      description: Successful response with Replication
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/replication/replication.yaml'

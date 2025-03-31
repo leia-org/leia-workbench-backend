@@ -1,0 +1,29 @@
+patch:
+  tags:
+    - Replications v1
+  summary: Change the name of a Replication
+  operationId: updateReplicationName
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the replication
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+              description: New name for the replication
+  responses:
+    '200':
+      description: Successful response with Replication
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/replication/replication.yaml'

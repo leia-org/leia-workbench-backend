@@ -1,0 +1,16 @@
+type: object
+required:
+  - name
+  - experiment
+properties:
+  name:
+    type: string
+  experiment:
+    $ref: '../../mongoId.yaml'
+    description: Unique identifier for the experiment
+  isActive:
+    type: boolean
+    description: Whether the experiment is active or not
+  duration:
+    type: integer
+    description: Duration of the experiment in seconds

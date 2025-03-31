@@ -1,0 +1,22 @@
+get:
+  tags:
+    - Manager v1
+  summary: Retrieve experiment by ID
+  operationId: getExperimentById
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the experiment
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+
+  responses:
+    '200':
+      description: Successful response with experiment
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object

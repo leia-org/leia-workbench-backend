@@ -6,19 +6,42 @@ info:
 servers:
   - url: /api
 
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Manager v1
+    description: Manager API v1
+  - name: Replications v1
+    description: Replications API v1
+
 paths:
-  /v1/hello:
-    get:
-      summary: Hello World
-      description: Returns a hello world message
-      responses:
-        '200':
-          description: A hello world message
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: Hello, World!
+  # Manager
+  /v1/manager/experiments:
+    $ref: './paths/v1/manager/experiments.yaml'
+  /v1/manager/experiments/{id}:
+    $ref: './paths/v1/manager/experiments-_id.yaml'
+
+  # Replications
+  /v1/replications:
+    $ref: './paths/v1/replications/index.yaml'
+  /v1/replications/{id}:
+    $ref: './paths/v1/replications/_id.yaml'
+  /v1/replications/{id}/name:
+    $ref: './paths/v1/replications/_id-name.yaml'
+  /v1/replications/{id}/toggle-active:
+    $ref: './paths/v1/replications/_id-toggleActive.yaml'
+  /v1/replications/{id}/regenerate-code:
+    $ref: './paths/v1/replications/_id-regenerateCode.yaml'
+  /v1/replications/{id}/duration:
+    $ref: './paths/v1/replications/_id-duration.yaml'
+  /v1/replications/{id}/experiment:
+    $ref: './paths/v1/replications/_id-experiment.yaml'
+  /v1/replications/{id}/leia/{leiaId}/runner-config:
+    $ref: './paths/v1/replications/_id-leia-_leiaId-runnerConfig.yaml'
