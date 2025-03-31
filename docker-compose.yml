@@ -1,0 +1,35 @@
+services:
+  mongodb-workbench:
+    restart: unless-stopped
+    image: mongo:latest
+    container_name: mongodb-workbench
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
+    ports:
+      - '${MONGO_PORT}:27017'
+    volumes:
+      - mongo-workbench:/data/db
+  workbench-backend:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: workbench-backend
+    environment:
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb-workbench:27017/workbench?authSource=admin
+      - FRONTEND_URL=${FRONTEND_URL}
+      - RUNNER_URL=${RUNNER_URL}
+      - RUNNER_KEY=${RUNNER_KEY}
+      - CATALOG_URL=${CATALOG_URL}
+      - CATALOG_KEY=${CATALOG_KEY}
+      - NODE_ENV=${NODE_ENV}
+      - PORT=80
+      - ADMIN_SECRET=${ADMIN_SECRET}
+    depends_on:
+      - mongodb-workbench
+    ports:
+      - '${PORT}:80'
+
+volumes:
+  mongo-workbench:

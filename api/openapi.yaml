@@ -1,0 +1,24 @@
+openapi: 3.0.3
+info:
+  title: WORKBENCH API
+  version: '1.0.0'
+  description: WORKBENCH API documentation
+servers:
+  - url: /api
+
+paths:
+  /v1/hello:
+    get:
+      summary: Hello World
+      description: Returns a hello world message
+      responses:
+        '200':
+          description: A hello world message
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Hello, World!
