@@ -32,4 +32,6 @@ const messageSchema = new Schema(
   }
 );
 
+messageSchema.index({ session: 1 });
+
 export default model('Message', messageSchema);

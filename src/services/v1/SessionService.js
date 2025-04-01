@@ -11,6 +11,10 @@ class SessionService {
     return await SessionRepository.findById(id);
   }
 
+  async findByIdAndPopulateMessages(id) {
+    return await SessionRepository.findByIdAndPopulateMessages(id);
+  }
+
   async findByReplication(replicationId) {
     return await SessionRepository.findByReplication(replicationId);
   }
@@ -39,11 +43,11 @@ class SessionService {
 
   // WRITE METHODS
 
-  async create(userId, replicationId, assignedLeiaId, isTest = false) {
+  async create(userId, replicationId, leiaId, isTest = false) {
     const sessionData = {
       user: userId,
       replication: replicationId,
-      assignedLeia: assignedLeiaId,
+      leia: leiaId,
       isTest,
     };
     return await SessionRepository.create(sessionData);
@@ -75,6 +79,10 @@ class SessionService {
 
   async addMessage(id, messageId) {
     return await SessionRepository.addMessage(id, messageId);
+  }
+
+  async updateIsRunnerInitialized(id, isRunnerInitialized) {
+    return await SessionRepository.update(id, { isRunnerInitialized });
   }
 }
 

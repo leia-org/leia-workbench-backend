@@ -1,4 +1,5 @@
 import ReplicationRepository from '../../repositories/v1/ReplicationRepository.js';
+import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
 
@@ -15,6 +16,14 @@ class ReplicationService {
 
   async findByCode(code) {
     return await ReplicationRepository.findByCode(code);
+  }
+
+  async findLeia(id, leiaId) {
+    return await ReplicationRepository.findLeia(id, leiaId);
+  }
+
+  async hasReplicationStarted(replicationId) {
+    return await SessionRepository.hasReplicationStarted(replicationId);
   }
 
   // WRITE METHODS
@@ -47,6 +56,11 @@ class ReplicationService {
   }
 
   async updateExperiment(id, experimentId) {
+    if (SessionRepository.hasReplicationStarted(id)) {
+      const error = new Error('Replication has already started, cannot update experiment');
+      error.status = 400;
+      throw error;
+    }
     const experiment = await ManagerService.findExperimentById(experimentId);
     const initializedExperiment = initializeExperiment(experiment);
     return await ReplicationRepository.update(id, { initializedExperiment });

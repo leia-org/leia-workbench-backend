@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 class RunnerService {
-  async instanceLeia(sessionId, leia) {
+  async initializeRunner(sessionId, leia) {
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/leias`,
       {
@@ -33,4 +33,4 @@ class RunnerService {
   }
 }
 
-export default RunnerService;
+export default new RunnerService();

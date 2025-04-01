@@ -11,16 +11,24 @@ class SessionRepository {
     return await Session.findById(id);
   }
 
+  async findByIdAndPopulateMessages(id) {
+    return await Session.findById(id).populate('messages');
+  }
+
   async findByReplication(replicationId) {
     return await Session.find({ replication: replicationId, isTest: false });
   }
 
   async findByReplicationAndLeia(replicationId, leiaId) {
-    return await Session.find({ replication: replicationId, assignedLeia: leiaId, isTest: false });
+    return await Session.find({ replication: replicationId, leia: leiaId, isTest: false });
   }
 
   async findFinishedByReplication(replicationId) {
     return await Session.find({ replication: replicationId, finishedAt: { $ne: null }, isTest: false });
+  }
+
+  async hasReplicationStarted(replicationId) {
+    return await Session.exists({ replication: replicationId, startedAt: { $ne: null }, isTest: false });
   }
 
   // Indexed
@@ -34,7 +42,12 @@ class SessionRepository {
   }
 
   async findOneUnfinishedByUserAndReplication(userId, replicationId) {
-    return await Session.findOne({ user: userId, replication: replicationId, finishedAt: null, isTest: false });
+    return await Session.findOne({
+      user: userId,
+      replication: replicationId,
+      finishedAt: null,
+      isTest: false,
+    });
   }
 
   async hasAnyFinished(userId, replicationId) {

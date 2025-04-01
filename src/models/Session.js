@@ -29,7 +29,7 @@ const sessionSchema = new Schema(
       ref: 'Replication',
       required: true,
     },
-    assignedLeia: {
+    leia: {
       type: Schema.Types.ObjectId,
       required: true,
     },
@@ -39,6 +39,10 @@ const sessionSchema = new Schema(
       required: true,
     },
     isTest: {
+      type: Boolean,
+      default: false,
+    },
+    isRunnerInitialized: {
       type: Boolean,
       default: false,
     },

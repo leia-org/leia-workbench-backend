@@ -15,6 +15,16 @@ class ReplicationRepository {
     return await Replication.findOne({ code });
   }
 
+  async findLeia(id, leiaId) {
+    const replication = await Replication.findOne({ _id: id, 'experiment.leias.id': leiaId });
+
+    if (replication) {
+      return replication.experiment.leias.find((l) => l.id === leiaId);
+    } else {
+      return null;
+    }
+  }
+
   // WRITE METHODS
 
   async create(replicationData) {
