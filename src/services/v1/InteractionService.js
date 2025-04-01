@@ -4,6 +4,7 @@ import UserService from './UserService.js';
 import MessageService from './MessageService.js';
 import RunnerService from './RunnerService.js';
 import logger from '../../utils/logger.js';
+import mongoose from 'mongoose';
 
 class InteractionService {
   async startSession(userEmail, replicationCode) {
@@ -14,7 +15,7 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
-    logger.info(`Replication ${replicationCode} found for user ${userEmail}`);
+    logger.info(`Replication ${replicationCode} found`);
 
     if (!replication.isActive) {
       const error = new Error('Replication is not active');
@@ -28,7 +29,7 @@ class InteractionService {
       user = await UserService.create({ email: userEmail });
     }
 
-    logger.info(`User ${userEmail} found or created`);
+    logger.info(`User ${userEmail} found`);
 
     let session = await SessionService.findOneUnfinishedByUserAndReplication(user.id, replication.id);
 
@@ -44,21 +45,21 @@ class InteractionService {
       } else {
         logger.info(`Creating new session for user ${userEmail} and replication ${replicationCode}`);
         const nextLeiaId = await ReplicationService.getAndIncrementNextLeia(replication.id);
-
-        session = await SessionService.create({
-          user: user.id,
-          replication: replication.id,
-          leia: nextLeiaId,
-          isTest: false,
-        });
+        session = await SessionService.create(user.id, replication.id, nextLeiaId, false);
         logger.info(`Session created for user ${userEmail} and replication ${replicationCode}`);
       }
     }
 
+    logger.info(`Session found for user ${userEmail} and replication ${replicationCode}`);
+
     if (!session.isRunnerInitialized) {
       logger.info(`Runner for session ${session.id} is not initialized, initializing now`);
-      const leia = replication.experiment.leias.find((leia) => leia.id === session.leia);
-
+      const leia = replication.experiment.leias.find((leia) => session.leia.equals(leia.id));
+      if (!leia) {
+        const error = new Error('Leia not found');
+        error.statusCode = 404;
+        throw error;
+      }
       // Initialize runner for the session
       await RunnerService.initializeRunner(session.id, leia);
 
@@ -67,7 +68,7 @@ class InteractionService {
       logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
     }
 
-    return { sessionId: session.id };
+    return session.id;
   }
 
   async startTestSession(replicationId, leiaId) {
@@ -77,20 +78,15 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
-
-    const leia = replication.experiment.leias.find((leia) => leia.id === leiaId);
+    leiaId = new mongoose.Types.ObjectId(`${leiaId}`);
+    const leia = replication.experiment.leias.find((leia) => leiaId.equals(leia.id));
 
     if (!leia) {
       const error = new Error('Leia not found');
       error.statusCode = 404;
     }
 
-    let session = await SessionService.create({
-      user: null,
-      replication: replication.id,
-      leia: leiaId,
-      isTest: true,
-    });
+    let session = await SessionService.create(null, replicationId, leiaId, true);
 
     // Initialize runner for the session
     await RunnerService.initializeRunner(session.id, leia);
@@ -99,7 +95,7 @@ class InteractionService {
     session = await SessionService.updateIsRunnerInitialized(session.id, true);
     logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
 
-    return { sessionId: session.id };
+    return session.id;
   }
 
   async getSessionData(sessionId) {
@@ -111,6 +107,9 @@ class InteractionService {
     }
     const messages = await MessageService.findBySession(session.id);
     const leia = await ReplicationService.findLeia(session.replication, session.leia);
+    console.log(leia);
+    console.log(session.replication);
+    console.log(session.leia);
 
     if (!session.finishedAt) {
       delete leia.leia.spec.problem.spec.solution;
@@ -177,7 +176,7 @@ class InteractionService {
     if (!session.evaluation) {
       logger.info('Session has no evaluation yet, trying to get it from the runner');
       const leia = await ReplicationService.findLeia(session.replication, session.leia);
-      const evaluation = await RunnerService.getEvaluation(session.id, leia);
+      const evaluation = await RunnerService.getEvaluation(session.result, leia);
       session = await SessionService.saveEvaluation(session.id, evaluation);
       logger.info('Session evaluation saved');
     }

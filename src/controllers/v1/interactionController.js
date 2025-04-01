@@ -10,7 +10,7 @@ export const startSession = async (req, res, next) => {
   try {
     const value = await startSessionValidator.validateAsync(req.body);
     const sessionId = await InteractionService.startSession(value.email, value.code);
-    res.json(sessionId);
+    res.status(201).json({ sessionId });
   } catch (error) {
     next(error);
   }
@@ -20,7 +20,7 @@ export const startTestSession = async (req, res, next) => {
   try {
     const value = await startTestSessionValidator.validateAsync(req.body);
     const sessionId = await InteractionService.startTestSession(value.replicationId, value.leiaId);
-    res.json(sessionId);
+    res.status(201).json({ sessionId });
   } catch (error) {
     next(error);
   }
@@ -41,7 +41,7 @@ export const sendSessionMessage = async (req, res, next) => {
     const value = await sendSessionMessageValidator.validateAsync(req.body);
     const { sessionId } = req.params;
     const message = await InteractionService.sendSessionMessage(sessionId, value.message);
-    res.json(message);
+    res.json({ message });
   } catch (error) {
     next(error);
   }
@@ -62,7 +62,7 @@ export const getEvaluation = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
     const evaluation = await InteractionService.getEvaluation(sessionId);
-    res.json(evaluation);
+    res.json({ evaluation });
   } catch (error) {
     next(error);
   }

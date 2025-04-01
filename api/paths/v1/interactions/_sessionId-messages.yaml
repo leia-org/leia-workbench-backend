@@ -1,0 +1,33 @@
+post:
+  tags:
+    - Interactions v1
+  summary: Send a message to the leia in your session and get the response
+  operationId: sendSessionMessage
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      description: The ID of the session to send the message to
+      schema:
+        type: string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              description: The message to send to the Leia
+  responses:
+    '201':
+      description: Message sent successfully, and response received
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                description: The response from the Leia

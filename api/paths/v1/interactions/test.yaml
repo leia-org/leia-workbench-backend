@@ -1,0 +1,29 @@
+post:
+  tags:
+    - Interactions v1
+  summary: Start a new test Session for a Replication
+  operationId: startTestSession
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            replicationId:
+              type: string
+              description: The ID of the replication
+            leiaId:
+              type: string
+              description: The ID of the Leia
+  responses:
+    '201':
+      description: Replication created successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              sessionId:
+                type: string
+                description: The ID of the session that was created

@@ -20,6 +20,8 @@ tags:
     description: Manager API v1
   - name: Replications v1
     description: Replications API v1
+  - name: Interactions v1
+    description: Interactions API v1
 
 paths:
   # Manager
@@ -47,3 +49,15 @@ paths:
     $ref: './paths/v1/replications/_id-experiment.yaml'
   /v1/replications/{id}/leia/{leiaId}/runner-configuration:
     $ref: './paths/v1/replications/_id-leia-_leiaId-runnerConfiguration.yaml'
+
+  # Interactions
+  /v1/interactions:
+    $ref: './paths/v1/interactions/index.yaml'
+  /v1/interactions/test:
+    $ref: './paths/v1/interactions/test.yaml'
+  /v1/interactions/{sessionId}:
+    $ref: './paths/v1/interactions/_sessionId.yaml'
+  /v1/interactions/{sessionId}/messages:
+    $ref: './paths/v1/interactions/_sessionId-messages.yaml'
+  /v1/interactions/{sessionId}/evaluation:
+    $ref: './paths/v1/interactions/_sessionId-evaluation.yaml'

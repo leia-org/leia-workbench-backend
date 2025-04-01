@@ -1,0 +1,61 @@
+get:
+  tags:
+    - Interactions v1
+  summary: Get the neccesary data to start/continue a session
+  operationId: getSessionData
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      description: The ID of the session to get data for
+      schema:
+        type: string
+  responses:
+    '200':
+      description: Session data retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              session:
+                type: object
+                description: The session data
+              messages:
+                type: object
+                description: The messages in the session
+              leia:
+                type: object
+                description: The Leia data with or without the solution depending on the session state
+patch:
+  tags:
+    - Interactions v1
+  summary: Save the result of a session and finish it
+  operationId: saveResultAndFinishSession
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      description: The ID of the session to update data for
+      schema:
+        type: string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            result:
+              description: The result of the session
+  responses:
+    '200':
+      description: Session data updated successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              session:
+                type: object
+                description: The updated session data

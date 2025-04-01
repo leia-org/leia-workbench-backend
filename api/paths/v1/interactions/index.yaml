@@ -1,0 +1,29 @@
+post:
+  tags:
+    - Interactions v1
+  summary: Start a new Session for a Replication
+  operationId: startSession
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            email:
+              type: string
+              description: The email of the user to start the session for
+            code:
+              type: string
+              description: The code of the replication
+  responses:
+    '201':
+      description: Replication created successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              sessionId:
+                type: string
+                description: The ID of the session that was created

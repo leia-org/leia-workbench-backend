@@ -16,10 +16,9 @@ class ReplicationRepository {
   }
 
   async findLeia(id, leiaId) {
-    const replication = await Replication.findOne({ _id: id, 'experiment.leias.id': leiaId });
-
+    const replication = await Replication.findById(id);
     if (replication) {
-      return replication.experiment.leias.find((l) => l.id === leiaId);
+      return replication.experiment.leias.find((l) => leiaId.equals(l.id));
     } else {
       return null;
     }

@@ -1,0 +1,23 @@
+get:
+  tags:
+    - Interactions v1
+  summary: Perform and get the evaluation from a finished session
+  operationId: getEvaluation
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      description: The ID of the session to get the evaluation from
+      schema:
+        type: string
+  responses:
+    '201':
+      description: Evaluation retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              evaluation:
+                type: string
+                description: The evaluation performed on the session
