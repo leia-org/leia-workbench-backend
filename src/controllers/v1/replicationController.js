@@ -67,6 +67,15 @@ export const toggleReplicationIsActive = async (req, res, next) => {
   }
 };
 
+export const toggleReplicationIsRepeatable = async (req, res, next) => {
+  try {
+    const updatedReplication = await ReplicationService.toggleIsRepeatable(req.params.id);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const updateReplicationDuration = async (req, res, next) => {
   try {
     const value = await updateReplicationDurationValidator.validateAsync(req.body, { abortEarly: false });

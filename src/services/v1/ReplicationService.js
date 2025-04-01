@@ -1,5 +1,6 @@
 import ReplicationRepository from '../../repositories/v1/ReplicationRepository.js';
 import ManagerService from './ManagerService.js';
+import { initializeExperiment } from '../../utils/entity.js';
 
 class ReplicationService {
   // READ METHODS
@@ -12,15 +13,16 @@ class ReplicationService {
     return await ReplicationRepository.findById(id);
   }
 
+  async findByCode(code) {
+    return await ReplicationRepository.findByCode(code);
+  }
+
   // WRITE METHODS
 
   async create(replicationData) {
-    replicationData.experiment = await ManagerService.findExperimentById(replicationData.experiment);
-    for (const leia of replicationData.experiment.leias) {
-      leia.runnerConfig = {
-        provider: 'openai',
-      };
-    }
+    const experiment = await ManagerService.findExperimentById(replicationData.experiment);
+    const initializedExperiment = initializeExperiment(experiment);
+    replicationData.experiment = initializedExperiment;
     return await ReplicationRepository.create(replicationData);
   }
 
@@ -36,22 +38,26 @@ class ReplicationService {
     return await ReplicationRepository.toggleIsActive(id);
   }
 
+  async toggleIsRepeatable(id) {
+    return await ReplicationRepository.toggleIsRepeatable(id);
+  }
+
   async updateDuration(id, duration) {
     return await ReplicationRepository.update(id, { duration });
   }
 
   async updateExperiment(id, experimentId) {
     const experiment = await ManagerService.findExperimentById(experimentId);
-    for (const leia of experiment.leias) {
-      leia.runnerConfig = {
-        provider: 'openai',
-      };
-    }
-    return await ReplicationRepository.update(id, { experiment });
+    const initializedExperiment = initializeExperiment(experiment);
+    return await ReplicationRepository.update(id, { initializedExperiment });
   }
 
   async updateLeiaRunnerConfig(id, leiaId, runnerConfig) {
     return await ReplicationRepository.updateLeiaRunnerConfig(id, leiaId, runnerConfig);
+  }
+
+  async getAndIncrementNextLeia(id) {
+    return await ReplicationRepository.getAndIncrementNextLeia(id);
   }
 }
 

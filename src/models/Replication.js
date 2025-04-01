@@ -23,6 +23,11 @@ const ReplicationSchema = new Schema(
       required: true,
       default: 1800,
     },
+    isRepeatable: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
     experiment: {
       type: Schema.Types.Mixed,
       required: true,

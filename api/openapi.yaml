@@ -37,6 +37,8 @@ paths:
     $ref: './paths/v1/replications/_id-name.yaml'
   /v1/replications/{id}/toggle-active:
     $ref: './paths/v1/replications/_id-toggleActive.yaml'
+  /v1/replications/{id}/toggle-repeatable:
+    $ref: './paths/v1/replications/_id-toggleRepeatable.yaml'
   /v1/replications/{id}/regenerate-code:
     $ref: './paths/v1/replications/_id-regenerateCode.yaml'
   /v1/replications/{id}/duration:

@@ -11,6 +11,9 @@ properties:
   isActive:
     type: boolean
     description: Whether the replication is active or not
+  isRepeatable:
+    type: boolean
+    description: Whether the replication is repeatable or not
   duration:
     type: integer
     description: Duration of the replication in seconds

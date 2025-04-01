@@ -5,6 +5,7 @@ export const createReplicationValidator = Joi.object({
   experiment: Joi.string().hex().length(24).required(),
   duration: Joi.number().min(1),
   isActive: Joi.boolean(),
+  isRepeatable: Joi.boolean(),
 });
 
 export const updateReplicationNameValidator = Joi.object({
@@ -20,5 +21,5 @@ export const updateReplicationExperimentValidator = Joi.object({
 });
 
 export const updateReplicationLeiaRunnerConfigValidator = Joi.object({
-  provider: Joi.string().valid('openai', 'test').required(),
+  provider: Joi.string().valid('openai').required(),
 });

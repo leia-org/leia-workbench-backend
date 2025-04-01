@@ -1,0 +1,19 @@
+patch:
+  tags:
+    - Replications v1
+  summary: Toggle the repeatable status of a Replication
+  operationId: toggleReplicationRepeatable
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the replication
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+  responses:
+    '200':
+      description: Successful response with Replication
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/replication/replication.yaml'
