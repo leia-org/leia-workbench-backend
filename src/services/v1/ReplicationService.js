@@ -66,8 +66,8 @@ class ReplicationService {
     return await ReplicationRepository.update(id, { initializedExperiment });
   }
 
-  async updateLeiaRunnerConfig(id, leiaId, runnerConfig) {
-    return await ReplicationRepository.updateLeiaRunnerConfig(id, leiaId, runnerConfig);
+  async updateLeiaRunnerConfiguration(id, leiaId, runnerConfiguration) {
+    return await ReplicationRepository.updateLeiaRunnerConfiguration(id, leiaId, runnerConfiguration);
   }
 
   async getAndIncrementNextLeia(id) {

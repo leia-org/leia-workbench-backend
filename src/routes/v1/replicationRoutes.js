@@ -8,7 +8,7 @@ import {
   toggleReplicationIsActive,
   updateReplicationDuration,
   updateReplicationExperiment,
-  updateReplicationLeiaRunnerConfig,
+  updateReplicationLeiaRunnerConfiguration,
   toggleReplicationIsRepeatable,
 } from '../../controllers/v1/replicationController.js';
 
@@ -24,7 +24,7 @@ router.patch('/:id/toggle-active', toggleReplicationIsActive);
 router.patch('/:id/toggle-repeatable', toggleReplicationIsRepeatable);
 router.patch('/:id/duration', updateReplicationDuration);
 router.patch('/:id/experiment', updateReplicationExperiment);
-router.patch('/:id/leia/:leiaId/runner-config', updateReplicationLeiaRunnerConfig);
+router.patch('/:id/leia/:leiaId/runner-configuration', updateReplicationLeiaRunnerConfiguration);
 
 // GET
 router.get('/', getAllReplications);

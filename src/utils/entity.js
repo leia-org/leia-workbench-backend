@@ -26,7 +26,7 @@ export async function generateUniqueCode(model, prefix, maxAttempts = 5) {
 }
 /**
  * Initialize the experiment object to save it in the database,
- * adding the runnerConfig and sessionCount properties
+ * adding the runnerConfiguration and sessionCount properties
  * to each leia in the experiment.
  *
  * @param {object} experiment
@@ -34,7 +34,7 @@ export async function generateUniqueCode(model, prefix, maxAttempts = 5) {
  */
 export function initializeExperiment(experiment) {
   for (const leia of experiment.leias) {
-    leia.runnerConfig = {
+    leia.runnerConfiguration = {
       provider: 'openai',
     };
     leia.sessionCount = 0;

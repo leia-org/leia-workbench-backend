@@ -45,5 +45,5 @@ paths:
     $ref: './paths/v1/replications/_id-duration.yaml'
   /v1/replications/{id}/experiment:
     $ref: './paths/v1/replications/_id-experiment.yaml'
-  /v1/replications/{id}/leia/{leiaId}/runner-config:
-    $ref: './paths/v1/replications/_id-leia-_leiaId-runnerConfig.yaml'
+  /v1/replications/{id}/leia/{leiaId}/runner-configuration:
+    $ref: './paths/v1/replications/_id-leia-_leiaId-runnerConfiguration.yaml'

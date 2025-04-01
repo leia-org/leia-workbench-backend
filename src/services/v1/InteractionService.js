@@ -85,7 +85,7 @@ class InteractionService {
     }
 
     delete leia.leia.spec.behaviour;
-    delete leia.runnerConfig;
+    delete leia.runnerConfiguration;
     delete leia.sessionCount;
 
     return { session, messages, leia };

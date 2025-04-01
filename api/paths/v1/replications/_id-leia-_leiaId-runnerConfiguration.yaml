@@ -2,7 +2,7 @@ patch:
   tags:
     - Replications v1
   summary: Change the runner configuration of a leia from a Replication
-  operationId: updateReplicationLeiaRunnerConfig
+  operationId: updateReplicationLeiaRunnerConfiguration
   parameters:
     - name: id
       in: path
@@ -21,7 +21,7 @@ patch:
     content:
       application/json:
         schema:
-          $ref: '../../../components/schemas/v1/replication/runnerConfig.yaml'
+          $ref: '../../../components/schemas/v1/replication/runnerConfiguration.yaml'
 
   responses:
     '200':

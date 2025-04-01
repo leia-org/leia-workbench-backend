@@ -20,6 +20,6 @@ export const updateReplicationExperimentValidator = Joi.object({
   experiment: Joi.string().hex().length(24).required(),
 });
 
-export const updateReplicationLeiaRunnerConfigValidator = Joi.object({
+export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
   provider: Joi.string().valid('openai').required(),
 });

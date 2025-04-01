@@ -55,10 +55,10 @@ class ReplicationRepository {
     });
   }
 
-  async updateLeiaRunnerConfig(id, leiaId, runnerConfig) {
+  async updateLeiaRunnerConfiguration(id, leiaId, runnerConfiguration) {
     return await Replication.findOneAndUpdate(
       { _id: id, 'experiment.leias.id': leiaId },
-      { $set: { 'experiment.leias.$.runnerConfig': runnerConfig } },
+      { $set: { 'experiment.leias.$.runnerConfiguration': runnerConfiguration } },
       { new: true }
     );
   }
