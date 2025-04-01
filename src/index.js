@@ -8,6 +8,7 @@ import requestLogger from './middlewares/requestLogger.js';
 import SwaggerParser from 'swagger-parser';
 import managerRoutes from './routes/v1/managerRoutes.js';
 import replicationRoutes from './routes/v1/replicationRoutes.js';
+import interactionRoutes from './routes/v1/interactionRoutes.js';
 import { admin } from './middlewares/auth.js';
 
 const app = express();
@@ -34,6 +35,7 @@ SwaggerParser.bundle('./api/openapi.yaml')
 // Routes v1
 app.use('/api/v1/manager', admin, managerRoutes);
 app.use('/api/v1/replications', admin, replicationRoutes);
+app.use('/api/v1/interactions', interactionRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

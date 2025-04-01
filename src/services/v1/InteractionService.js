@@ -70,7 +70,39 @@ class InteractionService {
     return { sessionId: session.id };
   }
 
-  async getSession(sessionId) {
+  async startTestSession(replicationId, leiaId) {
+    const replication = await ReplicationService.findById(replicationId);
+    if (!replication) {
+      const error = new Error('Replication not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const leia = replication.experiment.leias.find((leia) => leia.id === leiaId);
+
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.statusCode = 404;
+    }
+
+    let session = await SessionService.create({
+      user: null,
+      replication: replication.id,
+      leia: leiaId,
+      isTest: true,
+    });
+
+    // Initialize runner for the session
+    await RunnerService.initializeRunner(session.id, leia);
+
+    // Update the runner status
+    session = await SessionService.updateIsRunnerInitialized(session.id, true);
+    logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
+
+    return { sessionId: session.id };
+  }
+
+  async getSessionData(sessionId) {
     const session = await SessionService.findById(sessionId);
     if (!session) {
       const error = new Error('Session not found');
@@ -89,6 +121,67 @@ class InteractionService {
     delete leia.sessionCount;
 
     return { session, messages, leia };
+  }
+
+  async sendSessionMessage(sessionId, message) {
+    let session = await SessionService.findById(sessionId);
+    if (!session) {
+      const error = new Error('Session not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const newUserMessage = await MessageService.create(message, false, session.id);
+    session = await SessionService.addMessage(session.id, newUserMessage.id);
+
+    const leiaMessage = await RunnerService.sendMessage(session.id, message);
+
+    const newLeiaMessage = await MessageService.create(leiaMessage, true, session.id);
+    session = await SessionService.addMessage(session.id, newLeiaMessage.id);
+
+    return leiaMessage;
+  }
+
+  async saveResultAndFinishSession(sessionId, result) {
+    let session = await SessionService.findById(sessionId);
+    if (!session) {
+      const error = new Error('Session not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (session.finishedAt) {
+      const error = new Error('Session already finished');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    session = await SessionService.saveResultAndFinish(session.id, result);
+    return session;
+  }
+
+  async getEvaluation(sessionId) {
+    let session = await SessionService.findById(sessionId);
+    if (!session) {
+      const error = new Error('Session not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (!session.finishedAt) {
+      const error = new Error('Session is not finished yet');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    if (!session.evaluation) {
+      logger.info('Session has no evaluation yet, trying to get it from the runner');
+      const leia = await ReplicationService.findLeia(session.replication, session.leia);
+      const evaluation = await RunnerService.getEvaluation(session.id, leia);
+      session = await SessionService.saveEvaluation(session.id, evaluation);
+      logger.info('Session evaluation saved');
+    }
+    return session.evaluation;
   }
 }
 
