@@ -35,7 +35,7 @@ export async function generateUniqueCode(model, prefix, maxAttempts = 5) {
 export function initializeExperiment(experiment) {
   for (const leia of experiment.leias) {
     leia.runnerConfiguration = {
-      provider: 'openai',
+      provider: 'default',
     };
     leia.sessionCount = 0;
   }

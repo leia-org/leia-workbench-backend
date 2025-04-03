@@ -63,6 +63,6 @@ ReplicationSchema.methods.regenerateCode = async function () {
   this.code = await generateUniqueCode(ReplicationModel, 'R', 5);
 };
 
-const ReplicationModel = mongoose.model('Experiment', ReplicationSchema);
+const ReplicationModel = mongoose.model('Replication', ReplicationSchema);
 
 export default ReplicationModel;
