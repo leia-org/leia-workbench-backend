@@ -1,0 +1,32 @@
+post:
+  tags:
+    - Interactions v1
+  summary: Save the result of a session and finish it
+  operationId: saveResultAndFinishSession
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      description: The ID of the session to update data for
+      schema:
+        type: string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            result:
+              description: The result of the session
+  responses:
+    '200':
+      description: Session data updated successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              session:
+                type: object
+                description: The updated session data

@@ -59,5 +59,7 @@ paths:
     $ref: './paths/v1/interactions/_sessionId.yaml'
   /v1/interactions/{sessionId}/messages:
     $ref: './paths/v1/interactions/_sessionId-messages.yaml'
+  /v1/interactions/{sessionId}/result:
+    $ref: './paths/v1/interactions/_sessionId-result.yaml'
   /v1/interactions/{sessionId}/evaluation:
     $ref: './paths/v1/interactions/_sessionId-evaluation.yaml'

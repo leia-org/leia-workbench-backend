@@ -15,12 +15,10 @@ const router = Router();
 router.post('/', startSession);
 router.post('/test', admin, startTestSession);
 router.post('/:sessionId/messages', sendSessionMessage);
+router.post('/:sessionId/result', saveResultAndFinishSession);
 
 // GET
 router.get('/:sessionId', getSessionData);
 router.get('/:sessionId/evaluation', getEvaluation);
-
-// PATCH
-router.patch('/:sessionId', saveResultAndFinishSession);
 
 export default router;
