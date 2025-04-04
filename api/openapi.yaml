@@ -49,6 +49,8 @@ paths:
     $ref: './paths/v1/replications/_id-experiment.yaml'
   /v1/replications/{id}/leia/{leiaId}/runner-configuration:
     $ref: './paths/v1/replications/_id-leia-_leiaId-runnerConfiguration.yaml'
+  /v1/replications/{id}/form:
+    $ref: './paths/v1/replications/_id-form.yaml'
 
   # Interactions
   /v1/interactions:

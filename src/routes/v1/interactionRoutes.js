@@ -6,6 +6,7 @@ import {
   saveResultAndFinishSession,
   getEvaluation,
   startTestSession,
+  getSolution,
 } from '../../controllers/v1/interactionController.js';
 import { admin } from '../../middlewares/auth.js';
 
@@ -19,6 +20,7 @@ router.post('/:sessionId/result', saveResultAndFinishSession);
 
 // GET
 router.get('/:sessionId', getSessionData);
+router.get('/:sessionId/solution', getSolution);
 router.get('/:sessionId/evaluation', getEvaluation);
 
 export default router;

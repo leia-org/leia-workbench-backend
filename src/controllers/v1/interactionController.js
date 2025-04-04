@@ -62,7 +62,17 @@ export const getEvaluation = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
     const evaluation = await InteractionService.getEvaluation(sessionId);
-    res.json({ evaluation });
+    res.json(evaluation);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSolution = async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+    const res = await InteractionService.getSolutionAndFormat(sessionId);
+    res.json(res);
   } catch (error) {
     next(error);
   }

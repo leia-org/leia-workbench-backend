@@ -73,6 +73,14 @@ class ReplicationService {
   async getAndIncrementNextLeia(id) {
     return await ReplicationRepository.getAndIncrementNextLeia(id);
   }
+
+  async updateForm(id, form) {
+    return await ReplicationRepository.update(id, { form });
+  }
+
+  async deleteForm(id) {
+    return await ReplicationRepository.update(id, { form: null });
+  }
 }
 
 export default new ReplicationService();

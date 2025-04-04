@@ -5,6 +5,7 @@ import {
   updateReplicationDurationValidator,
   updateReplicationExperimentValidator,
   updateReplicationLeiaRunnerConfigurationValidator,
+  updateReplicationFormValidator,
 } from '../../validators/v1/replicationValidator.js';
 
 export const createReplication = async (req, res, next) => {
@@ -103,6 +104,27 @@ export const updateReplicationLeiaRunnerConfiguration = async (req, res, next) =
       abortEarly: false,
     });
     const updatedReplication = await ReplicationService.updateLeiaRunnerConfiguration(id, leiaId, value);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateReplicationForm = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const value = await updateReplicationFormValidator.validateAsync(req.body, { abortEarly: false });
+    const updatedReplication = await ReplicationService.updateForm(id, value.form);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const deleteReplicationForm = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const updatedReplication = await ReplicationService.deleteForm(id);
     res.json(updatedReplication);
   } catch (err) {
     next(err);

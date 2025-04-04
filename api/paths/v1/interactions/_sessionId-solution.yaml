@@ -1,0 +1,26 @@
+get:
+  tags:
+    - Interactions v1
+  summary: Get the solution of the problem for the session
+  operationId: getSolution
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      description: The ID of the session to get the solution for
+      schema:
+        type: string
+  responses:
+    '201':
+      description: Solution retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              solution:
+                type: string
+                description: The solution of the problem for the session
+              solutionFormat:
+                type: string
+                description: The format of the solution

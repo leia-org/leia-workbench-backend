@@ -73,7 +73,7 @@ class SessionService {
     return await SessionRepository.update(id, { score });
   }
 
-  async saveScoreAndEvaluation(id, score, evaluation) {
+  async saveEvaluationAndScore(id, evaluation, score) {
     return await SessionRepository.update(id, { score, evaluation });
   }
 

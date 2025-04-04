@@ -32,6 +32,10 @@ const ReplicationSchema = new Schema(
       type: Schema.Types.Mixed,
       required: true,
     },
+    form: {
+      type: String,
+      required: true,
+    },
   },
   {
     strict: false,

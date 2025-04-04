@@ -33,21 +33,21 @@ class RunnerService {
     return response.data.message;
   }
 
-  async getEvaluation(result, leia) {
-    // const response = await axios.post(
-    //   `${process.env.RUNNER_URL}/api/v1/evaluation`,
-    //   {
-    //     result,
-    //     leia,
-    //   },
-    //   {
-    //     headers: {
-    //       Authorization: 'Bearer ' + process.env.RUNNER_KEY,
-    //     },
-    //   }
-    // );
-    // return response.data;
-    return 'Evaluation result';
+  async getEvaluationAndScore(sessionId, result) {
+    const response = await axios.post(
+      `${process.env.RUNNER_URL}/api/v1/evaluation`,
+      {
+        sessionId,
+        result,
+      },
+      {
+        headers: {
+          Authorization: 'Bearer ' + process.env.RUNNER_KEY,
+        },
+      }
+    );
+    const { evaluation, score } = response.data;
+    return { evaluation, score };
   }
 }
 

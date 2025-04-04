@@ -106,10 +106,23 @@ class InteractionService {
       throw error;
     }
     const messages = await MessageService.findBySession(session.id);
-    const leia = await ReplicationService.findLeia(session.replication, session.leia);
-    console.log(leia);
-    console.log(session.replication);
-    console.log(session.leia);
+    const replication = await ReplicationService.findById(session.replication);
+
+    if (!replication) {
+      const error = new Error('Replication not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const leia = replication.experiment?.leias?.find((leia) => session.leia.equals(leia.id));
+
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    delete replication.experiment;
 
     if (!session.finishedAt) {
       delete leia.leia.spec.problem.spec.solution;
@@ -119,7 +132,46 @@ class InteractionService {
     delete leia.runnerConfiguration;
     delete leia.sessionCount;
 
-    return { session, messages, leia };
+    return { session, messages, leia, replication };
+  }
+
+  async getSolutionAndFormat(sessionId) {
+    const session = await SessionService.findById(sessionId);
+    if (!session) {
+      const error = new Error('Session not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (!session.finishedAt) {
+      const error = new Error('Session is not finished yet');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    if (!session.result) {
+      const error = new Error('Session has no result yet');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const leia = ReplicationService.findLeia(session.replication, session.leia);
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const solution = leia.leia?.spec?.problem?.spec?.solution;
+    const solutionFormat = leia.leia?.spec?.problem?.spec?.solutionFormat;
+
+    if (!solution) {
+      const error = new Error('Solution not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    return { solution, solutionFormat };
   }
 
   async sendSessionMessage(sessionId, message) {
@@ -167,20 +219,25 @@ class InteractionService {
       throw error;
     }
 
-    if (!session.finishedAt) {
-      const error = new Error('Session is not finished yet');
-      error.statusCode = 403;
-      throw error;
-    }
+    if (!session.evaluation || !session.score) {
+      if (!session.finishedAt) {
+        const error = new Error('Session is not finished yet');
+        error.statusCode = 403;
+        throw error;
+      }
 
-    if (!session.evaluation) {
+      if (!session.result) {
+        const error = new Error('Session has no result yet');
+        error.statusCode = 403;
+        throw error;
+      }
+
       logger.info('Session has no evaluation yet, trying to get it from the runner');
-      const leia = await ReplicationService.findLeia(session.replication, session.leia);
-      const evaluation = await RunnerService.getEvaluation(session.result, leia);
-      session = await SessionService.saveEvaluation(session.id, evaluation);
+      const res = await RunnerService.getEvaluationAndScore(session.id, session.result);
+      session = await SessionService.saveEvaluationAndScore(session.id, res.evaluation, res.score);
       logger.info('Session evaluation saved');
     }
-    return session.evaluation;
+    return { evaluation: session.evaluation, score: session.score };
   }
 }
 

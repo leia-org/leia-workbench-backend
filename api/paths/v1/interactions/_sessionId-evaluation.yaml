@@ -20,4 +20,7 @@ get:
             properties:
               evaluation:
                 type: string
-                description: The evaluation performed on the session
+                description: The evaluation performed on the result of the session
+              score:
+                type: number
+                description: The score of the evaluation

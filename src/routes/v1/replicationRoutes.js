@@ -10,6 +10,8 @@ import {
   updateReplicationExperiment,
   updateReplicationLeiaRunnerConfiguration,
   toggleReplicationIsRepeatable,
+  updateReplicationForm,
+  deleteReplicationForm,
 } from '../../controllers/v1/replicationController.js';
 
 const router = express.Router();
@@ -24,10 +26,14 @@ router.patch('/:id/toggle-active', toggleReplicationIsActive);
 router.patch('/:id/toggle-repeatable', toggleReplicationIsRepeatable);
 router.patch('/:id/duration', updateReplicationDuration);
 router.patch('/:id/experiment', updateReplicationExperiment);
+router.patch('/:id/form', updateReplicationForm);
 router.patch('/:id/leia/:leiaId/runner-configuration', updateReplicationLeiaRunnerConfiguration);
 
 // GET
 router.get('/', getAllReplications);
 router.get('/:id', getReplicationById);
+
+// DELETE
+router.delete('/:id/form', deleteReplicationForm);
 
 export default router;
