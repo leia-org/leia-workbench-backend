@@ -17,3 +17,6 @@ properties:
   duration:
     type: integer
     description: Duration of the experiment in seconds
+  form:
+    type: string
+    description: Form link for the experiment

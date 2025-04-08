@@ -6,6 +6,7 @@ export const createReplicationValidator = Joi.object({
   duration: Joi.number().min(1),
   isActive: Joi.boolean(),
   isRepeatable: Joi.boolean(),
+  form: Joi.string(),
 });
 
 export const updateReplicationNameValidator = Joi.object({

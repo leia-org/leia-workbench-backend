@@ -34,7 +34,6 @@ const ReplicationSchema = new Schema(
     },
     form: {
       type: String,
-      required: true,
     },
   },
   {
