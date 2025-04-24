@@ -9,6 +9,7 @@ import SwaggerParser from 'swagger-parser';
 import managerRoutes from './routes/v1/managerRoutes.js';
 import replicationRoutes from './routes/v1/replicationRoutes.js';
 import interactionRoutes from './routes/v1/interactionRoutes.js';
+import secretRoutes from './routes/v1/secretRoutes.js';
 import { admin } from './middlewares/auth.js';
 
 const app = express();
@@ -31,6 +32,9 @@ SwaggerParser.bundle('./api/openapi.yaml')
   .catch((error) => {
     console.error('Error bundling OAS file:', error);
   });
+
+// Admin secret
+app.use('/api/v1/secret', secretRoutes);
 
 // Routes v1
 app.use('/api/v1/manager', admin, managerRoutes);
