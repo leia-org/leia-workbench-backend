@@ -22,7 +22,7 @@ export const updateReplicationExperimentValidator = Joi.object({
 });
 
 export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
-  provider: Joi.string().valid('openai-assistant').required(),
+  provider: Joi.string().valid('openai-assistant', 'default').required(),
 });
 
 export const updateReplicationFormValidator = Joi.object({
