@@ -81,6 +81,58 @@ class ReplicationService {
   async deleteForm(id) {
     return await ReplicationRepository.update(id, { form: null });
   }
+
+  async toggleAskSolution(id, leiaId) {
+    const leia = await ReplicationRepository.findLeia(id, leiaId);
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.status = 404;
+      throw error;
+    }
+
+    const askSolutionStatus = !leia.configuration.askSolution;
+    const evaluatedSolutionStatus = leia.configuration.evaluateSolution;
+
+    let updatedReplication;
+
+    if (!askSolutionStatus && evaluatedSolutionStatus) {
+      updatedReplication = await ReplicationRepository.updateAskSolutionAndEvaluateSolution(
+        id,
+        leiaId,
+        askSolutionStatus,
+        false
+      );
+    } else {
+      updatedReplication = await ReplicationRepository.updateAskSolution(id, leiaId, askSolutionStatus);
+    }
+    return updatedReplication;
+  }
+
+  async toggleEvaluateSolution(id, leiaId) {
+    const leia = await ReplicationRepository.findLeia(id, leiaId);
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.status = 404;
+      throw error;
+    }
+
+    const askSolutionStatus = leia.configuration.askSolution;
+    const evaluateSolutionStatus = !leia.configuration.evaluateSolution;
+
+    let updatedReplication;
+
+    if (!askSolutionStatus && evaluateSolutionStatus) {
+      updatedReplication = await ReplicationRepository.updateAskSolutionAndEvaluateSolution(
+        id,
+        leiaId,
+        true,
+        evaluateSolutionStatus
+      );
+    } else {
+      updatedReplication = await ReplicationRepository.updateEvaluateSolution(id, leiaId, evaluateSolutionStatus);
+    }
+    return updatedReplication;
+  }
 }
 
 export default new ReplicationService();

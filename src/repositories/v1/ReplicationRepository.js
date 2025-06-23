@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Replication from '../../models/Replication.js';
 
 class ReplicationRepository {
@@ -18,6 +19,7 @@ class ReplicationRepository {
   async findLeia(id, leiaId) {
     const replication = await Replication.findById(id);
     if (replication) {
+      leiaId = new mongoose.Types.ObjectId(String(leiaId));
       return replication.experiment.leias.find((l) => leiaId.equals(l.id));
     } else {
       return null;
@@ -52,6 +54,35 @@ class ReplicationRepository {
     return await Replication.findByIdAndUpdate(id, [{ $set: { isRepeatable: { $not: '$isRepeatable' } } }], {
       new: true,
     });
+  }
+
+  async updateAskSolution(id, leiaId, askSolution) {
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.leias.id': leiaId },
+      { $set: { 'experiment.leias.$.configuration.askSolution': askSolution } },
+      { new: true }
+    );
+  }
+
+  async updateEvaluateSolution(id, leiaId, evaluateSolution) {
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.leias.id': leiaId },
+      { $set: { 'experiment.leias.$.configuration.evaluateSolution': evaluateSolution } },
+      { new: true }
+    );
+  }
+
+  async updateAskSolutionAndEvaluateSolution(id, leiaId, askSolution, evaluateSolution) {
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.leias.id': leiaId },
+      {
+        $set: {
+          'experiment.leias.$.configuration.askSolution': askSolution,
+          'experiment.leias.$.configuration.evaluateSolution': evaluateSolution,
+        },
+      },
+      { new: true }
+    );
   }
 
   async updateLeiaRunnerConfiguration(id, leiaId, runnerConfiguration) {

@@ -12,6 +12,8 @@ import {
   toggleReplicationIsRepeatable,
   updateReplicationForm,
   deleteReplicationForm,
+  toggleAskSolution,
+  toggleEvaluateSolution,
 } from '../../controllers/v1/replicationController.js';
 
 const router = express.Router();
@@ -24,6 +26,8 @@ router.patch('/:id/name', updateReplicationName);
 router.patch('/:id/regenerate-code', regenerateReplicationCode);
 router.patch('/:id/toggle-active', toggleReplicationIsActive);
 router.patch('/:id/toggle-repeatable', toggleReplicationIsRepeatable);
+router.patch('/:id/leia/:leiaId/toggle-ask-solution', toggleAskSolution);
+router.patch('/:id/leia/:leiaId/toggle-evaluate-solution', toggleEvaluateSolution);
 router.patch('/:id/duration', updateReplicationDuration);
 router.patch('/:id/experiment', updateReplicationExperiment);
 router.patch('/:id/form', updateReplicationForm);

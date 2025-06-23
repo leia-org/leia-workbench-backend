@@ -58,6 +58,16 @@ export const saveResultAndFinishSession = async (req, res, next) => {
   }
 };
 
+export const finishSession = async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+    const session = await InteractionService.finishSession(sessionId);
+    res.json(session);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getEvaluation = async (req, res, next) => {
   try {
     const { sessionId } = req.params;

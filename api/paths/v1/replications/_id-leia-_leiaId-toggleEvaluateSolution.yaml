@@ -1,0 +1,25 @@
+patch:
+  tags:
+    - Replications v1
+  summary: Toggle the evaluate solution status status of a Replication
+  operationId: toggleEvaluateSolution
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the replication
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+    - name: leiaId
+      in: path
+      required: true
+      description: Unique identifier for the Leia instance
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+  responses:
+    '200':
+      description: Successful response with Replication
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/replication/replication.yaml'

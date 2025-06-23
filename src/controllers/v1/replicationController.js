@@ -130,3 +130,23 @@ export const deleteReplicationForm = async (req, res, next) => {
     next(err);
   }
 };
+
+export const toggleAskSolution = async (req, res, next) => {
+  try {
+    const { id, leiaId } = req.params;
+    const updatedReplication = await ReplicationService.toggleAskSolution(id, leiaId);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const toggleEvaluateSolution = async (req, res, next) => {
+  try {
+    const { id, leiaId } = req.params;
+    const updatedReplication = await ReplicationService.toggleEvaluateSolution(id, leiaId);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};

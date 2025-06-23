@@ -38,6 +38,8 @@ export function initializeExperiment(experiment) {
       provider: 'default',
     };
     leia.sessionCount = 0;
+    leia.configuration.askSolution = true;
+    leia.configuration.evaluateSolution = true;
   }
   return experiment;
 }

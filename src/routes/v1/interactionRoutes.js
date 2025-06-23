@@ -7,6 +7,7 @@ import {
   getEvaluation,
   startTestSession,
   getSolution,
+  finishSession,
 } from '../../controllers/v1/interactionController.js';
 import { admin } from '../../middlewares/auth.js';
 
@@ -17,6 +18,7 @@ router.post('/', startSession);
 router.post('/test', admin, startTestSession);
 router.post('/:sessionId/messages', sendSessionMessage);
 router.post('/:sessionId/result', saveResultAndFinishSession);
+router.post('/:sessionId/finish', finishSession);
 
 // GET
 router.get('/:sessionId', getSessionData);

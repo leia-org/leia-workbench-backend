@@ -1,0 +1,23 @@
+post:
+  tags:
+    - Interactions v1
+  summary: Finish the session without saving any results
+  operationId: finishSession
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      description: The ID of the session to update data for
+      schema:
+        type: string
+  responses:
+    '200':
+      description: Session data updated successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              session:
+                type: object
+                description: The updated session data
