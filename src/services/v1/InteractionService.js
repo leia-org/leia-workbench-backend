@@ -224,6 +224,8 @@ class InteractionService {
       throw error;
     }
     session = await SessionService.finish(session.id);
+    await RunnerService.deleteCache(session.id);
+    logger.info(`Cache deleted for session ${session.id}`);
     return session;
   }
 
