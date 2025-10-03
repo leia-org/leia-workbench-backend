@@ -19,6 +19,12 @@ class SessionRepository {
     return await Session.find({ replication: replicationId, isTest: false });
   }
 
+  async findByReplicationAndPopulateMessages(replicationId) {
+    return await Session.find({ replication: replicationId, isTest: false })
+      .populate('messages')
+      .populate('user', 'email');
+  }
+
   async findByReplicationAndLeia(replicationId, leiaId) {
     return await Session.find({ replication: replicationId, leia: leiaId, isTest: false });
   }

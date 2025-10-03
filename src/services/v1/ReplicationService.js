@@ -133,6 +133,40 @@ class ReplicationService {
     }
     return updatedReplication;
   }
+
+  async getConversations(id) {
+    const sessions = await SessionRepository.findByReplicationAndPopulateMessages(id);
+    return sessions;
+  }
+
+  async getConversationsCSV(id) {
+    const sessions = await SessionRepository.findByReplicationAndPopulateMessages(id);
+
+    let csv = 'Session ID,User,Started At,Finished At,Message,Is LEIA,Timestamp,Score,Evaluation\n';
+
+    for (const session of sessions) {
+      const sessionId = session.id || '';
+      const userId = session.user?.email || session.user?.id || 'Anonymous';
+      const startedAt = session.startedAt ? new Date(session.startedAt).toISOString() : '';
+      const finishedAt = session.finishedAt ? new Date(session.finishedAt).toISOString() : '';
+      const score = session.score || '';
+      const evaluation = session.evaluation ? `"${session.evaluation.replace(/"/g, '""')}"` : '';
+
+      if (session.messages && session.messages.length > 0) {
+        for (const message of session.messages) {
+          const messageText = message.text ? `"${message.text.replace(/"/g, '""')}"` : '';
+          const isLeia = message.isLeia ? 'TRUE' : 'FALSE';
+          const timestamp = message.timestamp ? new Date(message.timestamp).toISOString() : '';
+
+          csv += `${sessionId},${userId},${startedAt},${finishedAt},${messageText},${isLeia},${timestamp},${score},${evaluation}\n`;
+        }
+      } else {
+        csv += `${sessionId},${userId},${startedAt},${finishedAt},"No messages",,,${score},${evaluation}\n`;
+      }
+    }
+
+    return csv;
+  }
 }
 
 export default new ReplicationService();

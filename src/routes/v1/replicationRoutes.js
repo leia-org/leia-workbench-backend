@@ -14,6 +14,8 @@ import {
   deleteReplicationForm,
   toggleAskSolution,
   toggleEvaluateSolution,
+  getReplicationConversations,
+  downloadReplicationConversationsCSV,
 } from '../../controllers/v1/replicationController.js';
 
 const router = express.Router();
@@ -35,6 +37,8 @@ router.patch('/:id/leia/:leiaId/runner-configuration', updateReplicationLeiaRunn
 
 // GET
 router.get('/', getAllReplications);
+router.get('/:id/conversations', getReplicationConversations);
+router.get('/:id/conversations/csv', downloadReplicationConversationsCSV);
 router.get('/:id', getReplicationById);
 
 // DELETE

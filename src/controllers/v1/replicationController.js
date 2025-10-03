@@ -150,3 +150,26 @@ export const toggleEvaluateSolution = async (req, res, next) => {
     next(err);
   }
 };
+
+export const getReplicationConversations = async (req, res, next) => {
+  try {
+    const conversations = await ReplicationService.getConversations(req.params.id);
+    res.json(conversations);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const downloadReplicationConversationsCSV = async (req, res, next) => {
+  try {
+    const csv = await ReplicationService.getConversationsCSV(req.params.id);
+    const replication = await ReplicationService.findById(req.params.id);
+    const filename = `${replication.name.replace(/\s+/g, '_')}_conversations.csv`;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (err) {
+    next(err);
+  }
+};
