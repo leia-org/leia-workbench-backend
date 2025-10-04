@@ -1,4 +1,6 @@
 import MessageRepository from '../../repositories/v1/MessageRepository.js';
+import { emitToSession, emitToReplication } from '../../socket/index.js';
+import SessionRepository from '../../repositories/v1/SessionRepository.js';
 
 class MessageService {
   // READ METHODS
@@ -23,7 +25,27 @@ class MessageService {
       isLeia,
       session: sessionId,
     };
-    return await MessageRepository.create(messageData);
+    const message = await MessageRepository.create(messageData);
+
+    // Emit WebSocket event to spectators and dashboard
+    try {
+      const session = await SessionRepository.findById(sessionId);
+      if (session) {
+        // Emit to session room (spectators)
+        emitToSession(sessionId, 'message:new', message);
+
+        // Emit to replication room (dashboard)
+        emitToReplication(session.replication.toString(), 'session:message', {
+          sessionId,
+          message,
+        });
+      }
+    } catch (error) {
+      // Don't fail message creation if WebSocket emit fails
+      console.error('Failed to emit message via WebSocket:', error);
+    }
+
+    return message;
   }
 }
 

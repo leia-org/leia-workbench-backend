@@ -1,4 +1,5 @@
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
+import { emitToSession, emitToReplication } from '../../socket/index.js';
 
 class SessionService {
   // READ METHODS
@@ -54,7 +55,20 @@ class SessionService {
   }
 
   async finish(id) {
-    return await SessionRepository.update(id, { finishedAt: new Date() });
+    const session = await SessionRepository.update(id, { finishedAt: new Date() });
+
+    // Emit WebSocket event
+    try {
+      emitToSession(id, 'session:finished', { sessionId: id, finishedAt: session.finishedAt });
+      emitToReplication(session.replication.toString(), 'session:finished', {
+        sessionId: id,
+        finishedAt: session.finishedAt,
+      });
+    } catch (error) {
+      console.error('Failed to emit session finished via WebSocket:', error);
+    }
+
+    return session;
   }
 
   async saveResult(id, result) {
