@@ -1,4 +1,5 @@
 import ReplicationService from '../../services/v1/ReplicationService.js';
+import SessionService from '../../services/v1/SessionService.js';
 import {
   createReplicationValidator,
   updateReplicationNameValidator,
@@ -6,6 +7,7 @@ import {
   updateReplicationExperimentValidator,
   updateReplicationLeiaRunnerConfigurationValidator,
   updateReplicationFormValidator,
+  updateSessionScoreValidator,
 } from '../../validators/v1/replicationValidator.js';
 
 export const createReplication = async (req, res, next) => {
@@ -169,6 +171,17 @@ export const downloadReplicationConversationsCSV = async (req, res, next) => {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateSessionScore = async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+    const value = await updateSessionScoreValidator.validateAsync(req.body, { abortEarly: false });
+    const updatedSession = await SessionService.saveScore(sessionId, value.score);
+    res.json(updatedSession);
   } catch (err) {
     next(err);
   }
