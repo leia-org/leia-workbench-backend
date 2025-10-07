@@ -19,6 +19,12 @@ class SessionRepository {
     return await Session.find({ replication: replicationId, isTest: false });
   }
 
+  async findByReplicationAndPopulateMessages(replicationId) {
+    return await Session.find({ replication: replicationId, isTest: false })
+      .populate('messages')
+      .populate('user', 'email');
+  }
+
   async findByReplicationAndLeia(replicationId, leiaId) {
     return await Session.find({ replication: replicationId, leia: leiaId, isTest: false });
   }
@@ -52,6 +58,31 @@ class SessionRepository {
 
   async hasAnyFinished(userId, replicationId) {
     return await Session.exists({ user: userId, replication: replicationId, finishedAt: { $ne: null }, isTest: false });
+  }
+
+  async findActiveByReplication(replicationId, options = {}) {
+    const query = {
+      replication: replicationId,
+      finishedAt: null,
+      isTest: false,
+    };
+
+    if (options.userId) {
+      query.user = options.userId;
+    }
+
+    return await Session.find(query)
+      .populate('user', 'email')
+      .populate('messages')
+      .sort({ startedAt: -1 });
+  }
+
+  async findWithMessagesSince(sessionId, timestamp) {
+    return await Session.findById(sessionId).populate({
+      path: 'messages',
+      match: { timestamp: { $gt: new Date(timestamp) } },
+      options: { sort: { timestamp: 1 } },
+    });
   }
 
   // WRITE METHODS
