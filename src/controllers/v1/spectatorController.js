@@ -45,19 +45,14 @@ export const getSessionForSpectator = async (req, res, next) => {
 export const getLiveSessionsByReplication = async (req, res, next) => {
   try {
     const { id: replicationId } = req.params;
-    const { includeFinished, userId } = req.query;
+    const { userId } = req.query;
 
     const options = {};
     if (userId) {
       options.userId = userId;
     }
 
-    let sessions;
-    if (includeFinished === 'true') {
-      sessions = await SessionRepository.findByReplicationAndPopulateMessages(replicationId);
-    } else {
-      sessions = await SessionRepository.findActiveByReplication(replicationId, options);
-    }
+    let sessions = await SessionRepository.findByReplicationAndPopulateMessages(replicationId);
 
     // Format sessions for dashboard
     const formattedSessions = sessions.map((session) => {
@@ -74,10 +69,10 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
         messageCount: messages.length,
         lastMessage: lastMessage
           ? {
-              text: lastMessage.text,
-              isLeia: lastMessage.isLeia,
-              timestamp: lastMessage.timestamp,
-            }
+            text: lastMessage.text,
+            isLeia: lastMessage.isLeia,
+            timestamp: lastMessage.timestamp,
+          }
           : null,
       };
     });
