@@ -1,4 +1,5 @@
 import express from 'express';
+import { createServer } from 'http';
 import swaggerUi from 'swagger-ui-express';
 import cors from 'cors';
 import logger from './utils/logger.js';
@@ -10,9 +11,12 @@ import managerRoutes from './routes/v1/managerRoutes.js';
 import replicationRoutes from './routes/v1/replicationRoutes.js';
 import interactionRoutes from './routes/v1/interactionRoutes.js';
 import secretRoutes from './routes/v1/secretRoutes.js';
+import spectatorRoutes from './routes/v1/spectatorRoutes.js';
 import { admin } from './middlewares/auth.js';
+import { initializeSocket } from './socket/index.js';
 
 const app = express();
+const httpServer = createServer(app);
 
 app.use(
   cors({
@@ -40,6 +44,7 @@ app.use('/api/v1/secret', secretRoutes);
 app.use('/api/v1/manager', admin, managerRoutes);
 app.use('/api/v1/replications', admin, replicationRoutes);
 app.use('/api/v1/interactions', interactionRoutes);
+app.use('/api/v1/spectator', spectatorRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
@@ -49,13 +54,17 @@ const PORT = process.env.PORT || 3000;
 const startServer = async () => {
   try {
     await connectDB();
-    const server = app.listen(PORT, () => {
+
+    httpServer.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);
     });
 
+    // Initialize Socket.IO
+    initializeSocket(httpServer);
+
     const gracefulShutdown = () => {
       logger.info('Shutting down server...');
-      server.close(() => {
+      httpServer.close(() => {
         logger.info('Server has been shut down');
         process.exit(0);
       });

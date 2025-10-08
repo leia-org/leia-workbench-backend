@@ -14,6 +14,9 @@ import {
   deleteReplicationForm,
   toggleAskSolution,
   toggleEvaluateSolution,
+  getReplicationConversations,
+  downloadReplicationConversationsCSV,
+  updateSessionScore,
 } from '../../controllers/v1/replicationController.js';
 
 const router = express.Router();
@@ -32,9 +35,12 @@ router.patch('/:id/duration', updateReplicationDuration);
 router.patch('/:id/experiment', updateReplicationExperiment);
 router.patch('/:id/form', updateReplicationForm);
 router.patch('/:id/leia/:leiaId/runner-configuration', updateReplicationLeiaRunnerConfiguration);
+router.patch('/:id/sessions/:sessionId/score', updateSessionScore);
 
 // GET
 router.get('/', getAllReplications);
+router.get('/:id/conversations', getReplicationConversations);
+router.get('/:id/conversations/csv', downloadReplicationConversationsCSV);
 router.get('/:id', getReplicationById);
 
 // DELETE

@@ -28,3 +28,7 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
 export const updateReplicationFormValidator = Joi.object({
   form: Joi.string().required(),
 });
+
+export const updateSessionScoreValidator = Joi.object({
+  score: Joi.number().min(0).max(100).required(),
+});
