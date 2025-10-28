@@ -182,6 +182,20 @@ class InteractionService {
       throw error;
     }
 
+    const leia = ReplicationService.findLeia(session.replication, session.leia);
+
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (leia.configuration?.mode == 'transcription') {
+      const error = new Error('Cannot send messages in transcription mode');
+      error.statusCode = 403;
+      throw error;
+    }
+
     const newUserMessage = await MessageService.create(message, false, session.id);
     session = await SessionService.addMessage(session.id, newUserMessage.id);
 
