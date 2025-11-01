@@ -12,15 +12,31 @@ import replicationRoutes from './routes/v1/replicationRoutes.js';
 import interactionRoutes from './routes/v1/interactionRoutes.js';
 import secretRoutes from './routes/v1/secretRoutes.js';
 import spectatorRoutes from './routes/v1/spectatorRoutes.js';
+import realtimeRoutes from './routes/v1/realtimeRoutes.js';
 import { admin } from './middlewares/auth.js';
 import { initializeSocket } from './socket/index.js';
 
 const app = express();
 const httpServer = createServer(app);
 
+// CORS configuration - allow localhost and network access
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://192.168.1.50:8080',
+  'http://localhost:8080',
+];
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   })
@@ -45,6 +61,7 @@ app.use('/api/v1/manager', admin, managerRoutes);
 app.use('/api/v1/replications', admin, replicationRoutes);
 app.use('/api/v1/interactions', interactionRoutes);
 app.use('/api/v1/spectator', spectatorRoutes);
+app.use('/api/v1/realtime', realtimeRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
