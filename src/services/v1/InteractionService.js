@@ -3,6 +3,7 @@ import SessionService from './SessionService.js';
 import UserService from './UserService.js';
 import MessageService from './MessageService.js';
 import RunnerService from './RunnerService.js';
+import SpectatorService from './SpectatorService.js';
 import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
 
@@ -222,7 +223,18 @@ class InteractionService {
     }
 
     session = await SessionService.saveResultAndFinish(session.id, result);
-    return session;
+
+    // Generate spectator link with 1 year expiration
+    const oneYearInSeconds = 365 * 24 * 60 * 60; // 31,536,000 seconds
+    const spectatorData = await SpectatorService.generateSpectateToken(session.id, oneYearInSeconds);
+    const spectateUrl = SpectatorService.generateSpectateUrl(session.id, spectatorData.token);
+
+    return {
+      ...session.toObject(),
+      spectateUrl,
+      spectateToken: spectatorData.token,
+      spectateExpiresAt: spectatorData.expiresAt,
+    };
   }
 
   async finishSession(sessionId) {
@@ -240,7 +252,18 @@ class InteractionService {
     session = await SessionService.finish(session.id);
     await RunnerService.deleteCache(session.id);
     logger.info(`Cache deleted for session ${session.id}`);
-    return session;
+
+    // Generate spectator link with 1 year expiration
+    const oneYearInSeconds = 365 * 24 * 60 * 60; // 31,536,000 seconds
+    const spectatorData = await SpectatorService.generateSpectateToken(session.id, oneYearInSeconds);
+    const spectateUrl = SpectatorService.generateSpectateUrl(session.id, spectatorData.token);
+
+    return {
+      ...session.toObject(),
+      spectateUrl,
+      spectateToken: spectatorData.token,
+      spectateExpiresAt: spectatorData.expiresAt,
+    };
   }
 
   async getEvaluation(sessionId) {
