@@ -19,24 +19,9 @@ import { initializeSocket } from './socket/index.js';
 const app = express();
 const httpServer = createServer(app);
 
-// CORS configuration - allow localhost and network access
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  'http://192.168.1.50:8080',
-  'http://localhost:8080',
-];
-
 app.use(
   cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
+    origin: process.env.FRONTEND_URL,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   })

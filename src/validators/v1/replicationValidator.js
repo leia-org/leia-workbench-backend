@@ -27,7 +27,7 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
   realtimeConfig: Joi.object({
     model: Joi.string().optional().default('gpt-4o-realtime-preview'),
     voice: Joi.string()
-      .valid('alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'marin')
+      .valid('echo', 'marin')
       .optional()
       .default('marin'),
     instructions: Joi.string().allow('').optional(),
