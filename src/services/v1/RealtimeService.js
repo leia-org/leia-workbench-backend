@@ -20,14 +20,14 @@ class RealtimeService {
       throw error;
     }
 
-    const configuration = leia.configuration;
-    if (!configuration || configuration.audioMode !== 'realtime') {
-      const error = new Error('Audio mode is not enabled for this session');
+    const runnerConfiguration = leia.runnerConfiguration || {};
+    if (!runnerConfiguration.audioMode || runnerConfiguration.audioMode !== 'realtime') {
+      const error = new Error('Audio mode is not enabled for this LEIA');
       error.statusCode = 403;
       throw error;
     }
 
-    const realtimeConfig = configuration.realtimeConfig || {};
+    const realtimeConfig = runnerConfiguration.realtimeConfig || {};
 
     const personaSpec = leia.leia?.spec?.persona?.spec || {};
     const problemSpec = leia.leia?.spec?.problem?.spec || {};
