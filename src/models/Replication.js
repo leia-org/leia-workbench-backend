@@ -1,5 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 import { generateUniqueCode } from '../utils/entity.js';
+import generatePassword from 'omgopass';
 
 const ReplicationSchema = new Schema(
   {
@@ -35,6 +36,14 @@ const ReplicationSchema = new Schema(
     form: {
       type: String,
     },
+    isShared: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
+    shareToken: {
+      type: String,
+    },
   },
   {
     strict: false,
@@ -64,6 +73,13 @@ ReplicationSchema.pre('validate', async function (next) {
 
 ReplicationSchema.methods.regenerateCode = async function () {
   this.code = await generateUniqueCode(ReplicationModel, 'R', 5);
+};
+
+ReplicationSchema.methods.regenerateShareToken = function () {
+  this.shareToken = generatePassword({
+    titlecased: false,
+    separators: '-'
+  });
 };
 
 const ReplicationModel = mongoose.model('Replication', ReplicationSchema);
