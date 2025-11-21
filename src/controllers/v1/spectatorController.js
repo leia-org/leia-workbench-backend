@@ -1,11 +1,13 @@
 import SpectatorService from '../../services/v1/SpectatorService.js';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
+import SessionService from '../../services/v1/SessionService.js';
+import ReplicationService from '../../services/v1/ReplicationService.js';
 
 export const generateSpectateToken = async (req, res, next) => {
   try {
     const { id: sessionId } = req.params;
     const { expiresIn = 3600 } = req.body;
-
+    await SessionService.checkReplicationAccess(sessionId, req.user.isAdmin, req.user.shareToken);
     const result = await SpectatorService.generateSpectateToken(sessionId, expiresIn);
     const spectateUrl = SpectatorService.generateSpectateUrl(sessionId, result.token);
 
@@ -24,6 +26,12 @@ export const getSessionForSpectator = async (req, res, next) => {
 
     // Verify token (already done in middleware)
     // Token payload is in req.spectateSession
+
+    if (req.spectateSession !== sessionId) {
+      const error = new Error('Spectate token does not match session');
+      error.statusCode = 403;
+      throw error;
+    }
 
     const session = await SessionRepository.findByIdAndPopulateMessages(sessionId);
 
@@ -51,7 +59,7 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
     if (userId) {
       options.userId = userId;
     }
-
+    await ReplicationService.checkAccess(replicationId, req.user.isAdmin, req.user.shareToken);
     let sessions = await SessionRepository.findByReplicationAndPopulateMessages(replicationId);
 
     // Format sessions for dashboard

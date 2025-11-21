@@ -19,3 +19,25 @@ export function admin(req, res, next) {
   }
   next();
 }
+
+export function authContext(req, res, next) {
+  const authorization = req.headers.authorization;
+  const token = req.query.token;
+
+  if (authorization) {
+    const parts = authorization.split(' ');
+    if (parts.length === 2 && parts[0] === 'Bearer' && parts[1] === process.env.ADMIN_SECRET) {
+      req.user = { isAdmin: true };
+      return next();
+    }
+  }
+
+  if (token) {
+    req.user = { shareToken: token };
+    return next();
+  }
+
+  const error = new Error('Authorization required: admin token or share token');
+  error.statusCode = 401;
+  return next(error);
+}

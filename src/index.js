@@ -43,7 +43,7 @@ app.use('/api/v1/secret', secretRoutes);
 
 // Routes v1
 app.use('/api/v1/manager', admin, managerRoutes);
-app.use('/api/v1/replications', admin, replicationRoutes);
+app.use('/api/v1/replications', replicationRoutes);
 app.use('/api/v1/interactions', interactionRoutes);
 app.use('/api/v1/spectator', spectatorRoutes);
 app.use('/api/v1/realtime', realtimeRoutes);

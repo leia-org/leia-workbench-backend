@@ -17,33 +17,37 @@ import {
   getReplicationConversations,
   downloadReplicationConversationsCSV,
   updateSessionScore,
+  regenerateReplicationShareToken,
+  toggleReplicationIsShared,
 } from '../../controllers/v1/replicationController.js';
+import { admin, authContext } from '../../middlewares/auth.js';
 
 const router = express.Router();
 
 // POST
-router.post('/', createReplication);
+router.post('/', admin, createReplication);
 
 // PATCH
-router.patch('/:id/name', updateReplicationName);
-router.patch('/:id/regenerate-code', regenerateReplicationCode);
-router.patch('/:id/toggle-active', toggleReplicationIsActive);
-router.patch('/:id/toggle-repeatable', toggleReplicationIsRepeatable);
-router.patch('/:id/leia/:leiaId/toggle-ask-solution', toggleAskSolution);
-router.patch('/:id/leia/:leiaId/toggle-evaluate-solution', toggleEvaluateSolution);
-router.patch('/:id/duration', updateReplicationDuration);
-router.patch('/:id/experiment', updateReplicationExperiment);
-router.patch('/:id/form', updateReplicationForm);
-router.patch('/:id/leia/:leiaId/runner-configuration', updateReplicationLeiaRunnerConfiguration);
-router.patch('/:id/sessions/:sessionId/score', updateSessionScore);
-
+router.patch('/:id/name', admin, updateReplicationName);
+router.patch('/:id/regenerate-code', authContext, regenerateReplicationCode);
+router.patch('/:id/regenerate-share-token', admin, regenerateReplicationShareToken);
+router.patch('/:id/toggle-active', authContext, toggleReplicationIsActive);
+router.patch('/:id/toggle-repeatable', authContext, toggleReplicationIsRepeatable);
+router.patch('/:id/toggle-shared', admin, toggleReplicationIsShared);
+router.patch('/:id/leia/:leiaId/toggle-ask-solution', authContext, toggleAskSolution);
+router.patch('/:id/leia/:leiaId/toggle-evaluate-solution', authContext, toggleEvaluateSolution);
+router.patch('/:id/duration', authContext, updateReplicationDuration);
+router.patch('/:id/experiment', authContext, updateReplicationExperiment);
+router.patch('/:id/form', authContext, updateReplicationForm);
+router.patch('/:id/leia/:leiaId/runner-configuration', authContext, updateReplicationLeiaRunnerConfiguration);
+router.patch('/:id/sessions/:sessionId/score', authContext, updateSessionScore);
 // GET
-router.get('/', getAllReplications);
-router.get('/:id/conversations', getReplicationConversations);
-router.get('/:id/conversations/csv', downloadReplicationConversationsCSV);
-router.get('/:id', getReplicationById);
+router.get('/', admin, getAllReplications);
+router.get('/:id/conversations', authContext, getReplicationConversations);
+router.get('/:id/conversations/csv', authContext, downloadReplicationConversationsCSV);
+router.get('/:id', authContext, getReplicationById);
 
 // DELETE
-router.delete('/:id/form', deleteReplicationForm);
+router.delete('/:id/form', authContext, deleteReplicationForm);
 
 export default router;

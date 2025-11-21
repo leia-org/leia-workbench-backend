@@ -1,6 +1,7 @@
 import { Server } from 'socket.io';
 import logger from '../utils/logger.js';
-import jwt from 'jsonwebtoken';
+import SpectatorService from '../services/v1/SpectatorService.js';
+import ReplicationService from '../services/v1/ReplicationService.js';
 
 let io = null;
 
@@ -13,34 +14,79 @@ export function initializeSocket(httpServer) {
     },
   });
 
-  // Middleware for authentication
-  io.use((socket, next) => {
-    const token = socket.handshake.auth.token || socket.handshake.query.token;
+  const buildAuthContext = (socket) => {
+    const auth = socket.handshake.auth || {};
 
-    if (!token) {
-      return next(new Error('Authentication token required'));
+    const potentialAdminSecret = auth.adminSecret;
+    if (typeof potentialAdminSecret === 'string' && potentialAdminSecret === process.env.ADMIN_SECRET) {
+      return { isAdmin: true };
     }
 
+    const potentialJwt = typeof auth.jwt === 'string' && auth.jwt.split('.').length === 3 ? auth.jwt : null;
+    if (potentialJwt) {
+      try {
+        const decoded = SpectatorService.verifySpectateToken(potentialJwt);
+        return {
+          isAdmin: false,
+          spectate: {
+            sessionId: decoded.sessionId,
+            replicationId: decoded.replicationId,
+          },
+        };
+      } catch (error) {
+        throw new Error(error.message || 'Invalid authentication token');
+      }
+    }
+
+    const shareToken = auth.shareToken || (typeof auth.token === 'string' ? auth.token : null);
+    if (shareToken) {
+      return {
+        isAdmin: false,
+        shareToken,
+      };
+    }
+
+    const error = new Error('Authorization required: admin secret, share token, or spectate token');
+    error.statusCode = 401;
+    throw error;
+  };
+
+  // Middleware for authentication
+  io.use((socket, next) => {
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.userId = decoded.id;
-      socket.userRole = decoded.role;
-      socket.tokenType = decoded.type || 'regular';
+      socket.user = buildAuthContext(socket);
       next();
     } catch (error) {
       logger.error('Socket authentication error:', error);
-      next(new Error('Invalid authentication token'));
+      next(error);
     }
   });
 
   io.on('connection', (socket) => {
-    logger.info(`Client connected: ${socket.id}, userId: ${socket.userId}, type: ${socket.tokenType}`);
+    logger.info(`Client connected: ${socket.id}`);
 
     // Join session room for spectating
-    socket.on('spectate:join', (sessionId) => {
-      socket.join(`session:${sessionId}`);
-      logger.info(`Socket ${socket.id} joined session room: ${sessionId}`);
-      socket.emit('spectate:joined', { sessionId });
+    socket.on('spectate:join', async (sessionId) => {
+      try {
+        if (!sessionId) {
+          throw new Error('Session ID is required');
+        }
+
+        if (socket.user?.spectate) {
+          if (socket.user.spectate.sessionId !== sessionId) {
+            throw new Error('Spectate token does not match the requested session');
+          }
+        } else if (!socket.user?.isAdmin) {
+          throw new Error('Spectate access denied');
+        }
+
+        socket.join(`session:${sessionId}`);
+        logger.info(`Socket ${socket.id} joined session room: ${sessionId}`);
+        socket.emit('spectate:joined', { sessionId });
+      } catch (error) {
+        logger.warn(`Spectate join denied for ${socket.id}: ${error.message}`);
+        socket.emit('spectate:error', { message: error.message });
+      }
     });
 
     // Leave session room
@@ -50,10 +96,21 @@ export function initializeSocket(httpServer) {
     });
 
     // Join replication room for dashboard
-    socket.on('dashboard:join', (replicationId) => {
-      socket.join(`replication:${replicationId}`);
-      logger.info(`Socket ${socket.id} joined replication room: ${replicationId}`);
-      socket.emit('dashboard:joined', { replicationId });
+    socket.on('dashboard:join', async (replicationId) => {
+      try {
+        if (!replicationId) {
+          throw new Error('Replication ID is required');
+        }
+
+        await ReplicationService.checkAccess(replicationId, Boolean(socket.user?.isAdmin), socket.user?.shareToken);
+
+        socket.join(`replication:${replicationId}`);
+        logger.info(`Socket ${socket.id} joined replication room: ${replicationId}`);
+        socket.emit('dashboard:joined', { replicationId });
+      } catch (error) {
+        logger.warn(`Dashboard join denied for ${socket.id}: ${error.message}`);
+        socket.emit('dashboard:error', { message: error.message });
+      }
     });
 
     // Leave replication room
