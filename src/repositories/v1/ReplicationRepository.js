@@ -26,6 +26,10 @@ class ReplicationRepository {
     }
   }
 
+  async checkSharedAccess(id, token) {
+    return !!(await Replication.exists({ _id: id, isShared: true, shareToken: token }));
+  }
+
   // WRITE METHODS
 
   async create(replicationData) {
@@ -46,8 +50,31 @@ class ReplicationRepository {
     return await replication.save();
   }
 
+  async regenerateShareToken(id) {
+    const replication = await Replication.findById(id);
+    if (!replication) {
+      throw new Error('Replication not found');
+    }
+    replication.regenerateShareToken();
+    return await replication.save();
+  }
+
   async toggleIsActive(id) {
     return await Replication.findByIdAndUpdate(id, [{ $set: { isActive: { $not: '$isActive' } } }], { new: true });
+  }
+
+  async toggleIsShared(id) {
+    const replication = await Replication.findById(id);
+    if (!replication) {
+      throw new Error('Replication not found');
+    }
+
+    if (!replication.isShared && !replication.shareToken) {
+      replication.regenerateShareToken();
+    }
+
+    replication.isShared = !replication.isShared;
+    return await replication.save();
   }
 
   async toggleIsRepeatable(id) {

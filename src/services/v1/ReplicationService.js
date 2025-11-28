@@ -26,6 +26,17 @@ class ReplicationService {
     return await SessionRepository.hasReplicationStarted(replicationId);
   }
 
+  async checkAccess(id, isAdmin, token) {
+    if (!isAdmin) {
+      const hasAccess = await ReplicationRepository.checkSharedAccess(id, token);
+      if (!hasAccess) {
+        const error = new Error('Access denied');
+        error.status = 403;
+        throw error;
+      }
+    }
+  }
+
   // WRITE METHODS
 
   async create(replicationData) {
@@ -43,8 +54,16 @@ class ReplicationService {
     return await ReplicationRepository.regenerateCode(id);
   }
 
+  async regenerateShareToken(id) {
+    return await ReplicationRepository.regenerateShareToken(id);
+  }
+
   async toggleIsActive(id) {
     return await ReplicationRepository.toggleIsActive(id);
+  }
+
+  async toggleIsShared(id) {
+    return await ReplicationRepository.toggleIsShared(id);
   }
 
   async toggleIsRepeatable(id) {

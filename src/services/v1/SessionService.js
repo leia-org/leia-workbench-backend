@@ -1,4 +1,5 @@
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
+import ReplicationService from './ReplicationService.js';
 import { emitToSession, emitToReplication } from '../../socket/index.js';
 
 class SessionService {
@@ -26,6 +27,16 @@ class SessionService {
 
   async findFinishedByReplication(replicationId) {
     return await SessionRepository.findFinishedByReplication(replicationId);
+  }
+
+  async checkReplicationAccess(sessionId, isAdmin, token) {
+    const session = await this.findById(sessionId);
+    if (!session) {
+      const error = new Error('Session not found');
+      error.status = 404;
+      throw error;
+    }
+    await ReplicationService.checkAccess(session.replication.toString(), isAdmin, token);
   }
 
   // Indexed

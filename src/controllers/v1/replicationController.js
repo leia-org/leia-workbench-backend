@@ -24,6 +24,7 @@ export const createReplication = async (req, res, next) => {
 
 export const getReplicationById = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const replication = await ReplicationService.findById(req.params.id);
     res.json(replication);
   } catch (err) {
@@ -54,7 +55,17 @@ export const updateReplicationName = async (req, res, next) => {
 
 export const regenerateReplicationCode = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const updatedReplication = await ReplicationService.regenerateCode(req.params.id);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const regenerateReplicationShareToken = async (req, res, next) => {
+  try {
+    const updatedReplication = await ReplicationService.regenerateShareToken(req.params.id);
     res.json(updatedReplication);
   } catch (err) {
     next(err);
@@ -63,7 +74,17 @@ export const regenerateReplicationCode = async (req, res, next) => {
 
 export const toggleReplicationIsActive = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const updatedReplication = await ReplicationService.toggleIsActive(req.params.id);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const toggleReplicationIsShared = async (req, res, next) => {
+  try {
+    const updatedReplication = await ReplicationService.toggleIsShared(req.params.id);
     res.json(updatedReplication);
   } catch (err) {
     next(err);
@@ -72,6 +93,7 @@ export const toggleReplicationIsActive = async (req, res, next) => {
 
 export const toggleReplicationIsRepeatable = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const updatedReplication = await ReplicationService.toggleIsRepeatable(req.params.id);
     res.json(updatedReplication);
   } catch (err) {
@@ -81,6 +103,7 @@ export const toggleReplicationIsRepeatable = async (req, res, next) => {
 
 export const updateReplicationDuration = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const value = await updateReplicationDurationValidator.validateAsync(req.body, { abortEarly: false });
     const updatedReplication = await ReplicationService.updateDuration(req.params.id, value.duration);
     res.json(updatedReplication);
@@ -101,6 +124,7 @@ export const updateReplicationExperiment = async (req, res, next) => {
 
 export const updateReplicationLeiaRunnerConfiguration = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const { id, leiaId } = req.params;
     const value = await updateReplicationLeiaRunnerConfigurationValidator.validateAsync(req.body, {
       abortEarly: false,
@@ -114,6 +138,7 @@ export const updateReplicationLeiaRunnerConfiguration = async (req, res, next) =
 
 export const updateReplicationForm = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const { id } = req.params;
     const value = await updateReplicationFormValidator.validateAsync(req.body, { abortEarly: false });
     const updatedReplication = await ReplicationService.updateForm(id, value.form);
@@ -125,6 +150,7 @@ export const updateReplicationForm = async (req, res, next) => {
 
 export const deleteReplicationForm = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const { id } = req.params;
     const updatedReplication = await ReplicationService.deleteForm(id);
     res.json(updatedReplication);
@@ -135,6 +161,7 @@ export const deleteReplicationForm = async (req, res, next) => {
 
 export const toggleAskSolution = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const { id, leiaId } = req.params;
     const updatedReplication = await ReplicationService.toggleAskSolution(id, leiaId);
     res.json(updatedReplication);
@@ -145,6 +172,7 @@ export const toggleAskSolution = async (req, res, next) => {
 
 export const toggleEvaluateSolution = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const { id, leiaId } = req.params;
     const updatedReplication = await ReplicationService.toggleEvaluateSolution(id, leiaId);
     res.json(updatedReplication);
@@ -155,6 +183,7 @@ export const toggleEvaluateSolution = async (req, res, next) => {
 
 export const getReplicationConversations = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const conversations = await ReplicationService.getConversations(req.params.id);
     res.json(conversations);
   } catch (err) {
@@ -164,6 +193,7 @@ export const getReplicationConversations = async (req, res, next) => {
 
 export const downloadReplicationConversationsCSV = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const csv = await ReplicationService.getConversationsCSV(req.params.id);
     const replication = await ReplicationService.findById(req.params.id);
     const filename = `${replication.name.replace(/\s+/g, '_')}_conversations.csv`;
@@ -178,6 +208,7 @@ export const downloadReplicationConversationsCSV = async (req, res, next) => {
 
 export const updateSessionScore = async (req, res, next) => {
   try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const { sessionId } = req.params;
     const value = await updateSessionScoreValidator.validateAsync(req.body, { abortEarly: false });
     const updatedSession = await SessionService.saveScore(sessionId, value.score);
