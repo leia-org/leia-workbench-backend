@@ -2,6 +2,7 @@ import SpectatorService from '../../services/v1/SpectatorService.js';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import SessionService from '../../services/v1/SessionService.js';
 import ReplicationService from '../../services/v1/ReplicationService.js';
+import InteractionService from '../../services/v1/InteractionService.js';
 
 export const generateSpectateToken = async (req, res, next) => {
   try {
@@ -33,18 +34,9 @@ export const getSessionForSpectator = async (req, res, next) => {
       throw error;
     }
 
-    const session = await SessionRepository.findByIdAndPopulateMessages(sessionId);
+    const data = await InteractionService.getSessionData(sessionId)
 
-    if (!session) {
-      const error = new Error('Session not found');
-      error.statusCode = 404;
-      throw error;
-    }
-
-    res.status(200).json({
-      session,
-      isActive: !session.finishedAt,
-    });
+    res.json(data)
   } catch (error) {
     next(error);
   }
