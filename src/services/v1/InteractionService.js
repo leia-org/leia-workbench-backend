@@ -52,10 +52,9 @@ class InteractionService {
     }
 
     logger.info(`Session found for user ${userEmail} and replication ${replicationCode}`);
-
-    if (!session.isRunnerInitialized) {
+    const leia = replication.experiment.leias.find((leia) => session.leia.equals(leia.id));
+    if (!leia?.configuration?.mode == "transcription" && !session.isRunnerInitialized) {
       logger.info(`Runner for session ${session.id} is not initialized, initializing now`);
-      const leia = replication.experiment.leias.find((leia) => session.leia.equals(leia.id));
       if (!leia) {
         const error = new Error('Leia not found');
         error.statusCode = 404;
@@ -89,12 +88,15 @@ class InteractionService {
 
     let session = await SessionService.create(null, replicationId, leiaId, true);
 
-    // Initialize runner for the session
-    await RunnerService.initializeRunner(session.id, leia);
+    if (!leia?.configuration?.mode == "transcription") {
+      // Initialize runner for the session
+      await RunnerService.initializeRunner(session.id, leia);
 
-    // Update the runner status
-    session = await SessionService.updateIsRunnerInitialized(session.id, true);
-    logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
+      // Update the runner status
+      session = await SessionService.updateIsRunnerInitialized(session.id, true);
+      logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
+    }
+
 
     return session.id;
   }
