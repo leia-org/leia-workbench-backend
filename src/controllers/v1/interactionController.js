@@ -1,4 +1,5 @@
 import InteractionService from '../../services/v1/InteractionService.js';
+import ReplicationService from '../../services/v1/ReplicationService.js';
 import {
   startSessionValidator,
   sendSessionMessageValidator,
@@ -18,8 +19,9 @@ export const startSession = async (req, res, next) => {
 
 export const startTestSession = async (req, res, next) => {
   try {
-    const value = await startTestSessionValidator.validateAsync(req.body);
-    const sessionId = await InteractionService.startTestSession(value.replicationId, value.leiaId);
+    const { replicationId, leiaId } = await startTestSessionValidator.validateAsync(req.body);
+    await ReplicationService.checkAccess(replicationId, req.user.isAdmin, req.user.shareToken);
+    const sessionId = await InteractionService.startTestSession(replicationId, leiaId);
     res.status(201).json({ sessionId });
   } catch (error) {
     next(error);

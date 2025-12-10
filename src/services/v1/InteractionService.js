@@ -52,7 +52,6 @@ class InteractionService {
     }
 
     logger.info(`Session found for user ${userEmail} and replication ${replicationCode}`);
-
     if (!session.isRunnerInitialized) {
       logger.info(`Runner for session ${session.id} is not initialized, initializing now`);
       const leia = replication.experiment.leias.find((leia) => session.leia.equals(leia.id));
