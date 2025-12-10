@@ -9,13 +9,13 @@ import {
   getSolution,
   finishSession,
 } from '../../controllers/v1/interactionController.js';
-import { admin } from '../../middlewares/auth.js';
+import { authContext } from '../../middlewares/auth.js';
 
 const router = Router();
 
 // POST
 router.post('/', startSession);
-router.post('/test', admin, startTestSession);
+router.post('/test', authContext, startTestSession);
 router.post('/:sessionId/messages', sendSessionMessage);
 router.post('/:sessionId/result', saveResultAndFinishSession);
 router.post('/:sessionId/finish', finishSession);
