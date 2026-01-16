@@ -126,9 +126,11 @@ class InteractionService {
 
     if (!session.finishedAt) {
       delete leia.leia.spec.problem.spec.solution;
+      delete leia.leia.spec.problem.spec.evaluationPrompt;
     }
 
-    delete leia.leia.spec.behaviour;
+    delete leia.leia.spec.behaviour.spec.description;
+    delete leia.leia.spec.behaviour.spec.role;
 
     // Extract audioMode for frontend but keep runnerConfiguration private
     const audioMode = leia.runnerConfiguration?.audioMode || null;
