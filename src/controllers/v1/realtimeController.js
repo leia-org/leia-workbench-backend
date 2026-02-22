@@ -1,4 +1,5 @@
 import RealtimeService from '../../services/v1/RealtimeService.js';
+import LukeService from '../../services/v1/LukeService.js';
 import MessageService from '../../services/v1/MessageService.js';
 import SessionService from '../../services/v1/SessionService.js';
 
@@ -69,6 +70,27 @@ export const saveAudioTranscription = async (req, res, next) => {
       message: 'Transcription saved successfully',
       messageId: message.id,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Create a Luke WebSocket auth token
+ * Returns JWT token and luke config for frontend connection
+ */
+export const createLukeToken = async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+
+    if (!sessionId) {
+      const error = new Error('Session ID is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const result = await LukeService.createLukeToken(sessionId);
+    res.status(200).json(result);
   } catch (error) {
     next(error);
   }
