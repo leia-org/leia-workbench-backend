@@ -15,6 +15,7 @@ import spectatorRoutes from './routes/v1/spectatorRoutes.js';
 import realtimeRoutes from './routes/v1/realtimeRoutes.js';
 import { admin } from './middlewares/auth.js';
 import { initializeSocket } from './socket/index.js';
+import LukeService from './services/v1/LukeService.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -63,6 +64,9 @@ const startServer = async () => {
 
     // Initialize Socket.IO
     initializeSocket(httpServer);
+
+    // Initialize Luke WebSocket server (shares same port via /luke path)
+    LukeService.initialize(httpServer);
 
     const gracefulShutdown = () => {
       logger.info('Shutting down server...');
