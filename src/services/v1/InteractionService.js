@@ -132,14 +132,18 @@ class InteractionService {
     delete leia.leia.spec.behaviour.spec.description;
     delete leia.leia.spec.behaviour.spec.role;
 
-    // Extract audio settings for frontend but keep runnerConfiguration private
+    // Extract audioMode and lukeConfig for frontend but keep runnerConfiguration private
     const audioMode = leia.runnerConfiguration?.audioMode || null;
+    const lukeConfig = leia.runnerConfiguration?.lukeConfig || null;
     const hideTranscription = leia.runnerConfiguration?.realtimeConfig?.hideTranscription || false;
     delete leia.runnerConfiguration;
     delete leia.sessionCount;
 
-    // Add required audio settings back for frontend consumption
+    // Add audioMode and lukeConfig back for frontend consumption
     leia.audioMode = audioMode;
+    if (audioMode === 'luke' && lukeConfig) {
+      leia.lukeConfig = lukeConfig;
+    }
     leia.hideTranscription = hideTranscription;
 
     return { session, messages, leia, replication };

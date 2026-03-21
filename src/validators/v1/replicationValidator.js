@@ -23,7 +23,11 @@ export const updateReplicationExperimentValidator = Joi.object({
 
 export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
   provider: Joi.string().valid('openai-assistant', 'default').required(),
-  audioMode: Joi.string().valid('realtime', null).allow(null).optional(),
+  audioMode: Joi.string().valid('realtime', 'luke', null).allow(null).optional(),
+  lukeConfig: Joi.object({
+    provider: Joi.string().valid('openai', 'gemini').required(),
+    voice: Joi.string().required(),
+  }).optional(),
   realtimeConfig: Joi.object({
     model: Joi.string().optional().default('gpt-4o-realtime-preview'),
     voice: Joi.string()

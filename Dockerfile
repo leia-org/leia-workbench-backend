@@ -1,6 +1,6 @@
 FROM node:lts-alpine
 
-WORKDIR /leia-backend
+WORKDIR /leia-workbench-backend
 
 COPY . .
 
