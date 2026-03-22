@@ -35,6 +35,7 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
       .optional()
       .default('marin'),
     instructions: Joi.string().allow('').optional(),
+    hideTranscription: Joi.boolean().optional().default(false),
     turnDetection: Joi.object({
       type: Joi.string().valid('server_vad', 'none').optional().default('server_vad'),
       threshold: Joi.number().min(0).max(1).optional().default(0.5),
