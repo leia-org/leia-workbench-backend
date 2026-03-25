@@ -24,6 +24,11 @@ export const updateReplicationExperimentValidator = Joi.object({
 export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
   provider: Joi.string().valid('openai-assistant', 'default').required(),
   audioMode: Joi.string().valid('realtime', 'luke', null).allow(null).optional(),
+  hideAudioTranscription: Joi.when('audioMode', {
+    is: Joi.valid('realtime', 'luke'),
+    then: Joi.boolean().optional().default(false),
+    otherwise: Joi.valid(null).optional().default(null),
+  }),
   lukeConfig: Joi.object({
     provider: Joi.string().valid('openai', 'gemini').required(),
     voice: Joi.string().required(),
@@ -35,7 +40,6 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
       .optional()
       .default('marin'),
     instructions: Joi.string().allow('').optional(),
-    hideTranscription: Joi.boolean().optional().default(false),
     turnDetection: Joi.object({
       type: Joi.string().valid('server_vad', 'none').optional().default('server_vad'),
       threshold: Joi.number().min(0).max(1).optional().default(0.5),
