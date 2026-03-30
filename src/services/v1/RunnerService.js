@@ -61,6 +61,15 @@ class RunnerService {
     );
     return response.data;
   }
+    async getRunnerModels() {
+    const response = await axios.get(`${process.env.RUNNER_URL}/api/v1/models`, {
+      headers: {
+        Authorization: 'Bearer ' + process.env.RUNNER_KEY,
+      },
+    });
+    return response.data.models;
+  }
 }
+
 
 export default new RunnerService();

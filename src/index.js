@@ -10,6 +10,7 @@ import SwaggerParser from 'swagger-parser';
 import managerRoutes from './routes/v1/managerRoutes.js';
 import replicationRoutes from './routes/v1/replicationRoutes.js';
 import interactionRoutes from './routes/v1/interactionRoutes.js';
+import runnerRoutes from './routes/v1/runnerRoutes.js';
 import secretRoutes from './routes/v1/secretRoutes.js';
 import spectatorRoutes from './routes/v1/spectatorRoutes.js';
 import realtimeRoutes from './routes/v1/realtimeRoutes.js';
@@ -46,6 +47,7 @@ app.use('/api/v1/secret', secretRoutes);
 app.use('/api/v1/manager', admin, managerRoutes);
 app.use('/api/v1/replications', replicationRoutes);
 app.use('/api/v1/interactions', interactionRoutes);
+app.use('/api/v1/runner', runnerRoutes);
 app.use('/api/v1/spectator', spectatorRoutes);
 app.use('/api/v1/realtime', realtimeRoutes);
 
