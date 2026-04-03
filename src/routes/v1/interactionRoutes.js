@@ -24,5 +24,4 @@ router.post('/:sessionId/finish', finishSession);
 router.get('/:sessionId', getSessionData);
 router.get('/:sessionId/solution', getSolution);
 router.get('/:sessionId/evaluation', getEvaluation);
-
 export default router;

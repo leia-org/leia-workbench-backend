@@ -22,7 +22,7 @@ export const updateReplicationExperimentValidator = Joi.object({
 });
 
 export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
-  provider: Joi.string().valid('openai-assistant', 'default').required(),
+  provider: Joi.string().required(),
   audioMode: Joi.string().valid('realtime', 'luke', null).allow(null).optional(),
   lukeConfig: Joi.object({
     provider: Joi.string().valid('openai', 'gemini').required(),
