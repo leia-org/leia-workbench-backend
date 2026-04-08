@@ -135,7 +135,7 @@ class InteractionService {
     // Extract audioMode and lukeConfig for frontend but keep runnerConfiguration private
     const audioMode = leia.runnerConfiguration?.audioMode || null;
     const lukeConfig = leia.runnerConfiguration?.lukeConfig || null;
-    const hideTranscription = leia.runnerConfiguration?.realtimeConfig?.hideTranscription || false;
+    const hideAudioTranscription = leia.runnerConfiguration?.hideAudioTranscription || null;
     delete leia.runnerConfiguration;
     delete leia.sessionCount;
 
@@ -144,7 +144,7 @@ class InteractionService {
     if (audioMode === 'luke' && lukeConfig) {
       leia.lukeConfig = lukeConfig;
     }
-    leia.hideTranscription = hideTranscription;
+    leia.hideAudioTranscription = hideAudioTranscription;
 
     return { session, messages, leia, replication };
   }

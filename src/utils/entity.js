@@ -37,6 +37,7 @@ export function initializeExperiment(experiment) {
     leia.runnerConfiguration = {
       provider: 'default',
       audioMode: null,
+      hideAudioTranscription: null,
     };
     leia.sessionCount = 0;
     leia.configuration.askSolution = true;
