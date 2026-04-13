@@ -14,7 +14,10 @@ class LukeService {
       providers.push(openai({ apiKey: process.env.OPENAI_API_KEY }));
     }
     if (process.env.GEMINI_API_KEY) {
-      providers.push(gemini({ apiKey: process.env.GEMINI_API_KEY }));
+      providers.push(gemini({
+        apiKey: process.env.GEMINI_API_KEY,
+        model: 'gemini-3.1-flash-live-preview',
+      }));
     }
 
     if (providers.length === 0) {
