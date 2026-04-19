@@ -136,6 +136,7 @@ class InteractionService {
     const audioMode = leia.runnerConfiguration?.audioMode || null;
     const lukeConfig = leia.runnerConfiguration?.lukeConfig || null;
     const hideAudioTranscription = leia.runnerConfiguration?.hideAudioTranscription || null;
+    console.log('[interactions] lukeConfig to frontend:', JSON.stringify(lukeConfig));
     delete leia.runnerConfiguration;
     delete leia.sessionCount;
 

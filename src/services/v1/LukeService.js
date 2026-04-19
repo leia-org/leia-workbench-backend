@@ -190,7 +190,35 @@ function buildInstructions(leia) {
     }
   });
 
+  const widgets = leia.runnerConfiguration?.lukeConfig?.widgets || [];
+  const widgetHints = widgets
+    .map((w) => describeWidget(w.widgetType, w.slot))
+    .filter(Boolean);
+  if (widgetHints.length > 0) {
+    instructionParts.push('\n=== AVAILABLE TOOLS (voice-mode widgets) ===');
+    instructionParts.push(
+      'The user interface has live widgets you can interact with via tool calls. Use them proactively whenever they can help — for example, read the editor before answering code questions, or annotate code the user is discussing.',
+    );
+    widgetHints.forEach((h) => instructionParts.push(h));
+  }
+
   return instructionParts.filter((part) => part.trim() !== '').join('\n');
+}
+
+// Static catalog mirror for the few widgets the workbench renders in
+// voice mode. Must be kept in sync with leia-workbench-frontend/src/widgets/catalog.ts.
+function describeWidget(widgetType, slot) {
+  switch (widgetType) {
+    case 'codeEditor':
+      return [
+        `- Widget "codeEditor" (in the ${slot} panel): a live Monaco code editor the user can see and edit.`,
+        '    * codeEditor_read() → returns { content, language }. Call this FIRST whenever the user mentions the editor, "the code", "this file", or asks questions about what they wrote. Do not claim you cannot see the editor — always call the tool.',
+        '    * codeEditor_addComment({ line, text }) → inserts a "// text" line above the 1-based `line`. Use to leave comments/explanations inline in the user\'s code.',
+        '    * codeEditor_replaceSelection({ text }) → overwrites the user\'s current selection with `text`. Use when the user asks you to rewrite a block.',
+      ].join('\n');
+    default:
+      return null;
+  }
 }
 
 export default new LukeService();

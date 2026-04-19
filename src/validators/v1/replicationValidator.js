@@ -32,6 +32,17 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
   lukeConfig: Joi.object({
     provider: Joi.string().valid('openai', 'gemini').required(),
     voice: Joi.string().required(),
+    // Per-LEIA voice-mode widgets. The workbench-frontend catalog maps
+    // widgetType → React component. Slot constrains where it renders
+    // inside the voice UI.
+    widgets: Joi.array()
+      .items(
+        Joi.object({
+          widgetType: Joi.string().required(),
+          slot: Joi.string().valid('left', 'right', 'main').required(),
+        })
+      )
+      .optional(),
   }).optional(),
   realtimeConfig: Joi.object({
     model: Joi.string().optional().default('gpt-4o-realtime-preview'),
