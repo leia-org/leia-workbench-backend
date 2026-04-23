@@ -101,6 +101,10 @@ class ReplicationService {
     return await ReplicationRepository.update(id, { form: null });
   }
 
+  async deleteDuration(id) {
+    return await ReplicationRepository.update(id, { duration: null });
+  }
+
   async toggleAskSolution(id, leiaId) {
     const leia = await ReplicationRepository.findLeia(id, leiaId);
     if (!leia) {
