@@ -45,6 +45,9 @@ const sessionSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    draft: {
+      type: String,
+    },
   },
   {
     strict: false,
