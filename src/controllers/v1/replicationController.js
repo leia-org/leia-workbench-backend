@@ -129,6 +129,19 @@ export const updateReplicationLeiaRunnerConfiguration = async (req, res, next) =
     const value = await updateReplicationLeiaRunnerConfigurationValidator.validateAsync(req.body, {
       abortEarly: false,
     });
+    const {provider, providerDriver} = await ReplicationService.getProviderAndProviderModuleForReplication(value.modelName);
+    // If an apiKeyId is provided, record the owner (current user) so the runner can later resolve the secret securely
+
+    if (value && value.apiKeyId && req.user && req.user.id) {
+      value.apiKeyRequesterId = req.user.id;
+      value.provider = providerDriver;
+      const isValidProvider = await ReplicationService.validateApiKeyProviderForReplication(provider, value.apiKeyId, value.apiKeyRequesterId, "token");
+      if (!isValidProvider) {
+        const error = new Error(`The provided API key ID is not valid for the selected model's provider.`);
+        error.status = 400;
+        throw error;
+      }
+    }
     const updatedReplication = await ReplicationService.updateLeiaRunnerConfiguration(id, leiaId, value);
     res.json(updatedReplication);
   } catch (err) {

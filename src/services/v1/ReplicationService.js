@@ -2,6 +2,7 @@ import ReplicationRepository from '../../repositories/v1/ReplicationRepository.j
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
+import axios from 'axios';
 
 class ReplicationService {
   // READ METHODS
@@ -185,6 +186,30 @@ class ReplicationService {
     }
 
     return csv;
+  }
+
+  async getProviderAndProviderModuleForReplication(modelName) {
+    const {data} = await axios.get(`${process.env.RUNNER_URL}/api/v1/models`, {
+      headers: {
+        Authorization: 'Bearer ' + process.env.RUNNER_KEY,
+      },
+    });
+    const provider = Object.entries(data.apiKeyProviders || {})
+      .find(([, models]) => models.includes(modelName))?.[0];
+
+    if (!provider) throw new Error(`Model '${modelName}' not mapped to provider`);
+    const providerDriver = data.providerProviderModuleMap?.[provider];
+    if (!providerDriver) throw new Error(`No provider module for provider '${provider}'`);
+
+    return { provider, providerDriver };
+  }
+
+  async validateApiKeyProviderForReplication(provider, apiKeyId, apiKeyRequesterId, userJWT) {
+    // TO DO: esta funcion llo que ahce es una llamada a una nueva entrada dentro del
+    // designer que lo que hacer es comrpobar que la apiKey seleccionada tiene el mismo
+    //  provider que se espera del modelo. Necesitaria el token del usuario por tanto preguntarle a rafa si
+    // le parece bien que la peticion esta necesite token a partir de ahora
+    return true;
   }
 }
 
