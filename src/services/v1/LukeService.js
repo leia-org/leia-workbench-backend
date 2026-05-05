@@ -190,7 +190,35 @@ function buildInstructions(leia) {
     }
   });
 
+  const widgets = leia.runnerConfiguration?.lukeConfig?.widgets || [];
+  const widgetHints = widgets
+    .map((w) => describeWidget(w.widgetType, w.slot))
+    .filter(Boolean);
+  if (widgetHints.length > 0) {
+    instructionParts.push('\n=== AVAILABLE TOOLS (voice-mode widgets) ===');
+    instructionParts.push(
+      'The user interface has live widgets you can interact with via tool calls. Use them proactively whenever they can help — for example, read the editor before answering code questions, or annotate code the user is discussing.',
+    );
+    widgetHints.forEach((h) => instructionParts.push(h));
+  }
+
   return instructionParts.filter((part) => part.trim() !== '').join('\n');
+}
+
+// Static catalog mirror for the few widgets the workbench renders in
+// voice mode. Must be kept in sync with leia-workbench-frontend/src/widgets/catalog.ts.
+function describeWidget(widgetType, slot) {
+  switch (widgetType) {
+    case 'codeEditor':
+      return [
+        `- Widget "codeEditor" (in the ${slot} panel): a live Monaco code editor the user can see and edit, with a configured problem and test suite. Supports JavaScript and Python (Python runs in-browser via PyScript). Three tools are available:`,
+        '    * codeEditor_read() → returns { content, language, fnName }. Call FIRST whenever you need to know what the user wrote, before commenting on or editing the code. Never claim you cannot see the editor — always read.',
+        '    * codeEditor_applyDiff({ edits: [{find, replace}, ...] }) → edits the user\'s code with search-and-replace pairs. Each `find` must appear exactly ONCE in the current content (include surrounding context to make it unique). Returns { applied, errors, content }. Use this to fix bugs, add comments, or rewrite a function — always read first so you know the exact text to target. If errors come back saying \'find not present\' or \'multiple occurrences\', read again and retry with a more specific anchor.',
+        '    * codeEditor_runTests() → executes the user\'s current code against the problem\'s test suite and returns { passed, failed, total, language, fnName, results: [{name, ok, error?, expected?, actual?}], error? }. Call this when the user asks you to "check", "run", "verify", "test", or says "I think I got it" / "try it". After running, summarise the outcome out loud: which tests passed, which failed, why (using `expected` vs `actual` or the `error` field), and suggest a fix if any failed. The widget shows the results visually but the user is in voice mode and relies on you.',
+      ].join('\n');
+    default:
+      return null;
+  }
 }
 
 export default new LukeService();
