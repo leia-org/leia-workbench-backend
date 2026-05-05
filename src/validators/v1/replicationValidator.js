@@ -40,6 +40,11 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
         Joi.object({
           widgetType: Joi.string().required(),
           slot: Joi.string().valid('left', 'right', 'main').required(),
+          // Per-widget configuration (e.g. CodeEditorWidget receives the
+          // problem definition: fnName, description, starter code, tests).
+          // Shape is opaque to the backend — the frontend widget knows
+          // how to interpret its own params.
+          params: Joi.object().unknown(true).optional(),
         })
       )
       .optional(),
