@@ -109,6 +109,10 @@ class SessionService {
   async updateIsRunnerInitialized(id, isRunnerInitialized) {
     return await SessionRepository.update(id, { isRunnerInitialized });
   }
+
+  async saveDraft(id, draft) {
+    return await SessionRepository.update(id, { draft });
+  }
 }
 
 export default new SessionService();

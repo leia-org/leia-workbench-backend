@@ -279,6 +279,21 @@ class InteractionService {
     };
   }
 
+  async saveDraft(sessionId, draft) {
+    const session = await SessionService.findById(sessionId);
+    if (!session) {
+      const error = new Error('Session not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (session.finishedAt) {
+      const error = new Error('Session already finished');
+      error.statusCode = 403;
+      throw error;
+    }
+    return await SessionService.saveDraft(session.id, draft);
+  }
+
   async getEvaluation(sessionId) {
     let session = await SessionService.findById(sessionId);
     if (!session) {

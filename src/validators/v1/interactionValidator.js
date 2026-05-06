@@ -17,3 +17,7 @@ export const sendSessionMessageValidator = Joi.object({
 export const saveResultAndFinishSessionValidator = Joi.object({
   result: Joi.string().required(),
 });
+
+export const saveDraftValidator = Joi.object({
+  draft: Joi.string().allow('').required(),
+});
