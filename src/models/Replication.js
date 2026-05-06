@@ -21,8 +21,7 @@ const ReplicationSchema = new Schema(
     },
     duration: {
       type: Number,
-      required: true,
-      default: 1800,
+      default: null,
     },
     isRepeatable: {
       type: Boolean,
