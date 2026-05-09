@@ -60,9 +60,30 @@ class ReplicationService {
   }
 
   async toggleIsActive(id) {
+    const replication = await ReplicationRepository.findById(id);
+    if (!replication) {
+      const error = new Error('Replication not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!replication.isActive) {
+      const hasValidRunnerConfig = this._checkAllLeiasHaveValidRunnerConfiguration(replication);
+      if (!hasValidRunnerConfig) {
+        const error = new Error('Some Leias have invalid runner configurations');
+        error.statusCode = 400;
+        throw error;
+      }
+    }
     return await ReplicationRepository.toggleIsActive(id);
   }
-
+  _checkAllLeiasHaveValidRunnerConfiguration(replication) {
+    for (const leia of replication.experiment.leias) {
+      if (!leia.runnerConfiguration?.modelName || !leia.runnerConfiguration?.apiKeyId || !leia.runnerConfiguration?.apiKeyRequesterId) {
+        return false;
+      }
+    }
+    return true;
+  }
   async toggleIsShared(id) {
     return await ReplicationRepository.toggleIsShared(id);
   }
@@ -204,12 +225,19 @@ class ReplicationService {
     return { provider, providerDriver };
   }
 
-  async validateApiKeyProviderForReplication(provider, apiKeyId, apiKeyRequesterId, userJWT) {
-    // TO DO: esta funcion llo que ahce es una llamada a una nueva entrada dentro del
-    // designer que lo que hacer es comrpobar que la apiKey seleccionada tiene el mismo
-    //  provider que se espera del modelo. Necesitaria el token del usuario por tanto preguntarle a rafa si
-    // le parece bien que la peticion esta necesite token a partir de ahora
-    return true;
+  async validateApiKeyProviderForReplication(provider, apiKeyId, apiKeyRequesterId) {
+    try {
+      const config = {
+        headers: {
+          "x-intern-token": process.env.INTERN_TOKEN,
+        }
+      };
+      const resp = await axios.post(`${process.env.AUTH_URL}/api/v1/apikeys/validate-provider`, { provider, apiKeyId, apiKeyRequesterId }, config);
+      return resp.data.isCompatible;
+    } catch (error) {
+      console.error('Error validating API key provider:', error.response?.data || error.message);
+      throw new Error('Invalid API Key provider');
+    }
   }
 }
 

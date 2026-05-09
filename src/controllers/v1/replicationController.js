@@ -135,7 +135,7 @@ export const updateReplicationLeiaRunnerConfiguration = async (req, res, next) =
     if (value && value.apiKeyId && req.user && req.user.id) {
       value.apiKeyRequesterId = req.user.id;
       value.provider = providerDriver;
-      const isValidProvider = await ReplicationService.validateApiKeyProviderForReplication(provider, value.apiKeyId, value.apiKeyRequesterId, "token");
+      const isValidProvider = await ReplicationService.validateApiKeyProviderForReplication(provider, value.apiKeyId, value.apiKeyRequesterId);
       if (!isValidProvider) {
         const error = new Error(`The provided API key ID is not valid for the selected model's provider.`);
         error.status = 400;

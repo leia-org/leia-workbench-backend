@@ -85,6 +85,11 @@ class InteractionService {
       const error = new Error('Leia not found');
       error.statusCode = 404;
     }
+    if (!leia.runnerConfiguration?.modelName || !leia.runnerConfiguration?.apiKeyId || !leia.runnerConfiguration?.apiKeyRequesterId) {
+      const error = new Error('Invalid runner configuration');
+      error.statusCode = 400;
+      throw error;
+    }
 
     let session = await SessionService.create(null, replicationId, leiaId, true);
 
