@@ -1,13 +1,13 @@
 import axios from 'axios';
 
 class RunnerService {
-  async initializeRunner(sessionId, leia) {
+  async initializeRunner(sessionId, leia, runnerConfiguration) {
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/leias`,
       {
         sessionId,
         leia: leia.leia,
-        runnerConfiguration: leia.runnerConfiguration,
+        runnerConfiguration: runnerConfiguration || leia.runnerConfiguration,
       },
       {
         headers: {

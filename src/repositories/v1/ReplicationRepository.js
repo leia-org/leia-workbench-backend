@@ -120,6 +120,14 @@ class ReplicationRepository {
     );
   }
 
+  async updateGlobalConfiguration(id, globalConfiguration) {
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.isMultiLeia': true },
+      { $set: { 'experiment.globalConfiguration': globalConfiguration } },
+      { new: true }
+    );
+  }
+
   async incrementLeiaSessionCount(id, leiaId) {
     return await Replication.findOneAndUpdate(
       { _id: id, 'experiment.leias.id': leiaId },

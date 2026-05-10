@@ -8,6 +8,20 @@ import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
 
 class InteractionService {
+  getEffectiveRunnerConfiguration(replication, leia) {
+    if (replication.experiment?.isMultiLeia) {
+      return replication.experiment.globalConfiguration?.runner || { provider: 'default' };
+    }
+    return leia.runnerConfiguration || { provider: 'default' };
+  }
+
+  applyEffectiveLeiaConfiguration(replication, leia) {
+    if (replication.experiment?.isMultiLeia && replication.experiment.globalConfiguration) {
+      leia.configuration.askSolution = replication.experiment.globalConfiguration.askSolution;
+      leia.configuration.evaluateSolution = replication.experiment.globalConfiguration.evaluateSolution;
+    }
+  }
+
   async startSession(userEmail, replicationCode) {
     logger.info(`User ${userEmail} is trying to join replication ${replicationCode}`);
     const replication = await ReplicationService.findByCode(replicationCode);
@@ -61,7 +75,7 @@ class InteractionService {
         throw error;
       }
       // Initialize runner for the session
-      await RunnerService.initializeRunner(session.id, leia);
+      await RunnerService.initializeRunner(session.id, leia, this.getEffectiveRunnerConfiguration(replication, leia));
 
       // Update the runner status
       session = await SessionService.updateIsRunnerInitialized(session.id, true);
@@ -89,7 +103,7 @@ class InteractionService {
     let session = await SessionService.create(null, replicationId, leiaId, true);
 
     // Initialize runner for the session
-    await RunnerService.initializeRunner(session.id, leia);
+    await RunnerService.initializeRunner(session.id, leia, this.getEffectiveRunnerConfiguration(replication, leia));
 
     // Update the runner status
     session = await SessionService.updateIsRunnerInitialized(session.id, true);
@@ -131,6 +145,7 @@ class InteractionService {
 
     delete leia.leia.spec.behaviour.spec.description;
     delete leia.leia.spec.behaviour.spec.role;
+    this.applyEffectiveLeiaConfiguration(replication, leia);
 
     // Extract audioMode and lukeConfig for frontend but keep runnerConfiguration private
     const audioMode = leia.runnerConfiguration?.audioMode || null;

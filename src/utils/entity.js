@@ -26,13 +26,22 @@ export async function generateUniqueCode(model, prefix, maxAttempts = 5) {
 }
 /**
  * Initialize the experiment object to save it in the database,
- * adding the runnerConfiguration and sessionCount properties
- * to each leia in the experiment.
+ * adding runner configuration and session state for the replication.
  *
  * @param {object} experiment
  * @returns experiment
  */
 export function initializeExperiment(experiment) {
+  if (experiment.isMultiLeia) {
+    experiment.globalConfiguration = experiment.globalConfiguration || {
+      runner: {
+        provider: 'default',
+      },
+      askSolution: true,
+      evaluateSolution: true,
+    };
+  }
+
   for (const leia of experiment.leias) {
     leia.runnerConfiguration = {
       provider: 'default',

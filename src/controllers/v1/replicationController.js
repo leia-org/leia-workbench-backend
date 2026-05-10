@@ -6,6 +6,7 @@ import {
   updateReplicationDurationValidator,
   updateReplicationExperimentValidator,
   updateReplicationLeiaRunnerConfigurationValidator,
+  updateReplicationGlobalConfigurationValidator,
   updateReplicationFormValidator,
   updateSessionScoreValidator,
 } from '../../validators/v1/replicationValidator.js';
@@ -130,6 +131,20 @@ export const updateReplicationLeiaRunnerConfiguration = async (req, res, next) =
       abortEarly: false,
     });
     const updatedReplication = await ReplicationService.updateLeiaRunnerConfiguration(id, leiaId, value);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateReplicationGlobalConfiguration = async (req, res, next) => {
+  try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
+    const { id } = req.params;
+    const value = await updateReplicationGlobalConfigurationValidator.validateAsync(req.body, {
+      abortEarly: false,
+    });
+    const updatedReplication = await ReplicationService.updateGlobalConfiguration(id, value);
     res.json(updatedReplication);
   } catch (err) {
     next(err);

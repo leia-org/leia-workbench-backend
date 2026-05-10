@@ -9,6 +9,7 @@ import {
   updateReplicationDuration,
   updateReplicationExperiment,
   updateReplicationLeiaRunnerConfiguration,
+  updateReplicationGlobalConfiguration,
   toggleReplicationIsRepeatable,
   updateReplicationForm,
   deleteReplicationForm,
@@ -40,6 +41,7 @@ router.patch('/:id/duration', authContext, updateReplicationDuration);
 router.patch('/:id/experiment', authContext, updateReplicationExperiment);
 router.patch('/:id/form', authContext, updateReplicationForm);
 router.patch('/:id/leia/:leiaId/runner-configuration', authContext, updateReplicationLeiaRunnerConfiguration);
+router.patch('/:id/global-configuration', authContext, updateReplicationGlobalConfiguration);
 router.patch('/:id/sessions/:sessionId/score', authContext, updateSessionScore);
 // GET
 router.get('/', admin, getAllReplications);

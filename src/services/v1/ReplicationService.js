@@ -89,6 +89,28 @@ class ReplicationService {
     return await ReplicationRepository.updateLeiaRunnerConfiguration(id, leiaId, runnerConfiguration);
   }
 
+  async updateGlobalConfiguration(id, globalConfiguration) {
+    const replication = await ReplicationRepository.findById(id);
+    if (!replication) {
+      const error = new Error('Replication not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!replication.experiment?.isMultiLeia) {
+      const error = new Error('Global configuration is only available for multi-LEIA experiments');
+      error.statusCode = 409;
+      throw error;
+    }
+    const askSolution = globalConfiguration.askSolution || globalConfiguration.evaluateSolution;
+    const normalizedGlobalConfiguration = {
+      ...globalConfiguration,
+      askSolution,
+      evaluateSolution: askSolution ? globalConfiguration.evaluateSolution : false,
+    };
+    const updatedReplication = await ReplicationRepository.updateGlobalConfiguration(id, normalizedGlobalConfiguration);
+    return updatedReplication;
+  }
+
   async getAndIncrementNextLeia(id) {
     return await ReplicationRepository.getAndIncrementNextLeia(id);
   }

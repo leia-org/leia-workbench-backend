@@ -65,6 +65,14 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
   }).optional(),
 });
 
+export const updateReplicationGlobalConfigurationValidator = Joi.object({
+  runner: Joi.object({
+    provider: Joi.string().required(),
+  }).required(),
+  askSolution: Joi.boolean().required(),
+  evaluateSolution: Joi.boolean().required(),
+});
+
 export const updateReplicationFormValidator = Joi.object({
   form: Joi.string().required(),
 });
