@@ -38,6 +38,7 @@ export function initializeExperiment(experiment) {
       provider: 'default',
       modelName: 'default',
       audioMode: null,
+      hideAudioTranscription: null,
     };
     leia.sessionCount = 0;
     leia.configuration.askSolution = true;

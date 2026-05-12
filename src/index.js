@@ -10,12 +10,14 @@ import SwaggerParser from 'swagger-parser';
 import managerRoutes from './routes/v1/managerRoutes.js';
 import replicationRoutes from './routes/v1/replicationRoutes.js';
 import interactionRoutes from './routes/v1/interactionRoutes.js';
+import runnerRoutes from './routes/v1/runnerRoutes.js';
 import secretRoutes from './routes/v1/secretRoutes.js';
 import spectatorRoutes from './routes/v1/spectatorRoutes.js';
 import realtimeRoutes from './routes/v1/realtimeRoutes.js';
 import providerRoutes from './routes/v1/providerRoutes.js';
 import { admin, auth } from './middlewares/auth.js';
 import { initializeSocket } from './socket/index.js';
+import LukeService from './services/v1/LukeService.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -46,6 +48,7 @@ app.use('/api/v1/secret', secretRoutes);
 app.use('/api/v1/manager', admin, managerRoutes);
 app.use('/api/v1/replications', replicationRoutes);
 app.use('/api/v1/interactions', interactionRoutes);
+app.use('/api/v1/runner', runnerRoutes);
 app.use('/api/v1/spectator', spectatorRoutes);
 app.use('/api/v1/realtime', realtimeRoutes);
 app.use('/api/v1/provider', providerRoutes);
@@ -65,6 +68,9 @@ const startServer = async () => {
 
     // Initialize Socket.IO
     initializeSocket(httpServer);
+
+    // Initialize Luke WebSocket server (shares same port via /luke path)
+    LukeService.initialize(httpServer);
 
     const gracefulShutdown = () => {
       logger.info('Shutting down server...');

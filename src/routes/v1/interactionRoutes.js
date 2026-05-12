@@ -8,6 +8,7 @@ import {
   startTestSession,
   getSolution,
   finishSession,
+  saveDraft,
 } from '../../controllers/v1/interactionController.js';
 import { authContext } from '../../middlewares/auth.js';
 
@@ -19,10 +20,10 @@ router.post('/test', authContext, startTestSession);
 router.post('/:sessionId/messages', sendSessionMessage);
 router.post('/:sessionId/result', saveResultAndFinishSession);
 router.post('/:sessionId/finish', finishSession);
+router.post('/:sessionId/draft', saveDraft);
 
 // GET
 router.get('/:sessionId', getSessionData);
 router.get('/:sessionId/solution', getSolution);
 router.get('/:sessionId/evaluation', getEvaluation);
-
 export default router;

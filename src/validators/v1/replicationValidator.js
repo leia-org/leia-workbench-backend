@@ -24,7 +24,32 @@ export const updateReplicationExperimentValidator = Joi.object({
 export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
   modelName: Joi.string().required(),
   apiKeyId: Joi.string().optional().allow(null),
-  audioMode: Joi.string().valid('realtime', null).allow(null).optional(),
+  audioMode: Joi.string().valid('realtime', 'luke', null).allow(null).optional(),
+  hideAudioTranscription: Joi.when('audioMode', {
+    is: Joi.valid('realtime', 'luke'),
+    then: Joi.boolean().optional().default(false),
+    otherwise: Joi.valid(null).optional().default(null),
+  }),
+  lukeConfig: Joi.object({
+    provider: Joi.string().valid('openai', 'gemini').required(),
+    voice: Joi.string().required(),
+    // Per-LEIA voice-mode widgets. The workbench-frontend catalog maps
+    // widgetType → React component. Slot constrains where it renders
+    // inside the voice UI.
+    widgets: Joi.array()
+      .items(
+        Joi.object({
+          widgetType: Joi.string().required(),
+          slot: Joi.string().valid('left', 'right', 'main').required(),
+          // Per-widget configuration (e.g. CodeEditorWidget receives the
+          // problem definition: fnName, description, starter code, tests).
+          // Shape is opaque to the backend — the frontend widget knows
+          // how to interpret its own params.
+          params: Joi.object().unknown(true).optional(),
+        })
+      )
+      .optional(),
+  }).optional(),
   realtimeConfig: Joi.object({
     model: Joi.string().optional().default('gpt-4o-realtime-preview'),
     voice: Joi.string()

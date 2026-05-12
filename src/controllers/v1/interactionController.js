@@ -5,6 +5,7 @@ import {
   sendSessionMessageValidator,
   saveResultAndFinishSessionValidator,
   startTestSessionValidator,
+  saveDraftValidator,
 } from '../../validators/v1/interactionValidator.js';
 
 export const startSession = async (req, res, next) => {
@@ -64,6 +65,17 @@ export const finishSession = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
     const session = await InteractionService.finishSession(sessionId);
+    res.json(session);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const saveDraft = async (req, res, next) => {
+  try {
+    const value = await saveDraftValidator.validateAsync(req.body);
+    const { sessionId } = req.params;
+    const session = await InteractionService.saveDraft(sessionId, value.draft);
     res.json(session);
   } catch (error) {
     next(error);

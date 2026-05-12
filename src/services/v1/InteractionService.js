@@ -137,13 +137,19 @@ class InteractionService {
     delete leia.leia.spec.behaviour.spec.description;
     delete leia.leia.spec.behaviour.spec.role;
 
-    // Extract audioMode for frontend but keep runnerConfiguration private
+    // Extract audioMode and lukeConfig for frontend but keep runnerConfiguration private
     const audioMode = leia.runnerConfiguration?.audioMode || null;
+    const lukeConfig = leia.runnerConfiguration?.lukeConfig || null;
+    const hideAudioTranscription = leia.runnerConfiguration?.hideAudioTranscription || null;
     delete leia.runnerConfiguration;
     delete leia.sessionCount;
 
-    // Add audioMode back for frontend consumption
+    // Add audioMode and lukeConfig back for frontend consumption
     leia.audioMode = audioMode;
+    if (audioMode === 'luke' && lukeConfig) {
+      leia.lukeConfig = lukeConfig;
+    }
+    leia.hideAudioTranscription = hideAudioTranscription;
 
     return { session, messages, leia, replication };
   }
@@ -276,6 +282,21 @@ class InteractionService {
       spectateToken: spectatorData.token,
       spectateExpiresAt: spectatorData.expiresAt,
     };
+  }
+
+  async saveDraft(sessionId, draft) {
+    const session = await SessionService.findById(sessionId);
+    if (!session) {
+      const error = new Error('Session not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (session.finishedAt) {
+      const error = new Error('Session already finished');
+      error.statusCode = 403;
+      throw error;
+    }
+    return await SessionService.saveDraft(session.id, draft);
   }
 
   async getEvaluation(sessionId) {
