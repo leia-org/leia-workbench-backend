@@ -273,7 +273,9 @@ class InteractionService {
     const newUserMessage = await MessageService.create(message, false, session.id);
     session = await SessionService.addMessage(session.id, newUserMessage.id);
 
-    const leiaResponse = await RunnerService.sendMessage(session.id, message);
+    const leiaResponse = isMultiSession
+      ? await RunnerService.sendMultiMessage(session.id, message)
+      : await RunnerService.sendMessage(session.id, message);
     const leiaMessage = typeof leiaResponse === 'string' ? leiaResponse : leiaResponse.message;
     const leiaId = typeof leiaResponse === 'object' ? leiaResponse.leiaId : null;
 

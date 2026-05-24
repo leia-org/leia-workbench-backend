@@ -20,14 +20,13 @@ class RunnerService {
 
   async initializeMultiRunner(sessionId, leias, runnerConfiguration) {
     const response = await axios.post(
-      `${process.env.RUNNER_URL}/api/v1/leias`,
+      `${process.env.RUNNER_URL}/api/v1/multi-leias`,
       {
         sessionId,
         leias: leias.map((leia) => ({
           ...leia.leia,
           id: leia.id,
         })),
-        isMultiLEIA: true,
         runnerConfiguration,
       },
       {
@@ -42,6 +41,21 @@ class RunnerService {
   async sendMessage(sessionId, message) {
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/leias/${sessionId}/messages`,
+      {
+        message,
+      },
+      {
+        headers: {
+          Authorization: 'Bearer ' + process.env.RUNNER_KEY,
+        },
+      }
+    );
+    return response.data;
+  }
+
+  async sendMultiMessage(sessionId, message) {
+    const response = await axios.post(
+      `${process.env.RUNNER_URL}/api/v1/multi-leias/${sessionId}/messages`,
       {
         message,
       },
