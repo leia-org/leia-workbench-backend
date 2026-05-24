@@ -27,3 +27,8 @@ get:
               leia:
                 type: object
                 description: The Leia data with or without the solution depending on the session state
+              leias:
+                type: array
+                description: The LEIAs available in a multi-LEIA session
+                items:
+                  type: object

@@ -21,7 +21,7 @@ post:
               type: string
               description: The message to send to the Leia
   responses:
-    '201':
+    '200':
       description: Message sent successfully, and response received
       content:
         application/json:
@@ -31,3 +31,7 @@ post:
               message:
                 type: string
                 description: The response from the Leia
+              leiaId:
+                type: string
+                nullable: true
+                description: The LEIA that generated the response in multi-LEIA sessions

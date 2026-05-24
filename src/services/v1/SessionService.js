@@ -55,14 +55,23 @@ class SessionService {
 
   // WRITE METHODS
 
-  async create(userId, replicationId, leiaId, isTest = false) {
+  async create(userId, replicationId, leiaId, isTest = false, isMultiLEIA = false) {
     const sessionData = {
       user: userId,
       replication: replicationId,
-      leia: leiaId,
       isTest,
+      isMultiLEIA,
     };
+
+    if (leiaId) {
+      sessionData.leia = leiaId;
+    }
+
     return await SessionRepository.create(sessionData);
+  }
+
+  async createMulti(userId, replicationId, isTest = false) {
+    return await this.create(userId, replicationId, null, isTest, true);
   }
 
   async finish(id) {

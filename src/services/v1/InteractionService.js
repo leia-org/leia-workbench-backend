@@ -22,6 +22,31 @@ class InteractionService {
     }
   }
 
+  sanitizeLeiaForSession(replication, leia, sessionFinishedAt) {
+    if (!sessionFinishedAt) {
+      delete leia.leia.spec.problem.spec.solution;
+      delete leia.leia.spec.problem.spec.evaluationPrompt;
+    }
+
+    delete leia.leia.spec.behaviour.spec.description;
+    delete leia.leia.spec.behaviour.spec.role;
+    this.applyEffectiveLeiaConfiguration(replication, leia);
+
+    const audioMode = leia.runnerConfiguration?.audioMode || null;
+    const lukeConfig = leia.runnerConfiguration?.lukeConfig || null;
+    const hideAudioTranscription = leia.runnerConfiguration?.hideAudioTranscription || null;
+    delete leia.runnerConfiguration;
+    delete leia.sessionCount;
+
+    leia.audioMode = audioMode;
+    if (audioMode === 'luke' && lukeConfig) {
+      leia.lukeConfig = lukeConfig;
+    }
+    leia.hideAudioTranscription = hideAudioTranscription;
+
+    return leia;
+  }
+
   async startSession(userEmail, replicationCode) {
     logger.info(`User ${userEmail} is trying to join replication ${replicationCode}`);
     const replication = await ReplicationService.findByCode(replicationCode);
@@ -59,8 +84,12 @@ class InteractionService {
         throw error;
       } else {
         logger.info(`Creating new session for user ${userEmail} and replication ${replicationCode}`);
-        const nextLeiaId = await ReplicationService.getAndIncrementNextLeia(replication.id);
-        session = await SessionService.create(user.id, replication.id, nextLeiaId, false);
+        if (replication.experiment?.isMultiLeia) {
+          session = await SessionService.createMulti(user.id, replication.id, false);
+        } else {
+          const nextLeiaId = await ReplicationService.getAndIncrementNextLeia(replication.id);
+          session = await SessionService.create(user.id, replication.id, nextLeiaId, false);
+        }
         logger.info(`Session created for user ${userEmail} and replication ${replicationCode}`);
       }
     }
@@ -68,6 +97,17 @@ class InteractionService {
     logger.info(`Session found for user ${userEmail} and replication ${replicationCode}`);
     if (!session.isRunnerInitialized) {
       logger.info(`Runner for session ${session.id} is not initialized, initializing now`);
+      if (session.isMultiLEIA || replication.experiment?.isMultiLeia) {
+        await RunnerService.initializeMultiRunner(
+          session.id,
+          replication.experiment.leias,
+          this.getEffectiveRunnerConfiguration(replication, null)
+        );
+        session = await SessionService.updateIsRunnerInitialized(session.id, true);
+        logger.info(`Multi-LEIA runner initialized for session ${session.id}`);
+        return session.id;
+      }
+
       const leia = replication.experiment.leias.find((leia) => session.leia.equals(leia.id));
       if (!leia) {
         const error = new Error('Leia not found');
@@ -98,11 +138,11 @@ class InteractionService {
     if (!leia) {
       const error = new Error('Leia not found');
       error.statusCode = 404;
+      throw error;
     }
 
-    let session = await SessionService.create(null, replicationId, leiaId, true);
+    let session = await SessionService.create(null, replicationId, leiaId, true, false);
 
-    // Initialize runner for the session
     await RunnerService.initializeRunner(session.id, leia, this.getEffectiveRunnerConfiguration(replication, leia));
 
     // Update the runner status
@@ -128,6 +168,17 @@ class InteractionService {
       throw error;
     }
 
+    if (session.isMultiLEIA || replication.experiment?.isMultiLeia) {
+      const leias = replication.experiment.leias.map((leia) =>
+        this.sanitizeLeiaForSession(replication, leia, session.finishedAt)
+      );
+      const leia = leias[0];
+
+      delete replication.experiment;
+
+      return { session, messages, leia, leias, replication };
+    }
+
     const leia = replication.experiment?.leias?.find((leia) => session.leia.equals(leia.id));
 
     if (!leia) {
@@ -138,30 +189,7 @@ class InteractionService {
 
     delete replication.experiment;
 
-    if (!session.finishedAt) {
-      delete leia.leia.spec.problem.spec.solution;
-      delete leia.leia.spec.problem.spec.evaluationPrompt;
-    }
-
-    delete leia.leia.spec.behaviour.spec.description;
-    delete leia.leia.spec.behaviour.spec.role;
-    this.applyEffectiveLeiaConfiguration(replication, leia);
-
-    // Extract audioMode and lukeConfig for frontend but keep runnerConfiguration private
-    const audioMode = leia.runnerConfiguration?.audioMode || null;
-    const lukeConfig = leia.runnerConfiguration?.lukeConfig || null;
-    const hideAudioTranscription = leia.runnerConfiguration?.hideAudioTranscription || null;
-    delete leia.runnerConfiguration;
-    delete leia.sessionCount;
-
-    // Add audioMode and lukeConfig back for frontend consumption
-    leia.audioMode = audioMode;
-    if (audioMode === 'luke' && lukeConfig) {
-      leia.lukeConfig = lukeConfig;
-    }
-    leia.hideAudioTranscription = hideAudioTranscription;
-
-    return { session, messages, leia, replication };
+    return { session, messages, leia: this.sanitizeLeiaForSession(replication, leia, session.finishedAt), replication };
   }
 
   async getSolutionAndFormat(sessionId) {
@@ -184,7 +212,13 @@ class InteractionService {
       throw error;
     }
 
-    const leia = ReplicationService.findLeia(session.replication, session.leia);
+    let leia = null;
+    const replication = await ReplicationService.findById(session.replication);
+    if (session.isMultiLEIA || replication?.experiment?.isMultiLeia) {
+      leia = replication?.experiment?.leias?.[0] || null;
+    } else {
+      leia = await ReplicationService.findLeia(session.replication, session.leia);
+    }
     if (!leia) {
       const error = new Error('Leia not found');
       error.statusCode = 404;
@@ -211,29 +245,48 @@ class InteractionService {
       throw error;
     }
 
-    const leia = ReplicationService.findLeia(session.replication, session.leia);
+    const replication = await ReplicationService.findById(session.replication);
+    const isMultiSession = session.isMultiLEIA || replication?.experiment?.isMultiLeia;
 
-    if (!leia) {
-      const error = new Error('Leia not found');
-      error.statusCode = 404;
-      throw error;
-    }
+    if (!isMultiSession) {
+      const leia = await ReplicationService.findLeia(session.replication, session.leia);
 
-    if (leia.configuration?.mode == 'transcription') {
-      const error = new Error('Cannot send messages in transcription mode');
-      error.statusCode = 403;
-      throw error;
+      if (!leia) {
+        const error = new Error('Leia not found');
+        error.statusCode = 404;
+        throw error;
+      }
+
+      if (leia.configuration?.mode == 'transcription') {
+        const error = new Error('Cannot send messages in transcription mode');
+        error.statusCode = 403;
+        throw error;
+      }
+    } else {
+      if (replication?.experiment?.globalConfiguration?.mode === 'transcription') {
+        const error = new Error('Cannot send messages in transcription mode');
+        error.statusCode = 403;
+        throw error;
+      }
     }
 
     const newUserMessage = await MessageService.create(message, false, session.id);
     session = await SessionService.addMessage(session.id, newUserMessage.id);
 
-    const leiaMessage = await RunnerService.sendMessage(session.id, message);
+    const leiaResponse = await RunnerService.sendMessage(session.id, message);
+    const leiaMessage = typeof leiaResponse === 'string' ? leiaResponse : leiaResponse.message;
+    const leiaId = typeof leiaResponse === 'object' ? leiaResponse.leiaId : null;
 
-    const newLeiaMessage = await MessageService.create(leiaMessage, true, session.id);
+    if (!leiaMessage) {
+      const error = new Error('Runner returned an empty LEIA message');
+      error.statusCode = 500;
+      throw error;
+    }
+
+    const newLeiaMessage = await MessageService.create(leiaMessage, true, session.id, leiaId);
     session = await SessionService.addMessage(session.id, newLeiaMessage.id);
 
-    return leiaMessage;
+    return { message: leiaMessage, leiaId };
   }
 
   async saveResultAndFinishSession(sessionId, result) {

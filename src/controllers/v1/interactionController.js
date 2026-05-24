@@ -43,8 +43,8 @@ export const sendSessionMessage = async (req, res, next) => {
   try {
     const value = await sendSessionMessageValidator.validateAsync(req.body);
     const { sessionId } = req.params;
-    const message = await InteractionService.sendSessionMessage(sessionId, value.message);
-    res.json({ message });
+    const response = await InteractionService.sendSessionMessage(sessionId, value.message);
+    res.json(response);
   } catch (error) {
     next(error);
   }

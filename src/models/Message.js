@@ -19,6 +19,9 @@ const messageSchema = new Schema(
       ref: 'Session',
       required: true,
     },
+    leiaId: {
+      type: Schema.Types.ObjectId,
+    },
   },
   {
     strict: false,

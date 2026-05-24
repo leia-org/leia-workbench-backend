@@ -31,7 +31,10 @@ const sessionSchema = new Schema(
     },
     leia: {
       type: Schema.Types.ObjectId,
-      required: true,
+    },
+    isMultiLEIA: {
+      type: Boolean,
+      default: false,
     },
     user: {
       type: Schema.Types.ObjectId,
