@@ -288,7 +288,7 @@ class InteractionService {
     const newLeiaMessage = await MessageService.create(leiaMessage, true, session.id, leiaId);
     session = await SessionService.addMessage(session.id, newLeiaMessage.id);
 
-    return { message: leiaMessage, leiaId };
+    return { message: leiaMessage, leiaId, isMultiLeia: isMultiSession };
   }
 
   async saveResultAndFinishSession(sessionId, result) {

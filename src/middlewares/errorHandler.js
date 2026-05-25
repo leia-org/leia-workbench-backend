@@ -11,6 +11,10 @@ import logger from '../utils/logger.js';
 export default function errorHandler(err, req, res, next) {
   logger.error(err);
 
+  if (res.headersSent) {
+    return next(err);
+  }
+
   let errorResponse, statusCode;
   if (err.isJoi) {
     statusCode = 400;

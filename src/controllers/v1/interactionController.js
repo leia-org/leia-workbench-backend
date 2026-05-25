@@ -44,7 +44,28 @@ export const sendSessionMessage = async (req, res, next) => {
     const value = await sendSessionMessageValidator.validateAsync(req.body);
     const { sessionId } = req.params;
     const response = await InteractionService.sendSessionMessage(sessionId, value.message);
-    res.json(response);
+    if (response.isMultiLeia) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders();
+
+      const leiaMessage = response.message;
+      const leiaId = response.leiaId;
+      const messageData = JSON.stringify({ message: leiaMessage, leiaId });
+      const messageInventado = JSON.stringify({ message: 'Hola, soy un mensaje inventado para probar el stream', leiaId });
+      res.write(`data: ${messageData}\n\n`);
+      res.write(`data: ${messageInventado}\n\n`);
+      res.write(`event: done\ndata: {}\n\n`);
+      res.on('close', () => {
+        console.log('Client disconnected, closing stream');
+        res.end();
+      }
+      );
+    } else {
+      res.json(response);
+    }
   } catch (error) {
     next(error);
   }
