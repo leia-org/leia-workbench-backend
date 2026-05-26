@@ -132,16 +132,28 @@ class InteractionService {
     delete leia.leia.spec.behaviour.spec.description;
     delete leia.leia.spec.behaviour.spec.role;
 
-    // Extract audioMode and lukeConfig for frontend but keep runnerConfiguration private
+    // Extract audioMode, lukeConfig and the runner provider for the
+    // frontend; everything else in runnerConfiguration stays private.
     const audioMode = leia.runnerConfiguration?.audioMode || null;
     const lukeConfig = leia.runnerConfiguration?.lukeConfig || null;
+    const runnerProvider = leia.runnerConfiguration?.provider || null;
     const hideAudioTranscription = leia.runnerConfiguration?.hideAudioTranscription || null;
     delete leia.runnerConfiguration;
     delete leia.sessionCount;
 
-    // Add audioMode and lukeConfig back for frontend consumption
+    // Decide whether the session is tool-capable. Widgets are only
+    // useful when the active path supports function calls:
+    //   - audioMode === 'luke': luke-server handles tools (Gemini Live
+    //     and OpenAI Realtime both support function declarations).
+    //   - text mode: only the `openai-responses` runner provider wires
+    //     tools to the model. Other providers (gemini text, ollama)
+    //     ignore them, so we don't show the widget panel for those.
+    const isToolCapable =
+      audioMode === 'luke' ||
+      (audioMode == null && runnerProvider === 'openai-responses');
+
     leia.audioMode = audioMode;
-    if (audioMode === 'luke' && lukeConfig) {
+    if (lukeConfig && (audioMode === 'luke' || (isToolCapable && Array.isArray(lukeConfig.widgets) && lukeConfig.widgets.length > 0))) {
       leia.lukeConfig = lukeConfig;
     }
     leia.hideAudioTranscription = hideAudioTranscription;
@@ -188,7 +200,7 @@ class InteractionService {
     return { solution, solutionFormat };
   }
 
-  async sendSessionMessage(sessionId, message) {
+  async sendSessionMessage(sessionId, message, options = {}) {
     let session = await SessionService.findById(sessionId);
     if (!session) {
       const error = new Error('Session not found');
@@ -210,15 +222,32 @@ class InteractionService {
       throw error;
     }
 
-    const newUserMessage = await MessageService.create(message, false, session.id);
-    session = await SessionService.addMessage(session.id, newUserMessage.id);
+    const { tools, toolResults } = options;
+    const isToolContinuation = Array.isArray(toolResults) && toolResults.length > 0;
 
-    const leiaMessage = await RunnerService.sendMessage(session.id, message);
+    // Only persist the user message on the first turn of a tool round-trip.
+    // Continuations (toolResults) keep the same logical user turn going.
+    if (!isToolContinuation && typeof message === 'string' && message.length > 0) {
+      const newUserMessage = await MessageService.create(message, false, session.id);
+      session = await SessionService.addMessage(session.id, newUserMessage.id);
+    }
 
-    const newLeiaMessage = await MessageService.create(leiaMessage, true, session.id);
-    session = await SessionService.addMessage(session.id, newLeiaMessage.id);
+    const runnerResponse = await RunnerService.sendMessage(session.id, message, { tools, toolResults });
 
-    return leiaMessage;
+    // Runner returns either { message } or { toolCalls } (or a raw string
+    // for older code paths). Only persist a Leia message when we got a
+    // final text response back.
+    if (runnerResponse && Array.isArray(runnerResponse.toolCalls) && runnerResponse.toolCalls.length > 0) {
+      return { toolCalls: runnerResponse.toolCalls };
+    }
+
+    const leiaMessage = typeof runnerResponse === 'string' ? runnerResponse : runnerResponse?.message;
+    if (leiaMessage) {
+      const newLeiaMessage = await MessageService.create(leiaMessage, true, session.id);
+      session = await SessionService.addMessage(session.id, newLeiaMessage.id);
+    }
+
+    return { message: leiaMessage };
   }
 
   async saveResultAndFinishSession(sessionId, result) {

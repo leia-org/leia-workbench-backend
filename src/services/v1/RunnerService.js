@@ -18,19 +18,24 @@ class RunnerService {
     return response.data.sessionId;
   }
 
-  async sendMessage(sessionId, message) {
+  async sendMessage(sessionId, message, options = {}) {
+    const body = {};
+    if (typeof message === 'string' && message.length > 0) body.message = message;
+    if (Array.isArray(options.tools) && options.tools.length > 0) body.tools = options.tools;
+    if (Array.isArray(options.toolResults) && options.toolResults.length > 0) body.toolResults = options.toolResults;
+
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/leias/${sessionId}/messages`,
-      {
-        message,
-      },
+      body,
       {
         headers: {
           Authorization: 'Bearer ' + process.env.RUNNER_KEY,
         },
       }
     );
-    return response.data.message;
+    // Forward the full response shape upward so the caller can branch on
+    // toolCalls vs. final text.
+    return response.data;
   }
 
   async getEvaluationAndScore(sessionId, result) {

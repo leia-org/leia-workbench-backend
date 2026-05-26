@@ -30,11 +30,15 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
     otherwise: Joi.valid(null).optional().default(null),
   }),
   lukeConfig: Joi.object({
-    provider: Joi.string().valid('openai', 'gemini').required(),
-    voice: Joi.string().required(),
-    // Per-LEIA voice-mode widgets. The workbench-frontend catalog maps
-    // widgetType → React component. Slot constrains where it renders
-    // inside the voice UI.
+    // provider/voice are only meaningful when audioMode === 'luke'. The
+    // same lukeConfig bucket is reused by text mode (which only needs
+    // `widgets`), so both fields are optional at the schema level — the
+    // luke flow validates their presence at runtime when audio kicks in.
+    provider: Joi.string().valid('openai', 'gemini').optional(),
+    voice: Joi.string().optional(),
+    // Per-LEIA widgets / tool functions. The workbench-frontend catalog
+    // maps widgetType → React component; the runner uses the presence of
+    // a non-empty `widgets` array to gate tool-functions on the LLM.
     widgets: Joi.array()
       .items(
         Joi.object({
