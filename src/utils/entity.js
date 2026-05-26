@@ -36,9 +36,16 @@ export function initializeExperiment(experiment) {
     experiment.globalConfiguration = experiment.globalConfiguration || {
       runner: {
         provider: 'default',
+        orchestrator: 'turn',
       },
       askSolution: true,
       evaluateSolution: true,
+    };
+
+    experiment.globalConfiguration.runner = {
+      provider: 'default',
+      orchestrator: 'turn',
+      ...experiment.globalConfiguration.runner,
     };
   }
 

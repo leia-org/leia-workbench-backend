@@ -104,6 +104,11 @@ class ReplicationService {
     const askSolution = globalConfiguration.askSolution || globalConfiguration.evaluateSolution;
     const normalizedGlobalConfiguration = {
       ...globalConfiguration,
+      runner: {
+        provider: 'default',
+        orchestrator: 'turn',
+        ...globalConfiguration.runner,
+      },
       askSolution,
       evaluateSolution: askSolution ? globalConfiguration.evaluateSolution : false,
     };

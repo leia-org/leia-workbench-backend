@@ -10,7 +10,11 @@ import mongoose from 'mongoose';
 class InteractionService {
   getEffectiveRunnerConfiguration(replication, leia) {
     if (replication.experiment?.isMultiLeia) {
-      return replication.experiment.globalConfiguration?.runner || { provider: 'default' };
+      return {
+        provider: 'default',
+        orchestrator: 'turn',
+        ...replication.experiment.globalConfiguration?.runner,
+      };
     }
     return leia.runnerConfiguration || { provider: 'default' };
   }
