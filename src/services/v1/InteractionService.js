@@ -276,24 +276,67 @@ class InteractionService {
 
     const newUserMessage = await MessageService.create(message, false, session.id);
     session = await SessionService.addMessage(session.id, newUserMessage.id);
-
-    const leiaResponse = isMultiSession
-      ? await RunnerService.sendMultiMessage(session.id, message)
-      : await RunnerService.sendMessage(session.id, message);
+    
+    if (isMultiSession) {
+    const stream = await RunnerService.sendMultiMessage(session.id, message);
+    // devuelve el stream sin tocarlo + flag
+    return { isMultiLeia: true, stream };
+  } else {
+    const leiaResponse = await RunnerService.sendMessage(session.id, message);
     const leiaMessage = typeof leiaResponse === 'string' ? leiaResponse : leiaResponse.message;
-    const leiaId = typeof leiaResponse === 'object' ? leiaResponse.leiaId : null;
-
     if (!leiaMessage) {
       const error = new Error('Runner returned an empty LEIA message');
       error.statusCode = 500;
       throw error;
     }
-
+    const leiaId = typeof leiaResponse === 'object' ? leiaResponse.leiaId : null;
     const newLeiaMessage = await MessageService.create(leiaMessage, true, session.id, leiaId);
     session = await SessionService.addMessage(session.id, newLeiaMessage.id);
-
-    return { message: leiaMessage, leiaId, isMultiLeia: isMultiSession };
+    return { message: leiaMessage, leiaId, isMultiLeia: false };
   }
+  }
+  async streamMultiLeiaMessages(sessionId, stream, res) {
+    try {
+    if (!stream.ok) {
+        throw new Error("Streaming request failed");
+      }
+
+      if (!stream.body) {
+        throw new Error("No response body");
+      }
+      const reader = stream.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value, { stream: true });
+        const lines = text.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("event: done")) {
+            res.write(`event: done\ndata: {}\n\n`);
+            return;
+          } else if (line.startsWith("data:")) {
+            const jsonStr = line.replace("data:", "").trim();
+            if (!jsonStr || jsonStr === "{}") continue;
+            const data = JSON.parse(jsonStr);
+            // console.log("Received data from stream:", data);
+            const leiaMessage = await MessageService.create(data.message, true, sessionId, data.leiaId);
+            await SessionService.addMessage(sessionId, leiaMessage.id);
+            res.write(`data: ${JSON.stringify(data)}\n\n`);
+          }
+        }
+      }
+    } catch (error) {
+      logger.error(`Error streaming multi-LEIA messages for session ${sessionId}:`, error);
+      res.write(`event: error\ndata: ${JSON.stringify({ message: 'Stream error' })}\n\n`);
+    } finally {
+      res.end();
+    }
+  }
+
+
 
   async saveResultAndFinishSession(sessionId, result) {
     let session = await SessionService.findById(sessionId);

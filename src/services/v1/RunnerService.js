@@ -54,19 +54,21 @@ class RunnerService {
   }
 
   async sendMultiMessage(sessionId, message) {
-    const response = await axios.post(
+    
+    const responseStream = await fetch(
       `${process.env.RUNNER_URL}/api/v1/multi-leias/${sessionId}/messages`,
       {
-        message,
-      },
-      {
+        method: 'POST',
         headers: {
-          Authorization: 'Bearer ' + process.env.RUNNER_KEY,
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + process.env.RUNNER_KEY
         },
+        body: JSON.stringify({ message })
       }
     );
-    return response.data;
+    return responseStream;
   }
+
 
   async getEvaluationAndScore(sessionId, result) {
     const response = await axios.post(
