@@ -68,6 +68,7 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
 export const updateReplicationGlobalConfigurationValidator = Joi.object({
   runner: Joi.object({
     provider: Joi.string().required(),
+    orchestrator: Joi.string().valid('turn', 'random').optional().default('turn'),
   }).required(),
   askSolution: Joi.boolean().required(),
   evaluateSolution: Joi.boolean().required(),
