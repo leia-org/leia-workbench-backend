@@ -22,7 +22,8 @@ export const updateReplicationExperimentValidator = Joi.object({
 });
 
 export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
-  provider: Joi.string().required(),
+  modelName: Joi.string().required(),
+  apiKeyId: Joi.string().optional().allow(null),
   audioMode: Joi.string().valid('realtime', 'luke', null).allow(null).optional(),
   hideAudioTranscription: Joi.when('audioMode', {
     is: Joi.valid('realtime', 'luke'),
