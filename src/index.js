@@ -24,7 +24,7 @@ const httpServer = createServer(app);
 
 app.use(
   cors({
-    origin: [process.env.FRONTEND_URL, process.env.FRONTEND_DESIGNER_URL],
+    origin: process.env.FRONTEND_URL,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   })
