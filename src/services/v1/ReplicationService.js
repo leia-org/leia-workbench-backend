@@ -38,6 +38,9 @@ class ReplicationService {
     }
   }
 
+  async checkNameExists(name) {
+    return await ReplicationRepository.existsByName(name);
+  }
   // WRITE METHODS
 
   async create(replicationData) {

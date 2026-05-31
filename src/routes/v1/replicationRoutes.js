@@ -19,6 +19,7 @@ import {
   updateSessionScore,
   regenerateReplicationShareToken,
   toggleReplicationIsShared,
+  replicationNameExists
 } from '../../controllers/v1/replicationController.js';
 import { admin, authContext } from '../../middlewares/auth.js';
 
@@ -46,7 +47,7 @@ router.get('/', admin, getAllReplications);
 router.get('/:id/conversations', authContext, getReplicationConversations);
 router.get('/:id/conversations/csv', authContext, downloadReplicationConversationsCSV);
 router.get('/:id', authContext, getReplicationById);
-
+router.get('/exists/:name', authContext, replicationNameExists);
 // DELETE
 router.delete('/:id/form', authContext, deleteReplicationForm);
 

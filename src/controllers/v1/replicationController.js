@@ -230,3 +230,13 @@ export const updateSessionScore = async (req, res, next) => {
     next(err);
   }
 };
+
+export const replicationNameExists = async (req, res, next) => {
+  try {
+    const { name } = req.params;
+    const exists = await ReplicationService.checkNameExists(name);
+    res.json({ exists });
+  } catch (err) {
+    next(err);
+  }
+};
