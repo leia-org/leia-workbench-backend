@@ -36,9 +36,11 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
     // luke flow validates their presence at runtime when audio kicks in.
     provider: Joi.string().valid('openai', 'gemini').optional(),
     voice: Joi.string().optional(),
-    // Per-LEIA widgets / tool functions. The workbench-frontend catalog
-    // maps widgetType → React component; the runner uses the presence of
-    // a non-empty `widgets` array to gate tool-functions on the LLM.
+    // Legacy: widgets / tool functions are now authored per activity in the
+    // problem definition (Designer) and read from leia.spec.problem.spec.widgets
+    // at runtime. This field is kept (optional) only so pre-migration
+    // replications that still carry widgets here validate on save; the
+    // workbench no longer authors it.
     widgets: Joi.array()
       .items(
         Joi.object({

@@ -7,6 +7,46 @@ import SpectatorService from './SpectatorService.js';
 import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
 
+// Applies the problem's per-tool authoring to the tool schemas the client
+// sends to the runner: drops tools the instructor disabled and appends their
+// activity-specific usage guidance to each tool's description. The tool's
+// schema/parameters are never authored in the problem — only referenced by
+// name — so this only ever touches `description` and membership.
+//
+// Returns the tools unchanged when the problem declares no widgets/tools, so
+// activities without tool functions are unaffected.
+function applyProblemToolConfig(tools, leia) {
+  if (!Array.isArray(tools) || tools.length === 0) return tools;
+
+  const widgets = leia?.leia?.spec?.problem?.spec?.widgets;
+  if (!Array.isArray(widgets) || widgets.length === 0) return tools;
+
+  // name -> { enabled, usage } across all of the problem's widgets.
+  const config = new Map();
+  for (const widget of widgets) {
+    if (!Array.isArray(widget?.tools)) continue;
+    for (const tool of widget.tools) {
+      if (tool && typeof tool.name === 'string') config.set(tool.name, tool);
+    }
+  }
+  if (config.size === 0) return tools;
+
+  const out = [];
+  for (const tool of tools) {
+    const cfg = config.get(tool?.name);
+    if (cfg && cfg.enabled === false) continue; // instructor disabled this tool
+    if (cfg && typeof cfg.usage === 'string' && cfg.usage.trim()) {
+      out.push({
+        ...tool,
+        description: `${(tool.description || '').trim()}\n\nActivity guidance: ${cfg.usage.trim()}`.trim(),
+      });
+    } else {
+      out.push(tool);
+    }
+  }
+  return out;
+}
+
 class InteractionService {
   async startSession(userEmail, replicationCode) {
     logger.info(`User ${userEmail} is trying to join replication ${replicationCode}`);
@@ -135,9 +175,19 @@ class InteractionService {
     // Extract audioMode, lukeConfig and the runner provider for the
     // frontend; everything else in runnerConfiguration stays private.
     const audioMode = leia.runnerConfiguration?.audioMode || null;
-    const lukeConfig = leia.runnerConfiguration?.lukeConfig || null;
+    const runnerLukeConfig = leia.runnerConfiguration?.lukeConfig || null;
     const runnerProvider = leia.runnerConfiguration?.provider || null;
     const hideAudioTranscription = leia.runnerConfiguration?.hideAudioTranscription || null;
+
+    // Widgets now live in the problem definition (authored in the designer)
+    // and ride here inside leia.leia.spec.problem.spec.widgets. Fall back to
+    // the legacy runnerConfiguration.lukeConfig.widgets for LEIAs configured
+    // before the migration (dual-read).
+    const problemWidgets = leia.leia?.spec?.problem?.spec?.widgets;
+    const widgets = Array.isArray(problemWidgets) && problemWidgets.length > 0
+      ? problemWidgets
+      : (Array.isArray(runnerLukeConfig?.widgets) ? runnerLukeConfig.widgets : []);
+
     delete leia.runnerConfiguration;
     delete leia.sessionCount;
 
@@ -153,8 +203,11 @@ class InteractionService {
       (audioMode == null && runnerProvider === 'openai-responses');
 
     leia.audioMode = audioMode;
-    if (lukeConfig && (audioMode === 'luke' || (isToolCapable && Array.isArray(lukeConfig.widgets) && lukeConfig.widgets.length > 0))) {
-      leia.lukeConfig = lukeConfig;
+    // Expose the widgets (+ luke provider/voice when present) to the FE under
+    // `lukeConfig` — the shape Chat.tsx already consumes — whenever the active
+    // mode can actually use them. The mode itself stays a workbench concern.
+    if (audioMode === 'luke' || (isToolCapable && widgets.length > 0)) {
+      leia.lukeConfig = { ...(runnerLukeConfig || {}), widgets };
     }
     leia.hideAudioTranscription = hideAudioTranscription;
 
@@ -232,7 +285,11 @@ class InteractionService {
       session = await SessionService.addMessage(session.id, newUserMessage.id);
     }
 
-    const runnerResponse = await RunnerService.sendMessage(session.id, message, { tools, toolResults });
+    // Layer the problem's per-tool authoring (disable / usage guidance) onto
+    // the tool schemas the client sends. No-op when the problem declares no
+    // widgets/tools, so plain text activities are unaffected.
+    const effectiveTools = applyProblemToolConfig(tools, leia);
+    const runnerResponse = await RunnerService.sendMessage(session.id, message, { tools: effectiveTools, toolResults });
 
     // Runner returns either { message } or { toolCalls } (or a raw string
     // for older code paths). Only persist a Leia message when we got a

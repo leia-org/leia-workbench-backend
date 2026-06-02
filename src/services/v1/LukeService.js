@@ -190,9 +190,15 @@ function buildInstructions(leia) {
     }
   });
 
-  const widgets = leia.runnerConfiguration?.lukeConfig?.widgets || [];
+  // Widgets now come from the problem definition (authored in the designer)
+  // and ride inside leia.leia.spec.problem.spec.widgets. Fall back to the
+  // legacy runnerConfiguration.lukeConfig.widgets for pre-migration LEIAs.
+  const problemWidgets = leia.leia?.spec?.problem?.spec?.widgets;
+  const widgets = Array.isArray(problemWidgets) && problemWidgets.length > 0
+    ? problemWidgets
+    : (leia.runnerConfiguration?.lukeConfig?.widgets || []);
   const widgetHints = widgets
-    .map((w) => describeWidget(w.widgetType, w.slot))
+    .map((w) => describeWidget(w.widgetType, w.slot, w.tools))
     .filter(Boolean);
   if (widgetHints.length > 0) {
     instructionParts.push('\n=== AVAILABLE TOOLS (voice-mode widgets) ===');
@@ -205,9 +211,36 @@ function buildInstructions(leia) {
   return instructionParts.filter((part) => part.trim() !== '').join('\n');
 }
 
+// Builds the voice-mode hint for a widget: the static catalog description
+// plus any activity-specific tool guidance authored in the problem.
+function describeWidget(widgetType, slot, toolsConfig) {
+  const base = baseWidgetDescription(widgetType, slot);
+  if (!base) return null;
+  const guidance = buildToolGuidance(toolsConfig);
+  return guidance ? `${base}\n${guidance}` : base;
+}
+
+// Per-tool guidance authored by the instructor in the problem definition:
+// when to use a tool, or that a tool is disabled for this activity. The tool
+// schemas themselves are fixed by the platform and not authored here.
+function buildToolGuidance(toolsConfig) {
+  if (!Array.isArray(toolsConfig) || toolsConfig.length === 0) return '';
+  const lines = [];
+  for (const tool of toolsConfig) {
+    if (!tool || typeof tool.name !== 'string') continue;
+    if (tool.enabled === false) {
+      lines.push(`    * Do NOT use ${tool.name} in this activity.`);
+    } else if (typeof tool.usage === 'string' && tool.usage.trim()) {
+      lines.push(`    * ${tool.name}: ${tool.usage.trim()}`);
+    }
+  }
+  if (lines.length === 0) return '';
+  return ['    Activity-specific guidance:', ...lines].join('\n');
+}
+
 // Static catalog mirror for the few widgets the workbench renders in
 // voice mode. Must be kept in sync with leia-workbench-frontend/src/widgets/catalog.ts.
-function describeWidget(widgetType, slot) {
+function baseWidgetDescription(widgetType, slot) {
   switch (widgetType) {
     case 'codeEditor':
       return [
