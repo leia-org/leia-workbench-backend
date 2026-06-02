@@ -14,7 +14,8 @@ import runnerRoutes from './routes/v1/runnerRoutes.js';
 import secretRoutes from './routes/v1/secretRoutes.js';
 import spectatorRoutes from './routes/v1/spectatorRoutes.js';
 import realtimeRoutes from './routes/v1/realtimeRoutes.js';
-import { admin } from './middlewares/auth.js';
+import providerRoutes from './routes/v1/providerRoutes.js';
+import { admin, auth } from './middlewares/auth.js';
 import { initializeSocket } from './socket/index.js';
 import LukeService from './services/v1/LukeService.js';
 
@@ -30,7 +31,7 @@ app.use(
 );
 app.use(express.json());
 app.use(requestLogger);
-
+app.use(auth);
 // Swagger
 SwaggerParser.bundle('./api/openapi.yaml')
   .then((bundledDoc) => {
@@ -50,6 +51,7 @@ app.use('/api/v1/interactions', interactionRoutes);
 app.use('/api/v1/runner', runnerRoutes);
 app.use('/api/v1/spectator', spectatorRoutes);
 app.use('/api/v1/realtime', realtimeRoutes);
+app.use('/api/v1/provider', providerRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

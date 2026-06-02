@@ -2,6 +2,7 @@ import ReplicationRepository from '../../repositories/v1/ReplicationRepository.j
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
+import axios from 'axios';
 
 class ReplicationService {
   // READ METHODS
@@ -59,9 +60,30 @@ class ReplicationService {
   }
 
   async toggleIsActive(id) {
+    const replication = await ReplicationRepository.findById(id);
+    if (!replication) {
+      const error = new Error('Replication not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!replication.isActive) {
+      const hasValidRunnerConfig = this._checkAllLeiasHaveValidRunnerConfiguration(replication);
+      if (!hasValidRunnerConfig) {
+        const error = new Error('Some Leias have invalid runner configurations');
+        error.statusCode = 400;
+        throw error;
+      }
+    }
     return await ReplicationRepository.toggleIsActive(id);
   }
-
+  _checkAllLeiasHaveValidRunnerConfiguration(replication) {
+    for (const leia of replication.experiment.leias) {
+      if (!leia.runnerConfiguration?.modelName || !leia.runnerConfiguration?.apiKeyId || !leia.runnerConfiguration?.apiKeyRequesterId) {
+        return false;
+      }
+    }
+    return true;
+  }
   async toggleIsShared(id) {
     return await ReplicationRepository.toggleIsShared(id);
   }
@@ -189,6 +211,37 @@ class ReplicationService {
     }
 
     return csv;
+  }
+
+  async getProviderAndProviderModuleForReplication(modelName) {
+    const {data} = await axios.get(`${process.env.RUNNER_URL}/api/v1/models`, {
+      headers: {
+        Authorization: 'Bearer ' + process.env.RUNNER_KEY,
+      },
+    });
+    const provider = Object.entries(data.apiKeyProviders || {})
+      .find(([, models]) => models.includes(modelName))?.[0];
+
+    if (!provider) throw new Error(`Model '${modelName}' not mapped to provider`);
+    const providerDriver = data.providerProviderModuleMap?.[provider];
+    if (!providerDriver) throw new Error(`No provider module for provider '${provider}'`);
+
+    return { provider, providerDriver };
+  }
+
+  async validateApiKeyProviderForReplication(provider, apiKeyId, apiKeyRequesterId) {
+    try {
+      const config = {
+        headers: {
+          "x-intern-token": process.env.INTERN_TOKEN,
+        }
+      };
+      const resp = await axios.post(`${process.env.AUTH_URL}/api/v1/apikeys/validate-provider`, { provider, apiKeyId, apiKeyRequesterId }, config);
+      return resp.data.isCompatible;
+    } catch (error) {
+      console.error('Error validating API key provider:', error.response?.data || error.message);
+      throw new Error('Invalid API Key provider');
+    }
   }
 }
 
