@@ -2,6 +2,7 @@ import { Server } from 'socket.io';
 import logger from '../utils/logger.js';
 import SpectatorService from '../services/v1/SpectatorService.js';
 import ReplicationService from '../services/v1/ReplicationService.js';
+import { verifyToken } from '../utils/jwt.js';
 
 let io = null;
 
@@ -35,6 +36,23 @@ export function initializeSocket(httpServer) {
         };
       } catch (error) {
         throw new Error(error.message || 'Invalid authentication token');
+      }
+    }
+
+    // User JWT issued by the auth service — the frontend sends it as auth.token.
+    // An admin gets full dashboard/spectate access; this replaces the legacy
+    // adminSecret after the auth migration. Falls through to share-token
+    // handling if it isn't a valid user JWT.
+    const potentialUserJwt =
+      typeof auth.token === 'string' && auth.token.split('.').length === 3 ? auth.token : null;
+    if (potentialUserJwt) {
+      try {
+        const decoded = verifyToken(potentialUserJwt);
+        if (decoded?.role === 'admin') {
+          return { isAdmin: true, userId: decoded.id, role: decoded.role };
+        }
+      } catch {
+        // Not a valid user JWT — fall through to share-token handling below.
       }
     }
 
