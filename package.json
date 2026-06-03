@@ -25,7 +25,7 @@
   "homepage": "https://github.com/leia-org/workbench-back-v2#readme",
   "description": "",
   "dependencies": {
-    "@leia-org/luke-server": "^0.2.0",
+    "@leia-org/luke-server": "^0.2.1",
     "axios": "^1.7.9",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",

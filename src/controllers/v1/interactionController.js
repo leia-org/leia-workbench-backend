@@ -43,8 +43,19 @@ export const sendSessionMessage = async (req, res, next) => {
   try {
     const value = await sendSessionMessageValidator.validateAsync(req.body);
     const { sessionId } = req.params;
-    const message = await InteractionService.sendSessionMessage(sessionId, value.message);
-    res.json({ message });
+    const result = await InteractionService.sendSessionMessage(sessionId, value.message, {
+      tools: value.tools,
+      toolResults: value.toolResults,
+    });
+    // Runner may return either a final text message or a batch of tool
+    // calls that the frontend has to execute. We forward whichever shape
+    // came back; the frontend distinguishes by the presence of toolCalls.
+    if (result && Array.isArray(result.toolCalls) && result.toolCalls.length > 0) {
+      res.json({ toolCalls: result.toolCalls });
+    } else {
+      const message = typeof result === 'string' ? result : result?.message;
+      res.json({ message });
+    }
   } catch (error) {
     next(error);
   }
