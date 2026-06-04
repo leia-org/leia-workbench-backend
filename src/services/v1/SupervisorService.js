@@ -6,6 +6,7 @@ import logger from '../../utils/logger.js';
 
 const DEFAULT_EVERY_N = 4;
 const TRANSCRIPT_WINDOW = 12; // messages of context sent to the supervisor
+const EXISTING_FLAGS_WINDOW = 30;
 
 // Background supervisor: a per-LEIA LLM (configured by the instructor in the
 // designer, at `leia.leia.spec.supervisorConfig`) that observes the activity
@@ -14,6 +15,66 @@ const TRANSCRIPT_WINDOW = 12; // messages of context sent to the supervisor
 // Runs entirely fire-and-forget from the message hooks — it must never block or
 // break a student turn, and never expose anything to the student except an
 // explicit nudge the instructor enabled.
+
+function normalizeFlagText(value) {
+  return typeof value === 'string'
+    ? value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[“”"'`¿?¡!.,;:]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    : '';
+}
+
+function normalizedFlagQuote(flag) {
+  return normalizeFlagText(flag?.quote);
+}
+
+function quotesOverlap(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const minLength = Math.min(a.length, b.length);
+  return minLength >= 12 && (a.includes(b) || b.includes(a));
+}
+
+function flagKey(flag) {
+  const quote = normalizedFlagQuote(flag);
+  if (quote) return `quote:${quote}`;
+
+  const note = normalizeFlagText(flag?.note);
+  if (!note) return null;
+  return `note:${normalizeFlagText(flag?.category || 'observation')}:${note}`;
+}
+
+function summarizeExistingFlags(flags) {
+  if (!Array.isArray(flags)) return [];
+  return flags.slice(-EXISTING_FLAGS_WINDOW).map((flag) => ({
+    category: typeof flag?.category === 'string' ? flag.category : 'observation',
+    severity: ['low', 'medium', 'high'].includes(flag?.severity) ? flag.severity : 'low',
+    note: typeof flag?.note === 'string' ? flag.note : '',
+    quote: typeof flag?.quote === 'string' && flag.quote.trim() ? flag.quote : null,
+  }));
+}
+
+function filterDuplicateFlags(flags, existingFlags) {
+  const existing = summarizeExistingFlags(existingFlags);
+  const seen = new Set(existing.map(flagKey).filter(Boolean));
+  const seenQuotes = existing.map(normalizedFlagQuote).filter(Boolean);
+  return flags.filter((flag) => {
+    const quote = normalizedFlagQuote(flag);
+    if (quote && seenQuotes.some((seenQuote) => quotesOverlap(seenQuote, quote))) return false;
+
+    const key = flagKey(flag);
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    if (quote) seenQuotes.push(quote);
+    return true;
+  });
+}
+
 class SupervisorService {
   // Fire-and-forget: swallow every error, the activity must not be affected.
   observeAsync(sessionId, leia, options = {}) {
@@ -71,6 +132,7 @@ class SupervisorService {
       role: m.isLeia ? 'leia' : 'student',
       text: m.text,
     }));
+    const existingFlags = Array.isArray(session.supervisorFlags) ? session.supervisorFlags : [];
 
     const result = await RunnerService.observeSupervisor({
       // BYOK identity only. The supervisor ALWAYS runs on OpenAI, so we must not
@@ -82,6 +144,7 @@ class SupervisorService {
         apiKeyRequesterId,
       },
       transcript: window,
+      existingFlags: summarizeExistingFlags(existingFlags),
       supervisorConfig: {
         instructions: supervisorConfig.instructions,
         categories: supervisorConfig.categories,
@@ -94,7 +157,7 @@ class SupervisorService {
 
     const rawFlags = Array.isArray(result?.flags) ? result.flags : [];
     const now = new Date();
-    const stampedFlags = rawFlags.map((f) => ({
+    const stampedFlags = filterDuplicateFlags(rawFlags, existingFlags).map((f) => ({
       category: typeof f.category === 'string' ? f.category : 'observation',
       severity: ['low', 'medium', 'high'].includes(f.severity) ? f.severity : 'low',
       note: typeof f.note === 'string' ? f.note : '',
