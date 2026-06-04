@@ -76,10 +76,14 @@ class RunnerService {
   }
 
   // Stateless supervisor observation. Returns { flags, nudge }.
-  async observeSupervisor({ runnerConfiguration, transcript, supervisorConfig }) {
+  async observeSupervisor({ runnerConfiguration, transcript, supervisorConfig, existingFlags }) {
+    const body = { runnerConfiguration, transcript, supervisorConfig };
+    if (Array.isArray(existingFlags) && existingFlags.length > 0) {
+      body.existingFlags = existingFlags;
+    }
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/supervisor`,
-      { runnerConfiguration, transcript, supervisorConfig },
+      body,
       {
         headers: {
           Authorization: 'Bearer ' + process.env.RUNNER_KEY,
