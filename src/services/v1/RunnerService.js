@@ -74,6 +74,20 @@ class RunnerService {
     });
     return response.data.models;
   }
+
+  // Stateless supervisor observation. Returns { flags, nudge }.
+  async observeSupervisor({ runnerConfiguration, transcript, supervisorConfig }) {
+    const response = await axios.post(
+      `${process.env.RUNNER_URL}/api/v1/supervisor`,
+      { runnerConfiguration, transcript, supervisorConfig },
+      {
+        headers: {
+          Authorization: 'Bearer ' + process.env.RUNNER_KEY,
+        },
+      }
+    );
+    return response.data;
+  }
 }
 
 

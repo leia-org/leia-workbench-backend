@@ -4,6 +4,7 @@ import UserService from './UserService.js';
 import MessageService from './MessageService.js';
 import RunnerService from './RunnerService.js';
 import SpectatorService from './SpectatorService.js';
+import SupervisorService from './SupervisorService.js';
 import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
 
@@ -15,6 +16,17 @@ import mongoose from 'mongoose';
 //
 // Returns the tools unchanged when the problem declares no widgets/tools, so
 // activities without tool functions are unaffected.
+// Strip instructor-only supervisor data from a session before it is returned
+// to the student (any student-facing endpoint that serialises a Session).
+function stripSupervisorFields(session) {
+  const data = session && typeof session.toObject === 'function' ? session.toObject({ virtuals: true }) : { ...session };
+  delete data._id;
+  delete data.__v;
+  delete data.supervisorFlags;
+  delete data.supervisorState;
+  return data;
+}
+
 function applyProblemToolConfig(tools, leia) {
   if (!Array.isArray(tools) || tools.length === 0) return tools;
 
@@ -216,7 +228,12 @@ class InteractionService {
     }
     leia.hideAudioTranscription = hideAudioTranscription;
 
-    return { session, messages, leia, replication };
+    // Supervisor data is instructor-only: strip it (and the supervisor config)
+    // from the payload the student receives.
+    const sessionData = stripSupervisorFields(session);
+    if (leia.leia?.spec) delete leia.leia.spec.supervisorConfig;
+
+    return { session: sessionData, messages, leia, replication };
   }
 
   async getSolutionAndFormat(sessionId) {
@@ -239,7 +256,7 @@ class InteractionService {
       throw error;
     }
 
-    const leia = ReplicationService.findLeia(session.replication, session.leia);
+    const leia = await ReplicationService.findLeia(session.replication, session.leia);
     if (!leia) {
       const error = new Error('Leia not found');
       error.statusCode = 404;
@@ -266,7 +283,7 @@ class InteractionService {
       throw error;
     }
 
-    const leia = ReplicationService.findLeia(session.replication, session.leia);
+    const leia = await ReplicationService.findLeia(session.replication, session.leia);
 
     if (!leia) {
       const error = new Error('Leia not found');
@@ -279,6 +296,10 @@ class InteractionService {
       error.statusCode = 403;
       throw error;
     }
+
+    // A nudge queued by the supervisor on a PREVIOUS turn is delivered on this
+    // turn's response (the student has no socket; this is the reliable channel).
+    const pendingNudge = session.supervisorState?.pendingNudge || null;
 
     const { tools, toolResults } = options;
     const isToolContinuation = Array.isArray(toolResults) && toolResults.length > 0;
@@ -300,6 +321,12 @@ class InteractionService {
     // for older code paths). Only persist a Leia message when we got a
     // final text response back.
     if (runnerResponse && Array.isArray(runnerResponse.toolCalls) && runnerResponse.toolCalls.length > 0) {
+      // A tool round-trip is still the same logical turn; deliver any pending
+      // nudge here too so it isn't dropped for tool-using activities.
+      if (pendingNudge) {
+        await SessionService.clearPendingNudge(session.id, pendingNudge);
+        return { toolCalls: runnerResponse.toolCalls, nudge: pendingNudge };
+      }
       return { toolCalls: runnerResponse.toolCalls };
     }
 
@@ -307,6 +334,18 @@ class InteractionService {
     if (leiaMessage) {
       const newLeiaMessage = await MessageService.create(leiaMessage, true, session.id);
       session = await SessionService.addMessage(session.id, newLeiaMessage.id);
+
+      // A full exchange completed: let the background supervisor observe it
+      // (fire-and-forget; respects cadence and is a no-op when disabled).
+      SupervisorService.observeAsync(session.id, leia);
+    }
+
+    // Deliver (and clear) any nudge the supervisor queued previously. The clear
+    // is conditional on the delivered value so a nudge written by this turn's
+    // in-flight observation isn't clobbered.
+    if (pendingNudge) {
+      await SessionService.clearPendingNudge(session.id, pendingNudge);
+      return { message: leiaMessage, nudge: pendingNudge };
     }
 
     return { message: leiaMessage };
@@ -328,13 +367,17 @@ class InteractionService {
 
     session = await SessionService.saveResultAndFinish(session.id, result);
 
+    // Final supervisor pass (covers the onFinish cadence and the last turns).
+    const finishedLeia = await ReplicationService.findLeia(session.replication, session.leia);
+    if (finishedLeia) SupervisorService.observeAsync(session.id, finishedLeia, { force: true });
+
     // Generate spectator link with 1 year expiration
     const oneYearInSeconds = 365 * 24 * 60 * 60; // 31,536,000 seconds
     const spectatorData = await SpectatorService.generateSpectateToken(session.id, oneYearInSeconds);
     const spectateUrl = SpectatorService.generateSpectateUrl(session.id, spectatorData.token);
 
     return {
-      ...session.toObject(),
+      ...stripSupervisorFields(session),
       spectateUrl,
       spectateToken: spectatorData.token,
       spectateExpiresAt: spectatorData.expiresAt,
@@ -354,6 +397,11 @@ class InteractionService {
       throw error;
     }
     session = await SessionService.finish(session.id);
+
+    // Final supervisor pass (covers the onFinish cadence and the last turns).
+    const finishedLeia = await ReplicationService.findLeia(session.replication, session.leia);
+    if (finishedLeia) SupervisorService.observeAsync(session.id, finishedLeia, { force: true });
+
     await RunnerService.deleteCache(session.id);
     logger.info(`Cache deleted for session ${session.id}`);
 
@@ -363,7 +411,7 @@ class InteractionService {
     const spectateUrl = SpectatorService.generateSpectateUrl(session.id, spectatorData.token);
 
     return {
-      ...session.toObject(),
+      ...stripSupervisorFields(session),
       spectateUrl,
       spectateToken: spectatorData.token,
       spectateExpiresAt: spectatorData.expiresAt,
@@ -382,7 +430,8 @@ class InteractionService {
       error.statusCode = 403;
       throw error;
     }
-    return await SessionService.saveDraft(session.id, draft);
+    const updated = await SessionService.saveDraft(session.id, draft);
+    return stripSupervisorFields(updated);
   }
 
   async getEvaluation(sessionId) {
