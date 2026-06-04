@@ -50,11 +50,12 @@ export const sendSessionMessage = async (req, res, next) => {
     // Runner may return either a final text message or a batch of tool
     // calls that the frontend has to execute. We forward whichever shape
     // came back; the frontend distinguishes by the presence of toolCalls.
+    const nudge = result && typeof result === 'object' && result.nudge ? result.nudge : undefined;
     if (result && Array.isArray(result.toolCalls) && result.toolCalls.length > 0) {
-      res.json({ toolCalls: result.toolCalls });
+      res.json({ toolCalls: result.toolCalls, ...(nudge ? { nudge } : {}) });
     } else {
       const message = typeof result === 'string' ? result : result?.message;
-      res.json({ message });
+      res.json({ message, ...(nudge ? { nudge } : {}) });
     }
   } catch (error) {
     next(error);

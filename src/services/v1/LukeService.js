@@ -3,6 +3,7 @@ import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ReplicationService from './ReplicationService.js';
 import MessageService from './MessageService.js';
 import SessionService from './SessionService.js';
+import SupervisorService from './SupervisorService.js';
 import logger from '../../utils/logger.js';
 import jwt from 'jsonwebtoken';
 
@@ -58,6 +59,11 @@ class LukeService {
             const isLeia = transcription.role === 'assistant';
             const message = await MessageService.create(transcription.text, isLeia, userSession.sessionId);
             await SessionService.addMessage(userSession.sessionId, message.id);
+            // Observe luke (audio) exchanges too. Trigger on the LEIA turn; the
+            // supervisor applies its own transcript-window + cadence logic.
+            if (isLeia && userSession.leia) {
+              SupervisorService.observeAsync(userSession.sessionId, userSession.leia);
+            }
           } catch (err) {
             logger.error(`Failed to save luke transcription: ${err.message}`);
           }

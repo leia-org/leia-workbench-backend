@@ -176,6 +176,24 @@ export function emitToReplication(replicationId, event, data) {
   io.to(`replication:${replicationId}`).emit(event, data);
 }
 
+// Like emitToReplication but only to ADMIN sockets in the room. Used for
+// instructor-only data (e.g. supervisor flags) that share-token dashboard
+// viewers must not receive.
+export function emitToReplicationAdmins(replicationId, event, data) {
+  if (!io) {
+    logger.warn('Socket.IO not initialized, cannot emit event');
+    return;
+  }
+  const room = io.sockets.adapter.rooms.get(`replication:${replicationId}`);
+  if (!room) return;
+  for (const socketId of room) {
+    const socket = io.sockets.sockets.get(socketId);
+    if (socket?.user?.isAdmin) {
+      socket.emit(event, data);
+    }
+  }
+}
+
 export function getIO() {
   if (!io) {
     throw new Error('Socket.IO not initialized');

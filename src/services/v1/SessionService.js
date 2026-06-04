@@ -113,6 +113,14 @@ class SessionService {
   async saveDraft(id, draft) {
     return await SessionRepository.update(id, { draft });
   }
+
+  async appendSupervisorObservation(id, flags, supervisorState) {
+    return await SessionRepository.appendSupervisorObservation(id, flags, supervisorState);
+  }
+
+  async clearPendingNudge(id, value) {
+    return await SessionRepository.clearPendingNudge(id, value);
+  }
 }
 
 export default new SessionService();

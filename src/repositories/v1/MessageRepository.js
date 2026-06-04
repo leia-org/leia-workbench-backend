@@ -12,7 +12,9 @@ class MessageRepository {
   }
 
   async findBySession(sessionId) {
-    return await Message.find({ session: sessionId });
+    // Explicit chronological order (don't rely on natural/ObjectId order) —
+    // the supervisor's transcript window and the rendered history both need it.
+    return await Message.find({ session: sessionId }).sort({ timestamp: 1, _id: 1 });
   }
 
   // WRITE METHODS
