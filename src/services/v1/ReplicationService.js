@@ -67,22 +67,29 @@ class ReplicationService {
       throw error;
     }
     if (!replication.isActive) {
-      const hasValidRunnerConfig = this._checkAllLeiasHaveValidRunnerConfiguration(replication);
-      if (!hasValidRunnerConfig) {
+      const invalidLeias = this._getLeiasWithInvalidRunnerConfiguration(replication);
+      if (invalidLeias.length > 0) {
         const error = new Error('Some Leias have invalid runner configurations');
         error.statusCode = 400;
+        error.invalidLeias = invalidLeias;
         throw error;
       }
     }
     return await ReplicationRepository.toggleIsActive(id);
   }
-  _checkAllLeiasHaveValidRunnerConfiguration(replication) {
+  _getLeiasWithInvalidRunnerConfiguration(replication) {
+    const invalidLeias = [];
     for (const leia of replication.experiment.leias) {
-      if (!leia.runnerConfiguration?.modelName || !leia.runnerConfiguration?.apiKeyId || !leia.runnerConfiguration?.apiKeyRequesterId) {
-        return false;
+      const config = leia.runnerConfiguration || {};
+      const missingFields = [];
+      if (!config.modelName) missingFields.push('modelName');
+      if (!config.apiKeyId) missingFields.push('apiKeyId');
+      if (!config.apiKeyRequesterId) missingFields.push('apiKeyRequesterId');
+      if (missingFields.length > 0) {
+        invalidLeias.push({ leiaId: leia.id, missingFields });
       }
     }
-    return true;
+    return invalidLeias;
   }
   async toggleIsShared(id) {
     return await ReplicationRepository.toggleIsShared(id);
