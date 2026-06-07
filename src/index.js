@@ -15,7 +15,7 @@ import secretRoutes from './routes/v1/secretRoutes.js';
 import spectatorRoutes from './routes/v1/spectatorRoutes.js';
 import realtimeRoutes from './routes/v1/realtimeRoutes.js';
 import providerRoutes from './routes/v1/providerRoutes.js';
-import { admin, auth } from './middlewares/auth.js';
+import { auth, requireAdvanced } from './middlewares/auth.js';
 import { initializeSocket } from './socket/index.js';
 import LukeService from './services/v1/LukeService.js';
 
@@ -45,7 +45,7 @@ SwaggerParser.bundle('./api/openapi.yaml')
 app.use('/api/v1/secret', secretRoutes);
 
 // Routes v1
-app.use('/api/v1/manager', admin, managerRoutes);
+app.use('/api/v1/manager', requireAdvanced, managerRoutes);
 app.use('/api/v1/replications', replicationRoutes);
 app.use('/api/v1/interactions', interactionRoutes);
 app.use('/api/v1/runner', runnerRoutes);
