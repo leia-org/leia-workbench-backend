@@ -129,7 +129,16 @@ export const updateReplicationLeiaRunnerConfiguration = async (req, res, next) =
     const value = await updateReplicationLeiaRunnerConfigurationValidator.validateAsync(req.body, {
       abortEarly: false,
     });
-    const {provider, providerDriver} = await ReplicationService.getProviderAndProviderModuleForReplication(value.modelName);
+    let provider, providerDriver;
+    try {
+      ({ provider, providerDriver } = await ReplicationService.getProviderAndProviderModuleForReplication(value.modelName));
+    } catch (err) {
+      // El modelo no está mapeado a ningún proveedor: señalamos el campo modelo de la Leia
+      // para que el cliente pueda marcarlo en rojo, además del mensaje de error.
+      err.statusCode = err.statusCode || 400;
+      err.invalidLeias = [{ leiaId, missingFields: ['modelName'] }];
+      throw err;
+    }
     // If an apiKeyId is provided, record the owner (current user) so the runner can later resolve the secret securely
 
     if (value && value.apiKeyId && req.user && req.user.id) {
