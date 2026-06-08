@@ -4,8 +4,60 @@ import UserService from './UserService.js';
 import MessageService from './MessageService.js';
 import RunnerService from './RunnerService.js';
 import SpectatorService from './SpectatorService.js';
+import SupervisorService from './SupervisorService.js';
 import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
+
+// Applies the problem's per-tool authoring to the tool schemas the client
+// sends to the runner: drops tools the instructor disabled and appends their
+// activity-specific usage guidance to each tool's description. The tool's
+// schema/parameters are never authored in the problem — only referenced by
+// name — so this only ever touches `description` and membership.
+//
+// Returns the tools unchanged when the problem declares no widgets/tools, so
+// activities without tool functions are unaffected.
+// Strip instructor-only supervisor data from a session before it is returned
+// to the student (any student-facing endpoint that serialises a Session).
+function stripSupervisorFields(session) {
+  const data = session && typeof session.toObject === 'function' ? session.toObject({ virtuals: true }) : { ...session };
+  delete data._id;
+  delete data.__v;
+  delete data.supervisorFlags;
+  delete data.supervisorState;
+  return data;
+}
+
+function applyProblemToolConfig(tools, leia) {
+  if (!Array.isArray(tools) || tools.length === 0) return tools;
+
+  const widgets = leia?.leia?.spec?.problem?.spec?.widgets;
+  if (!Array.isArray(widgets) || widgets.length === 0) return tools;
+
+  // name -> { enabled, usage } across all of the problem's widgets.
+  const config = new Map();
+  for (const widget of widgets) {
+    if (!Array.isArray(widget?.tools)) continue;
+    for (const tool of widget.tools) {
+      if (tool && typeof tool.name === 'string') config.set(tool.name, tool);
+    }
+  }
+  if (config.size === 0) return tools;
+
+  const out = [];
+  for (const tool of tools) {
+    const cfg = config.get(tool?.name);
+    if (cfg && cfg.enabled === false) continue; // instructor disabled this tool
+    if (cfg && typeof cfg.usage === 'string' && cfg.usage.trim()) {
+      out.push({
+        ...tool,
+        description: `${(tool.description || '').trim()}\n\nActivity guidance: ${cfg.usage.trim()}`.trim(),
+      });
+    } else {
+      out.push(tool);
+    }
+  }
+  return out;
+}
 
 class InteractionService {
   async startSession(userEmail, replicationCode) {
@@ -85,6 +137,11 @@ class InteractionService {
       const error = new Error('Leia not found');
       error.statusCode = 404;
     }
+    if (!leia.runnerConfiguration?.modelName || !leia.runnerConfiguration?.apiKeyId || !leia.runnerConfiguration?.apiKeyRequesterId) {
+      const error = new Error('Invalid runner configuration');
+      error.statusCode = 400;
+      throw error;
+    }
 
     let session = await SessionService.create(null, replicationId, leiaId, true);
 
@@ -132,15 +189,51 @@ class InteractionService {
     delete leia.leia.spec.behaviour.spec.description;
     delete leia.leia.spec.behaviour.spec.role;
 
-    // Extract audioMode for frontend but keep runnerConfiguration private
+    // Extract audioMode, lukeConfig and the runner provider for the
+    // frontend; everything else in runnerConfiguration stays private.
     const audioMode = leia.runnerConfiguration?.audioMode || null;
+    const runnerLukeConfig = leia.runnerConfiguration?.lukeConfig || null;
+    const runnerProvider = leia.runnerConfiguration?.provider || null;
+    const hideAudioTranscription = leia.runnerConfiguration?.hideAudioTranscription || null;
+
+    // Widgets now live in the problem definition (authored in the designer)
+    // and ride here inside leia.leia.spec.problem.spec.widgets. Fall back to
+    // the legacy runnerConfiguration.lukeConfig.widgets for LEIAs configured
+    // before the migration (dual-read).
+    const problemWidgets = leia.leia?.spec?.problem?.spec?.widgets;
+    const widgets = Array.isArray(problemWidgets) && problemWidgets.length > 0
+      ? problemWidgets
+      : (Array.isArray(runnerLukeConfig?.widgets) ? runnerLukeConfig.widgets : []);
+
     delete leia.runnerConfiguration;
     delete leia.sessionCount;
 
-    // Add audioMode back for frontend consumption
-    leia.audioMode = audioMode;
+    // Decide whether the session is tool-capable. Widgets are only
+    // useful when the active path supports function calls:
+    //   - audioMode === 'luke': luke-server handles tools (Gemini Live
+    //     and OpenAI Realtime both support function declarations).
+    //   - text mode: only the `openai-responses` runner provider wires
+    //     tools to the model. Other providers (gemini text, ollama)
+    //     ignore them, so we don't show the widget panel for those.
+    const isToolCapable =
+      audioMode === 'luke' ||
+      (audioMode == null && runnerProvider === 'openai-responses');
 
-    return { session, messages, leia, replication };
+    leia.audioMode = audioMode;
+    // Expose the widgets (+ luke provider/voice when present) to the FE under
+    // `lukeConfig` — the shape Chat.tsx already consumes — whenever the active
+    // mode can actually use them. The mode itself stays a workbench concern.
+    if (audioMode === 'luke' || (isToolCapable && widgets.length > 0)) {
+      leia.lukeConfig = { ...(runnerLukeConfig || {}), widgets };
+    }
+    leia.hideAudioTranscription = hideAudioTranscription;
+
+    // Supervisor data is instructor-only: strip it (and the supervisor config)
+    // from the payload the student receives.
+    const sessionData = stripSupervisorFields(session);
+    if (leia.leia?.spec) delete leia.leia.spec.supervisorConfig;
+
+    return { session: sessionData, messages, leia, replication };
   }
 
   async getSolutionAndFormat(sessionId) {
@@ -163,7 +256,7 @@ class InteractionService {
       throw error;
     }
 
-    const leia = ReplicationService.findLeia(session.replication, session.leia);
+    const leia = await ReplicationService.findLeia(session.replication, session.leia);
     if (!leia) {
       const error = new Error('Leia not found');
       error.statusCode = 404;
@@ -182,7 +275,7 @@ class InteractionService {
     return { solution, solutionFormat };
   }
 
-  async sendSessionMessage(sessionId, message) {
+  async sendSessionMessage(sessionId, message, options = {}) {
     let session = await SessionService.findById(sessionId);
     if (!session) {
       const error = new Error('Session not found');
@@ -190,7 +283,7 @@ class InteractionService {
       throw error;
     }
 
-    const leia = ReplicationService.findLeia(session.replication, session.leia);
+    const leia = await ReplicationService.findLeia(session.replication, session.leia);
 
     if (!leia) {
       const error = new Error('Leia not found');
@@ -204,15 +297,58 @@ class InteractionService {
       throw error;
     }
 
-    const newUserMessage = await MessageService.create(message, false, session.id);
-    session = await SessionService.addMessage(session.id, newUserMessage.id);
+    // A nudge queued by the supervisor on a PREVIOUS turn is delivered on this
+    // turn's response (the student has no socket; this is the reliable channel).
+    const pendingNudge = session.supervisorState?.pendingNudge || null;
 
-    const leiaMessage = await RunnerService.sendMessage(session.id, message);
+    const { tools, toolResults } = options;
+    const isToolContinuation = Array.isArray(toolResults) && toolResults.length > 0;
 
-    const newLeiaMessage = await MessageService.create(leiaMessage, true, session.id);
-    session = await SessionService.addMessage(session.id, newLeiaMessage.id);
+    // Only persist the user message on the first turn of a tool round-trip.
+    // Continuations (toolResults) keep the same logical user turn going.
+    if (!isToolContinuation && typeof message === 'string' && message.length > 0) {
+      const newUserMessage = await MessageService.create(message, false, session.id);
+      session = await SessionService.addMessage(session.id, newUserMessage.id);
+    }
 
-    return leiaMessage;
+    // Layer the problem's per-tool authoring (disable / usage guidance) onto
+    // the tool schemas the client sends. No-op when the problem declares no
+    // widgets/tools, so plain text activities are unaffected.
+    const effectiveTools = applyProblemToolConfig(tools, leia);
+    const runnerResponse = await RunnerService.sendMessage(session.id, message, { tools: effectiveTools, toolResults });
+
+    // Runner returns either { message } or { toolCalls } (or a raw string
+    // for older code paths). Only persist a Leia message when we got a
+    // final text response back.
+    if (runnerResponse && Array.isArray(runnerResponse.toolCalls) && runnerResponse.toolCalls.length > 0) {
+      // A tool round-trip is still the same logical turn; deliver any pending
+      // nudge here too so it isn't dropped for tool-using activities.
+      if (pendingNudge) {
+        await SessionService.clearPendingNudge(session.id, pendingNudge);
+        return { toolCalls: runnerResponse.toolCalls, nudge: pendingNudge };
+      }
+      return { toolCalls: runnerResponse.toolCalls };
+    }
+
+    const leiaMessage = typeof runnerResponse === 'string' ? runnerResponse : runnerResponse?.message;
+    if (leiaMessage) {
+      const newLeiaMessage = await MessageService.create(leiaMessage, true, session.id);
+      session = await SessionService.addMessage(session.id, newLeiaMessage.id);
+
+      // A full exchange completed: let the background supervisor observe it
+      // (fire-and-forget; respects cadence and is a no-op when disabled).
+      SupervisorService.observeAsync(session.id, leia);
+    }
+
+    // Deliver (and clear) any nudge the supervisor queued previously. The clear
+    // is conditional on the delivered value so a nudge written by this turn's
+    // in-flight observation isn't clobbered.
+    if (pendingNudge) {
+      await SessionService.clearPendingNudge(session.id, pendingNudge);
+      return { message: leiaMessage, nudge: pendingNudge };
+    }
+
+    return { message: leiaMessage };
   }
 
   async saveResultAndFinishSession(sessionId, result) {
@@ -231,13 +367,17 @@ class InteractionService {
 
     session = await SessionService.saveResultAndFinish(session.id, result);
 
+    // Final supervisor pass (covers the onFinish cadence and the last turns).
+    const finishedLeia = await ReplicationService.findLeia(session.replication, session.leia);
+    if (finishedLeia) SupervisorService.observeAsync(session.id, finishedLeia, { force: true });
+
     // Generate spectator link with 1 year expiration
     const oneYearInSeconds = 365 * 24 * 60 * 60; // 31,536,000 seconds
     const spectatorData = await SpectatorService.generateSpectateToken(session.id, oneYearInSeconds);
     const spectateUrl = SpectatorService.generateSpectateUrl(session.id, spectatorData.token);
 
     return {
-      ...session.toObject(),
+      ...stripSupervisorFields(session),
       spectateUrl,
       spectateToken: spectatorData.token,
       spectateExpiresAt: spectatorData.expiresAt,
@@ -257,6 +397,11 @@ class InteractionService {
       throw error;
     }
     session = await SessionService.finish(session.id);
+
+    // Final supervisor pass (covers the onFinish cadence and the last turns).
+    const finishedLeia = await ReplicationService.findLeia(session.replication, session.leia);
+    if (finishedLeia) SupervisorService.observeAsync(session.id, finishedLeia, { force: true });
+
     await RunnerService.deleteCache(session.id);
     logger.info(`Cache deleted for session ${session.id}`);
 
@@ -266,11 +411,27 @@ class InteractionService {
     const spectateUrl = SpectatorService.generateSpectateUrl(session.id, spectatorData.token);
 
     return {
-      ...session.toObject(),
+      ...stripSupervisorFields(session),
       spectateUrl,
       spectateToken: spectatorData.token,
       spectateExpiresAt: spectatorData.expiresAt,
     };
+  }
+
+  async saveDraft(sessionId, draft) {
+    const session = await SessionService.findById(sessionId);
+    if (!session) {
+      const error = new Error('Session not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (session.finishedAt) {
+      const error = new Error('Session already finished');
+      error.statusCode = 403;
+      throw error;
+    }
+    const updated = await SessionService.saveDraft(session.id, draft);
+    return stripSupervisorFields(updated);
   }
 
   async getEvaluation(sessionId) {

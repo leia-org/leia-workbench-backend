@@ -18,19 +18,24 @@ class RunnerService {
     return response.data.sessionId;
   }
 
-  async sendMessage(sessionId, message) {
+  async sendMessage(sessionId, message, options = {}) {
+    const body = {};
+    if (typeof message === 'string' && message.length > 0) body.message = message;
+    if (Array.isArray(options.tools) && options.tools.length > 0) body.tools = options.tools;
+    if (Array.isArray(options.toolResults) && options.toolResults.length > 0) body.toolResults = options.toolResults;
+
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/leias/${sessionId}/messages`,
-      {
-        message,
-      },
+      body,
       {
         headers: {
           Authorization: 'Bearer ' + process.env.RUNNER_KEY,
         },
       }
     );
-    return response.data.message;
+    // Forward the full response shape upward so the caller can branch on
+    // toolCalls vs. final text.
+    return response.data;
   }
 
   async getEvaluationAndScore(sessionId, result) {
@@ -61,6 +66,33 @@ class RunnerService {
     );
     return response.data;
   }
+    async getRunnerModels() {
+    const response = await axios.get(`${process.env.RUNNER_URL}/api/v1/models`, {
+      headers: {
+        Authorization: 'Bearer ' + process.env.RUNNER_KEY,
+      },
+    });
+    return response.data.models;
+  }
+
+  // Stateless supervisor observation. Returns { flags, nudge }.
+  async observeSupervisor({ runnerConfiguration, transcript, supervisorConfig, existingFlags }) {
+    const body = { runnerConfiguration, transcript, supervisorConfig };
+    if (Array.isArray(existingFlags) && existingFlags.length > 0) {
+      body.existingFlags = existingFlags;
+    }
+    const response = await axios.post(
+      `${process.env.RUNNER_URL}/api/v1/supervisor`,
+      body,
+      {
+        headers: {
+          Authorization: 'Bearer ' + process.env.RUNNER_KEY,
+        },
+      }
+    );
+    return response.data;
+  }
 }
+
 
 export default new RunnerService();
