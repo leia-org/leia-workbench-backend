@@ -45,6 +45,20 @@ const sessionSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    draft: {
+      type: String,
+    },
+    // Background supervisor (instructor-only). Flags raised while observing the
+    // activity; never exposed to the student. supervisorState tracks the
+    // observation cursor and any pending student nudge.
+    supervisorFlags: {
+      type: [Schema.Types.Mixed],
+      default: undefined,
+    },
+    supervisorState: {
+      type: Schema.Types.Mixed,
+      default: undefined,
+    },
   },
   {
     strict: false,

@@ -129,6 +129,28 @@ export const updateReplicationLeiaRunnerConfiguration = async (req, res, next) =
     const value = await updateReplicationLeiaRunnerConfigurationValidator.validateAsync(req.body, {
       abortEarly: false,
     });
+    let provider, providerDriver;
+    try {
+      ({ provider, providerDriver } = await ReplicationService.getProviderAndProviderModuleForReplication(value.modelName));
+    } catch (err) {
+      // El modelo no está mapeado a ningún proveedor: señalamos el campo modelo de la Leia
+      // para que el cliente pueda marcarlo en rojo, además del mensaje de error.
+      err.statusCode = err.statusCode || 400;
+      err.invalidLeias = [{ leiaId, missingFields: ['modelName'] }];
+      throw err;
+    }
+    // If an apiKeyId is provided, record the owner (current user) so the runner can later resolve the secret securely
+
+    if (value && value.apiKeyId && req.user && req.user.id) {
+      value.apiKeyRequesterId = req.user.id;
+      value.provider = providerDriver;
+      const isValidProvider = await ReplicationService.validateApiKeyProviderForReplication(provider, value.apiKeyId, value.apiKeyRequesterId);
+      if (!isValidProvider) {
+        const error = new Error(`The provided API key ID is not valid for the selected model's provider.`);
+        error.status = 400;
+        throw error;
+      }
+    }
     const updatedReplication = await ReplicationService.updateLeiaRunnerConfiguration(id, leiaId, value);
     res.json(updatedReplication);
   } catch (err) {
@@ -213,6 +235,16 @@ export const updateSessionScore = async (req, res, next) => {
     const value = await updateSessionScoreValidator.validateAsync(req.body, { abortEarly: false });
     const updatedSession = await SessionService.saveScore(sessionId, value.score);
     res.json(updatedSession);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const replicationNameExists = async (req, res, next) => {
+  try {
+    const { name } = req.params;
+    const exists = await ReplicationService.checkNameExists(name);
+    res.json({ exists });
   } catch (err) {
     next(err);
   }

@@ -30,6 +30,9 @@ class ReplicationRepository {
     return !!(await Replication.exists({ _id: id, isShared: true, shareToken: token }));
   }
 
+  async existsByName(name) {
+    return await Replication.exists({ name });
+  }
   // WRITE METHODS
 
   async create(replicationData) {

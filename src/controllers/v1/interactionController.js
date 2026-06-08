@@ -5,6 +5,7 @@ import {
   sendSessionMessageValidator,
   saveResultAndFinishSessionValidator,
   startTestSessionValidator,
+  saveDraftValidator,
 } from '../../validators/v1/interactionValidator.js';
 
 export const startSession = async (req, res, next) => {
@@ -42,8 +43,20 @@ export const sendSessionMessage = async (req, res, next) => {
   try {
     const value = await sendSessionMessageValidator.validateAsync(req.body);
     const { sessionId } = req.params;
-    const message = await InteractionService.sendSessionMessage(sessionId, value.message);
-    res.json({ message });
+    const result = await InteractionService.sendSessionMessage(sessionId, value.message, {
+      tools: value.tools,
+      toolResults: value.toolResults,
+    });
+    // Runner may return either a final text message or a batch of tool
+    // calls that the frontend has to execute. We forward whichever shape
+    // came back; the frontend distinguishes by the presence of toolCalls.
+    const nudge = result && typeof result === 'object' && result.nudge ? result.nudge : undefined;
+    if (result && Array.isArray(result.toolCalls) && result.toolCalls.length > 0) {
+      res.json({ toolCalls: result.toolCalls, ...(nudge ? { nudge } : {}) });
+    } else {
+      const message = typeof result === 'string' ? result : result?.message;
+      res.json({ message, ...(nudge ? { nudge } : {}) });
+    }
   } catch (error) {
     next(error);
   }
@@ -64,6 +77,17 @@ export const finishSession = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
     const session = await InteractionService.finishSession(sessionId);
+    res.json(session);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const saveDraft = async (req, res, next) => {
+  try {
+    const value = await saveDraftValidator.validateAsync(req.body);
+    const { sessionId } = req.params;
+    const session = await InteractionService.saveDraft(sessionId, value.draft);
     res.json(session);
   } catch (error) {
     next(error);

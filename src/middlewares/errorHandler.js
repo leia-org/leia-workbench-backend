@@ -44,6 +44,9 @@ export default function errorHandler(err, req, res, next) {
   } else {
     statusCode = err.statusCode || 500;
     errorResponse = { message: err.message || 'Internal Server Error' };
+    if (err.invalidLeias) {
+      errorResponse.invalidLeias = err.invalidLeias;
+    }
   }
 
   if (process.env.NODE_ENV === 'development') {

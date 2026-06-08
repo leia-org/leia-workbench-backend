@@ -21,8 +21,7 @@ const ReplicationSchema = new Schema(
     },
     duration: {
       type: Number,
-      required: true,
-      default: 1800,
+      default: null,
     },
     isRepeatable: {
       type: Boolean,
@@ -64,7 +63,6 @@ ReplicationSchema.pre('validate', async function (next) {
       console.log('Generating unique code for replication...');
       this.code = await generateUniqueCode(ReplicationModel, 'R', 5);
     }
-
     next();
   } catch (err) {
     next(err);
