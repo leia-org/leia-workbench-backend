@@ -32,6 +32,7 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
   }),
   infographic: Joi.object({
     showToStudent: Joi.boolean().optional().default(false),
+    allowDownload: Joi.any().strip(),
   }).optional(),
   lukeConfig: Joi.object({
     // provider/voice are only meaningful when audioMode === 'luke'. The
