@@ -39,6 +39,9 @@ export function initializeExperiment(experiment) {
       modelName: 'default',
       audioMode: null,
       hideAudioTranscription: null,
+      infographic: {
+        showToStudent: false,
+      },
     };
     leia.sessionCount = 0;
     leia.configuration.askSolution = true;
