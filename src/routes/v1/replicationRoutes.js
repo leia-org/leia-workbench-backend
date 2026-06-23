@@ -19,7 +19,8 @@ import {
   updateSessionScore,
   regenerateReplicationShareToken,
   toggleReplicationIsShared,
-  replicationNameExists
+  replicationNameExists,
+  updateReplicationDataUsage
 } from '../../controllers/v1/replicationController.js';
 import { admin, authContext } from '../../middlewares/auth.js';
 
@@ -40,6 +41,7 @@ router.patch('/:id/leia/:leiaId/toggle-evaluate-solution', authContext, toggleEv
 router.patch('/:id/duration', authContext, updateReplicationDuration);
 router.patch('/:id/experiment', authContext, updateReplicationExperiment);
 router.patch('/:id/form', authContext, updateReplicationForm);
+router.patch('/:id/data-usage', authContext, updateReplicationDataUsage);
 router.patch('/:id/leia/:leiaId/runner-configuration', authContext, updateReplicationLeiaRunnerConfiguration);
 router.patch('/:id/sessions/:sessionId/score', authContext, updateSessionScore);
 // GET

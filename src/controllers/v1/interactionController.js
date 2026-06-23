@@ -6,6 +6,7 @@ import {
   saveResultAndFinishSessionValidator,
   startTestSessionValidator,
   saveDraftValidator,
+  dataUsageConsentValidator,
 } from '../../validators/v1/interactionValidator.js';
 
 export const startSession = async (req, res, next) => {
@@ -34,6 +35,17 @@ export const getSessionData = async (req, res, next) => {
     const { sessionId } = req.params;
     const data = await InteractionService.getSessionData(sessionId);
     res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const recordDataUsageConsent = async (req, res, next) => {
+  try {
+    const value = await dataUsageConsentValidator.validateAsync(req.body);
+    const { sessionId } = req.params;
+    const result = await InteractionService.recordDataUsageConsent(sessionId, value.accepted);
+    res.json(result);
   } catch (error) {
     next(error);
   }

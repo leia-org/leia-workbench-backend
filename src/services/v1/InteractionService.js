@@ -60,6 +60,36 @@ function applyProblemToolConfig(tools, leia) {
 }
 
 class InteractionService {
+  async _initializeRunnerIfNeeded(session, replication) {
+    if (session.isRunnerInitialized) return session;
+
+    logger.info(`Runner for session ${session.id} is not initialized, initializing now`);
+    const leia = replication.experiment.leias.find((leia) => session.leia.equals(leia.id));
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    await RunnerService.initializeRunner(session.id, leia);
+    const updatedSession = await SessionService.updateIsRunnerInitialized(session.id, true);
+    logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
+    return updatedSession;
+  }
+
+  _assertDataUsageConsentAllowsActivity(session, replication) {
+    if (
+      !session.isTest &&
+      replication.dataUsageConsentRequired &&
+      !session.isRunnerInitialized &&
+      session.dataUsageConsentStatus !== 'accepted'
+    ) {
+      const error = new Error('Data usage consent decision is required before starting this activity');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
   async startSession(userEmail, replicationCode) {
     logger.info(`User ${userEmail} is trying to join replication ${replicationCode}`);
     const replication = await ReplicationService.findByCode(replicationCode);
@@ -104,23 +134,67 @@ class InteractionService {
     }
 
     logger.info(`Session found for user ${userEmail} and replication ${replicationCode}`);
-    if (!session.isRunnerInitialized) {
-      logger.info(`Runner for session ${session.id} is not initialized, initializing now`);
-      const leia = replication.experiment.leias.find((leia) => session.leia.equals(leia.id));
-      if (!leia) {
-        const error = new Error('Leia not found');
-        error.statusCode = 404;
-        throw error;
-      }
-      // Initialize runner for the session
-      await RunnerService.initializeRunner(session.id, leia);
-
-      // Update the runner status
-      session = await SessionService.updateIsRunnerInitialized(session.id, true);
-      logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
+    if (replication.dataUsageConsentRequired && !session.isRunnerInitialized && session.dataUsageConsentStatus !== 'accepted') {
+      return session.id;
     }
+    if (!replication.dataUsageConsentRequired && !session.dataUsageConsentStatus) {
+      session = await SessionService.markDataUsageNotRequired(session.id);
+    }
+    session = await this._initializeRunnerIfNeeded(session, replication);
 
     return session.id;
+  }
+
+  async recordDataUsageConsent(sessionId, accepted) {
+    let session = await SessionService.findById(sessionId);
+    if (!session) {
+      const error = new Error('Session not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (session.finishedAt) {
+      const error = new Error('Session already finished');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (session.isTest) {
+      return { session, removed: false };
+    }
+
+    const replication = await ReplicationService.findById(session.replication);
+    if (!replication) {
+      const error = new Error('Replication not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (!replication.dataUsageConsentRequired) {
+      session = await SessionService.markDataUsageNotRequired(session.id);
+      session = await this._initializeRunnerIfNeeded(session, replication);
+      return { session, removed: false };
+    }
+
+    if (session.dataUsageConsentStatus === 'accepted' && session.isRunnerInitialized) {
+      return { session, removed: false };
+    }
+
+    session = await SessionService.updateDataUsageConsent(session.id, accepted);
+
+    if (accepted) {
+      session = await this._initializeRunnerIfNeeded(session, replication);
+      return { session, removed: false };
+    }
+
+    if (replication.conversationAutomatedRemoval) {
+      await SessionService.markDataUsageAutomatedRemovalApplied(session.id);
+      await MessageService.deleteBySession(session.id);
+      await SessionService.delete(session.id);
+      await ReplicationService.decrementLeiaSessionCount(replication.id, session.leia);
+      return { sessionId: session.id, removed: true };
+    }
+
+    session = await SessionService.finish(session.id);
+    return { session, removed: false };
   }
 
   async startTestSession(replicationId, leiaId) {
@@ -256,7 +330,16 @@ class InteractionService {
       throw error;
     }
 
-    const leia = await ReplicationService.findLeia(session.replication, session.leia);
+    const replication = await ReplicationService.findById(session.replication);
+    if (!replication) {
+      const error = new Error('Replication not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    this._assertDataUsageConsentAllowsActivity(session, replication);
+
+    const leia = replication.experiment?.leias?.find((leia) => session.leia.equals(leia.id));
     if (!leia) {
       const error = new Error('Leia not found');
       error.statusCode = 404;
@@ -359,6 +442,14 @@ class InteractionService {
       throw error;
     }
 
+    const replication = await ReplicationService.findById(session.replication);
+    if (!replication) {
+      const error = new Error('Replication not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    this._assertDataUsageConsentAllowsActivity(session, replication);
+
     if (session.finishedAt) {
       const error = new Error('Session already finished');
       error.statusCode = 403;
@@ -391,6 +482,13 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
+    const replication = await ReplicationService.findById(session.replication);
+    if (!replication) {
+      const error = new Error('Replication not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    this._assertDataUsageConsentAllowsActivity(session, replication);
     if (session.finishedAt) {
       const error = new Error('Session already finished');
       error.statusCode = 403;
@@ -425,6 +523,13 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
+    const replication = await ReplicationService.findById(session.replication);
+    if (!replication) {
+      const error = new Error('Replication not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    this._assertDataUsageConsentAllowsActivity(session, replication);
     if (session.finishedAt) {
       const error = new Error('Session already finished');
       error.statusCode = 403;

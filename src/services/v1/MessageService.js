@@ -47,6 +47,10 @@ class MessageService {
 
     return message;
   }
+
+  async deleteBySession(sessionId) {
+    return await MessageRepository.deleteBySession(sessionId);
+  }
 }
 
 export default new MessageService();

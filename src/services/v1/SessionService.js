@@ -110,6 +110,32 @@ class SessionService {
     return await SessionRepository.update(id, { isRunnerInitialized });
   }
 
+  async updateDataUsageConsent(id, accepted) {
+    const decidedAt = new Date();
+    return await SessionRepository.update(id, {
+      dataUsageConsentStatus: accepted ? 'accepted' : 'declined',
+      dataUsageConsentAccepted: accepted,
+      dataUsageConsentDecidedAt: decidedAt,
+      startedAt: decidedAt,
+    });
+  }
+
+  async markDataUsageNotRequired(id) {
+    return await SessionRepository.update(id, {
+      dataUsageConsentStatus: 'not_required',
+      dataUsageConsentAccepted: null,
+      dataUsageConsentDecidedAt: null,
+    });
+  }
+
+  async markDataUsageAutomatedRemovalApplied(id) {
+    return await SessionRepository.update(id, { dataUsageAutomatedRemovalApplied: true });
+  }
+
+  async delete(id) {
+    return await SessionRepository.delete(id);
+  }
+
   async saveDraft(id, draft) {
     return await SessionRepository.update(id, { draft });
   }

@@ -95,6 +95,10 @@ class SessionRepository {
     return await Session.findByIdAndUpdate(id, sessionData, { new: true });
   }
 
+  async delete(id) {
+    return await Session.findByIdAndDelete(id);
+  }
+
   async addMessage(id, messageId) {
     return await Session.findByIdAndUpdate(id, { $push: { messages: messageId } }, { new: true });
   }

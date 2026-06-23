@@ -35,6 +35,22 @@ const ReplicationSchema = new Schema(
     form: {
       type: String,
     },
+    dataUsageConsentRequired: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
+    dataUsageConsentMessage: {
+      type: String,
+      required: true,
+      default:
+        'Before starting this activity, please indicate whether you consent to the use of your conversation data for educational and research purposes. Your choice will be recorded with this conversation.',
+    },
+    conversationAutomatedRemoval: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
     isShared: {
       type: Boolean,
       required: true,

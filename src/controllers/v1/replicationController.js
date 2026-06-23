@@ -7,6 +7,7 @@ import {
   updateReplicationExperimentValidator,
   updateReplicationLeiaRunnerConfigurationValidator,
   updateReplicationFormValidator,
+  updateReplicationDataUsageValidator,
   updateSessionScoreValidator,
 } from '../../validators/v1/replicationValidator.js';
 
@@ -175,6 +176,17 @@ export const deleteReplicationForm = async (req, res, next) => {
     await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
     const { id } = req.params;
     const updatedReplication = await ReplicationService.deleteForm(id);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateReplicationDataUsage = async (req, res, next) => {
+  try {
+    await ReplicationService.checkAccess(req.params.id, req.user.isAdmin, req.user.shareToken);
+    const value = await updateReplicationDataUsageValidator.validateAsync(req.body, { abortEarly: false });
+    const updatedReplication = await ReplicationService.updateDataUsage(req.params.id, value);
     res.json(updatedReplication);
   } catch (err) {
     next(err);

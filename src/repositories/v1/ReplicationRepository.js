@@ -139,6 +139,10 @@ class ReplicationRepository {
     );
   }
 
+  async updateDataUsage(id, dataUsage) {
+    return await Replication.findByIdAndUpdate(id, { $set: dataUsage }, { new: true });
+  }
+
   async getAndIncrementNextLeia(id) {
     const replication = await Replication.findById(id, {
       'experiment.leias.id': 1,

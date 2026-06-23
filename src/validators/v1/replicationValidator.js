@@ -76,6 +76,12 @@ export const updateReplicationFormValidator = Joi.object({
   form: Joi.string().required(),
 });
 
+export const updateReplicationDataUsageValidator = Joi.object({
+  dataUsageConsentRequired: Joi.boolean().required(),
+  dataUsageConsentMessage: Joi.string().trim().min(1).required(),
+  conversationAutomatedRemoval: Joi.boolean().required(),
+});
+
 export const updateSessionScoreValidator = Joi.object({
   score: Joi.number().min(0).max(100).required(),
 });

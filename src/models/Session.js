@@ -45,6 +45,23 @@ const sessionSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    dataUsageConsentStatus: {
+      type: String,
+      enum: ['accepted', 'declined', 'not_required'],
+      default: undefined,
+    },
+    dataUsageConsentAccepted: {
+      type: Boolean,
+      default: undefined,
+    },
+    dataUsageConsentDecidedAt: {
+      type: Date,
+      default: undefined,
+    },
+    dataUsageAutomatedRemovalApplied: {
+      type: Boolean,
+      default: false,
+    },
     draft: {
       type: String,
     },

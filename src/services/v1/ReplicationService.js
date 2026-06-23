@@ -125,12 +125,20 @@ class ReplicationService {
     return await ReplicationRepository.getAndIncrementNextLeia(id);
   }
 
+  async decrementLeiaSessionCount(id, leiaId) {
+    return await ReplicationRepository.decrementLeiaSessionCount(id, leiaId);
+  }
+
   async updateForm(id, form) {
     return await ReplicationRepository.update(id, { form });
   }
 
   async deleteForm(id) {
     return await ReplicationRepository.update(id, { form: null });
+  }
+
+  async updateDataUsage(id, dataUsage) {
+    return await ReplicationRepository.updateDataUsage(id, dataUsage);
   }
 
   async deleteDuration(id) {
@@ -197,13 +205,19 @@ class ReplicationService {
   async getConversationsCSV(id) {
     const sessions = await SessionRepository.findByReplicationAndPopulateMessages(id);
 
-    let csv = 'Session ID,User,Started At,Finished At,Message,Is LEIA,Timestamp,Score,Evaluation\n';
+    let csv =
+      'Session ID,User,Started At,Finished At,Data Usage Consent,Data Usage Consent Decided At,Automated Removal,Message,Is LEIA,Timestamp,Score,Evaluation\n';
 
     for (const session of sessions) {
       const sessionId = session.id || '';
       const userId = session.user?.email || session.user?.id || 'Anonymous';
       const startedAt = session.startedAt ? new Date(session.startedAt).toISOString() : '';
       const finishedAt = session.finishedAt ? new Date(session.finishedAt).toISOString() : '';
+      const dataUsageConsent = session.dataUsageConsentStatus || 'not_required';
+      const dataUsageConsentDecidedAt = session.dataUsageConsentDecidedAt
+        ? new Date(session.dataUsageConsentDecidedAt).toISOString()
+        : '';
+      const automatedRemoval = session.dataUsageAutomatedRemovalApplied ? 'TRUE' : 'FALSE';
       const score = session.score || '';
       const evaluation = session.evaluation ? `"${session.evaluation.replace(/"/g, '""')}"` : '';
 
@@ -213,10 +227,10 @@ class ReplicationService {
           const isLeia = message.isLeia ? 'TRUE' : 'FALSE';
           const timestamp = message.timestamp ? new Date(message.timestamp).toISOString() : '';
 
-          csv += `${sessionId},${userId},${startedAt},${finishedAt},${messageText},${isLeia},${timestamp},${score},${evaluation}\n`;
+          csv += `${sessionId},${userId},${startedAt},${finishedAt},${dataUsageConsent},${dataUsageConsentDecidedAt},${automatedRemoval},${messageText},${isLeia},${timestamp},${score},${evaluation}\n`;
         }
       } else {
-        csv += `${sessionId},${userId},${startedAt},${finishedAt},"No messages",,,${score},${evaluation}\n`;
+        csv += `${sessionId},${userId},${startedAt},${finishedAt},${dataUsageConsent},${dataUsageConsentDecidedAt},${automatedRemoval},"No messages",,,${score},${evaluation}\n`;
       }
     }
 
