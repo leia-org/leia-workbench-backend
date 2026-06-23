@@ -27,6 +27,84 @@ function stripSupervisorFields(session) {
   return data;
 }
 
+function toPlainObject(value) {
+  if (!value) return value;
+  if (typeof value.toObject === 'function') return value.toObject({ virtuals: true });
+  return JSON.parse(JSON.stringify(value));
+}
+
+function compactObject(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined));
+}
+
+function copyObject(value) {
+  if (!value || typeof value !== 'object') return undefined;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function buildRunnerConfigurationSnapshot(runnerConfiguration = {}) {
+  const audioMode = runnerConfiguration.audioMode || null;
+  const snapshot = {
+    provider: runnerConfiguration.provider,
+    modelName: runnerConfiguration.modelName,
+    audioMode,
+    hideAudioTranscription: runnerConfiguration.hideAudioTranscription ?? null,
+  };
+
+  if (audioMode === 'realtime') {
+    snapshot.realtimeConfig = copyObject(runnerConfiguration.realtimeConfig);
+  }
+  if (audioMode === 'luke') {
+    snapshot.lukeConfig = copyObject(runnerConfiguration.lukeConfig);
+  }
+
+  return compactObject(snapshot);
+}
+
+function buildReplicationConfigSnapshot(replication, leiaId) {
+  const source = toPlainObject(replication);
+  const selectedLeiaId = leiaId?.toString?.() || `${leiaId}`;
+  const selectedLeia = source.experiment?.leias?.find((leia) => {
+    const id = leia?.id || leia?._id;
+    return id?.toString?.() === selectedLeiaId || `${id}` === selectedLeiaId;
+  });
+  const configuration = selectedLeia?.configuration || {};
+  const runnerConfiguration = selectedLeia?.runnerConfiguration || {};
+  const problemSpec = selectedLeia?.leia?.spec?.problem?.spec || {};
+  const audioMode = runnerConfiguration.audioMode || null;
+  const runnerProvider = runnerConfiguration.provider || null;
+  const isToolCapable = audioMode === 'luke' || (audioMode == null && runnerProvider === 'openai-responses');
+  const activity = compactObject({
+    solutionFormat: problemSpec.solutionFormat,
+    widgets: isToolCapable && Array.isArray(problemSpec.widgets) && problemSpec.widgets.length > 0
+      ? copyObject(problemSpec.widgets)
+      : undefined,
+  });
+
+  return {
+    capturedAt: new Date(),
+    replication: {
+      id: source.id || source._id?.toString(),
+      name: source.name,
+      duration: source.duration ?? null,
+      isRepeatable: source.isRepeatable,
+      form: source.form ?? null,
+    },
+    leia: compactObject({
+      id: selectedLeiaId,
+      name: selectedLeia?.leia?.metadata?.name || selectedLeia?.name || selectedLeia?.title || null,
+      configuration: compactObject({
+        mode: configuration.mode,
+        askSolution: configuration.askSolution,
+        evaluateSolution: configuration.evaluateSolution,
+        data: configuration.data ? copyObject(configuration.data) : undefined,
+      }),
+      runnerConfiguration: buildRunnerConfigurationSnapshot(runnerConfiguration),
+      activity: Object.keys(activity).length > 0 ? activity : undefined,
+    }),
+  };
+}
+
 function applyProblemToolConfig(tools, leia) {
   if (!Array.isArray(tools) || tools.length === 0) return tools;
 
@@ -98,7 +176,13 @@ class InteractionService {
       } else {
         logger.info(`Creating new session for user ${userEmail} and replication ${replicationCode}`);
         const nextLeiaId = await ReplicationService.getAndIncrementNextLeia(replication.id);
-        session = await SessionService.create(user.id, replication.id, nextLeiaId, false);
+        session = await SessionService.create(
+          user.id,
+          replication.id,
+          nextLeiaId,
+          false,
+          buildReplicationConfigSnapshot(replication, nextLeiaId)
+        );
         logger.info(`Session created for user ${userEmail} and replication ${replicationCode}`);
       }
     }
@@ -143,7 +227,13 @@ class InteractionService {
       throw error;
     }
 
-    let session = await SessionService.create(null, replicationId, leiaId, true);
+    let session = await SessionService.create(
+      null,
+      replicationId,
+      leiaId,
+      true,
+      buildReplicationConfigSnapshot(replication, leiaId)
+    );
 
     // Initialize runner for the session
     await RunnerService.initializeRunner(session.id, leia);

@@ -55,13 +55,14 @@ class SessionService {
 
   // WRITE METHODS
 
-  async create(userId, replicationId, leiaId, isTest = false) {
+  async create(userId, replicationId, leiaId, isTest = false, replicationConfig = undefined) {
     const sessionData = {
       user: userId,
       replication: replicationId,
       leia: leiaId,
       isTest,
     };
+    if (replicationConfig) sessionData.replicationConfig = replicationConfig;
     return await SessionRepository.create(sessionData);
   }
 
