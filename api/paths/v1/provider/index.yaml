@@ -1,0 +1,12 @@
+get:
+  tags:
+    - Provider v1
+  summary: Retrieve runner models and provider details
+  operationId: getAllModelsAndDetails
+  responses:
+    '200':
+      description: Successful response with model and provider details
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/provider/modelsResponse.yaml'

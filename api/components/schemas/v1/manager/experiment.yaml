@@ -1,0 +1,12 @@
+type: object
+description: Experiment payload as returned by the Manager service.
+properties:
+  id:
+    type: string
+    description: Unique identifier for the experiment.
+  name:
+    type: string
+  leias:
+    type: array
+    items:
+      $ref: './leia.yaml'

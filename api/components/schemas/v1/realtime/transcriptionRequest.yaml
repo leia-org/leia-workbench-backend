@@ -1,0 +1,9 @@
+type: object
+required:
+  - transcript
+  - isLeia
+properties:
+  transcript:
+    type: string
+  isLeia:
+    type: boolean

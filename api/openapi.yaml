@@ -22,6 +22,16 @@ tags:
     description: Replications API v1
   - name: Interactions v1
     description: Interactions API v1
+  - name: Runner v1
+    description: Runner API v1
+  - name: Provider v1
+    description: Provider API v1
+  - name: Realtime v1
+    description: Realtime API v1
+  - name: Spectator v1
+    description: Spectator API v1
+  - name: Secret v1
+    description: Admin secret API v1
 
 paths:
   # Manager
@@ -41,6 +51,10 @@ paths:
     $ref: './paths/v1/replications/_id-toggleActive.yaml'
   /v1/replications/{id}/toggle-repeatable:
     $ref: './paths/v1/replications/_id-toggleRepeatable.yaml'
+  /v1/replications/{id}/toggle-shared:
+    $ref: './paths/v1/replications/_id-toggleShared.yaml'
+  /v1/replications/{id}/regenerate-share-token:
+    $ref: './paths/v1/replications/_id-regenerateShareToken.yaml'
   /v1/replications/{id}/leia/{leiaId}/toggle-ask-solution:
     $ref: './paths/v1/replications/_id-leia-_leiaId-toggleAskSolution.yaml'
   /v1/replications/{id}/leia/{leiaId}/toggle-evaluate-solution:
@@ -55,6 +69,14 @@ paths:
     $ref: './paths/v1/replications/_id-leia-_leiaId-runnerConfiguration.yaml'
   /v1/replications/{id}/form:
     $ref: './paths/v1/replications/_id-form.yaml'
+  /v1/replications/{id}/sessions/{sessionId}/score:
+    $ref: './paths/v1/replications/_id-sessions-_sessionId-score.yaml'
+  /v1/replications/{id}/conversations:
+    $ref: './paths/v1/replications/_id-conversations.yaml'
+  /v1/replications/{id}/conversations/csv:
+    $ref: './paths/v1/replications/_id-conversations-csv.yaml'
+  /v1/replications/exists/{name}:
+    $ref: './paths/v1/replications/exists-_name.yaml'
 
   # Interactions
   /v1/interactions:
@@ -71,3 +93,35 @@ paths:
     $ref: './paths/v1/interactions/_sessionId-finish.yaml'
   /v1/interactions/{sessionId}/evaluation:
     $ref: './paths/v1/interactions/_sessionId-evaluation.yaml'
+  /v1/interactions/{sessionId}/solution:
+    $ref: './paths/v1/interactions/_sessionId-solution.yaml'
+  /v1/interactions/{sessionId}/draft:
+    $ref: './paths/v1/interactions/_sessionId-draft.yaml'
+
+  # Runner
+  /v1/runner/models:
+    $ref: './paths/v1/runner/models.yaml'
+
+  # Provider
+  /v1/provider:
+    $ref: './paths/v1/provider/index.yaml'
+
+  # Realtime
+  /v1/realtime/session:
+    $ref: './paths/v1/realtime/session.yaml'
+  /v1/realtime/transcriptions/{sessionId}:
+    $ref: './paths/v1/realtime/transcriptions-_sessionId.yaml'
+  /v1/realtime/luke-token/{sessionId}:
+    $ref: './paths/v1/realtime/luke-token-_sessionId.yaml'
+
+  # Spectator
+  /v1/spectator/sessions/{id}/token:
+    $ref: './paths/v1/spectator/sessions-_id-token.yaml'
+  /v1/spectator/sessions/{id}:
+    $ref: './paths/v1/spectator/sessions-_id.yaml'
+  /v1/spectator/replications/{id}/sessions:
+    $ref: './paths/v1/spectator/replications-_id-sessions.yaml'
+
+  # Secret
+  /v1/secret:
+    $ref: './paths/v1/secret/index.yaml'

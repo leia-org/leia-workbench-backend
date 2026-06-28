@@ -15,18 +15,11 @@ post:
     content:
       application/json:
         schema:
-          type: object
-          properties:
-            result:
-              description: The result of the session
+          $ref: '../../../components/schemas/v1/interaction/saveResultRequest.yaml'
   responses:
     '200':
       description: Session data updated successfully
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              session:
-                type: object
-                description: The updated session data
+            $ref: '../../../components/schemas/v1/interaction/session.yaml'

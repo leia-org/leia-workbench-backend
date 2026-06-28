@@ -1,0 +1,7 @@
+type: object
+properties:
+  expiresIn:
+    type: integer
+    minimum: 1
+    default: 3600
+    description: Token lifetime in seconds.

@@ -1,0 +1,32 @@
+get:
+  tags:
+    - Spectator v1
+  summary: Retrieve session data for a spectator
+  operationId: getSessionForSpectator
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Workbench session identifier
+      schema:
+        type: string
+    - name: token
+      in: query
+      required: false
+      description: Spectate token. Required unless `x-spectate-token` is provided.
+      schema:
+        type: string
+    - name: x-spectate-token
+      in: header
+      required: false
+      description: Alternative header for the spectate token
+      schema:
+        type: string
+  security: []
+  responses:
+    '200':
+      description: Session data retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/interaction/sessionData.yaml'

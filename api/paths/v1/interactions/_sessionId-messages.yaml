@@ -15,19 +15,11 @@ post:
     content:
       application/json:
         schema:
-          type: object
-          properties:
-            message:
-              type: string
-              description: The message to send to the Leia
+          $ref: '../../../components/schemas/v1/interaction/sendMessageRequest.yaml'
   responses:
-    '201':
+    '200':
       description: Message sent successfully, and response received
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              message:
-                type: string
-                description: The response from the Leia
+            $ref: '../../../components/schemas/v1/interaction/sendMessageResponse.yaml'

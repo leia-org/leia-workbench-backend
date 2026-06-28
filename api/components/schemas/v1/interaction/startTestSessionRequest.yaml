@@ -1,0 +1,9 @@
+type: object
+required:
+  - replicationId
+  - leiaId
+properties:
+  replicationId:
+    $ref: '../../mongoId.yaml'
+  leiaId:
+    $ref: '../../mongoId.yaml'

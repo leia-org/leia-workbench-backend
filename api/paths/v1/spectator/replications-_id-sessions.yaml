@@ -1,0 +1,25 @@
+get:
+  tags:
+    - Spectator v1
+  summary: Retrieve live sessions for a replication dashboard
+  operationId: getLiveSessionsByReplication
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Replication identifier
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+    - name: userId
+      in: query
+      required: false
+      description: Optional user filter
+      schema:
+        type: string
+  responses:
+    '200':
+      description: Live sessions retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/spectator/liveSessionsResponse.yaml'

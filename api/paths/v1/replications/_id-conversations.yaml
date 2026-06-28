@@ -1,0 +1,21 @@
+get:
+  tags:
+    - Replications v1
+  summary: Retrieve conversations for a Replication
+  operationId: getReplicationConversations
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the replication
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+  responses:
+    '200':
+      description: Successful response with sessions and populated messages
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '../../../components/schemas/v1/interaction/session.yaml'
