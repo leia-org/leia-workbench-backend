@@ -133,6 +133,17 @@ class ReplicationService {
     return await ReplicationRepository.update(id, { form: null });
   }
 
+  async updateDataUsage(id, dataUsageConfig) {
+    return await ReplicationRepository.update(id, {
+      dataUsageConfig: {
+        ...dataUsageConfig,
+        conversationAutomatedRemoval: dataUsageConfig.dataUsageConsentRequired
+          ? dataUsageConfig.conversationAutomatedRemoval
+          : false,
+      },
+    });
+  }
+
   async deleteDuration(id) {
     return await ReplicationRepository.update(id, { duration: null });
   }

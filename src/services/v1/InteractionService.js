@@ -42,6 +42,17 @@ function copyObject(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function buildDataUsageSnapshot(replication) {
+  const source = toPlainObject(replication);
+  const config = source.dataUsageConfig || {};
+  const dataUsageConsentRequired = Boolean(config.dataUsageConsentRequired);
+  return {
+    dataUsageConsentRequired,
+    dataUsageConsentMessage: config.dataUsageConsentMessage || '',
+    conversationAutomatedRemoval: dataUsageConsentRequired && Boolean(config.conversationAutomatedRemoval),
+  };
+}
+
 function buildRunnerConfigurationSnapshot(runnerConfiguration = {}) {
   const audioMode = runnerConfiguration.audioMode || null;
   const snapshot = {
@@ -138,6 +149,23 @@ function applyProblemToolConfig(tools, leia) {
 }
 
 class InteractionService {
+  _assertDataUsageConsentDecided(session) {
+    if (
+      !session.isTest &&
+      session.dataUsage?.config?.dataUsageConsentRequired &&
+      !['accepted', 'declined', 'not_required'].includes(session.dataUsage?.consentStatus)
+    ) {
+      const error = new Error('Data usage consent decision is required before starting this activity');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
+  async _removePersistedConversation(sessionId) {
+    await MessageService.deleteBySession(sessionId);
+    return await SessionService.clearMessages(sessionId);
+  }
+
   async startSession(userEmail, replicationCode) {
     logger.info(`User ${userEmail} is trying to join replication ${replicationCode}`);
     const replication = await ReplicationService.findByCode(replicationCode);
@@ -181,7 +209,8 @@ class InteractionService {
           replication.id,
           nextLeiaId,
           false,
-          buildReplicationConfigSnapshot(replication, nextLeiaId)
+          buildReplicationConfigSnapshot(replication, nextLeiaId),
+          buildDataUsageSnapshot(replication)
         );
         logger.info(`Session created for user ${userEmail} and replication ${replicationCode}`);
       }
@@ -232,7 +261,8 @@ class InteractionService {
       replicationId,
       leiaId,
       true,
-      buildReplicationConfigSnapshot(replication, leiaId)
+      buildReplicationConfigSnapshot(replication, leiaId),
+      buildDataUsageSnapshot(replication)
     );
 
     // Initialize runner for the session
@@ -243,6 +273,34 @@ class InteractionService {
     logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
 
     return session.id;
+  }
+
+  async recordDataUsageConsent(sessionId, accepted) {
+    let session = await SessionService.findById(sessionId);
+    if (!session) {
+      const error = new Error('Session not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (session.finishedAt) {
+      const error = new Error('Session already finished');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (session.isTest || !session.dataUsage?.config?.dataUsageConsentRequired) {
+      return { session: stripSupervisorFields(session), removedConversation: false };
+    }
+
+    session = await SessionService.updateDataUsageConsent(session.id, accepted);
+    let removedConversation = false;
+
+    if (!accepted && MessageService.shouldSkipConversationPersistence(session)) {
+      await this._removePersistedConversation(session.id);
+      session = await SessionService.markDataUsageAutomatedRemovalApplied(session.id);
+      removedConversation = true;
+    }
+
+    return { session: stripSupervisorFields(session), removedConversation };
   }
 
   async getSessionData(sessionId) {
@@ -373,6 +431,8 @@ class InteractionService {
       throw error;
     }
 
+    this._assertDataUsageConsentDecided(session);
+
     const leia = await ReplicationService.findLeia(session.replication, session.leia);
 
     if (!leia) {
@@ -398,7 +458,9 @@ class InteractionService {
     // Continuations (toolResults) keep the same logical user turn going.
     if (!isToolContinuation && typeof message === 'string' && message.length > 0) {
       const newUserMessage = await MessageService.create(message, false, session.id);
-      session = await SessionService.addMessage(session.id, newUserMessage.id);
+      if (newUserMessage) {
+        session = await SessionService.addMessage(session.id, newUserMessage.id);
+      }
     }
 
     // Layer the problem's per-tool authoring (disable / usage guidance) onto
@@ -423,11 +485,13 @@ class InteractionService {
     const leiaMessage = typeof runnerResponse === 'string' ? runnerResponse : runnerResponse?.message;
     if (leiaMessage) {
       const newLeiaMessage = await MessageService.create(leiaMessage, true, session.id);
-      session = await SessionService.addMessage(session.id, newLeiaMessage.id);
+      if (newLeiaMessage) {
+        session = await SessionService.addMessage(session.id, newLeiaMessage.id);
 
-      // A full exchange completed: let the background supervisor observe it
-      // (fire-and-forget; respects cadence and is a no-op when disabled).
-      SupervisorService.observeAsync(session.id, leia);
+        // A full exchange completed: let the background supervisor observe it
+        // (fire-and-forget; respects cadence and is a no-op when disabled).
+        SupervisorService.observeAsync(session.id, leia);
+      }
     }
 
     // Deliver (and clear) any nudge the supervisor queued previously. The clear
@@ -448,6 +512,8 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
+
+    this._assertDataUsageConsentDecided(session);
 
     if (session.finishedAt) {
       const error = new Error('Session already finished');
@@ -481,6 +547,7 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
+    this._assertDataUsageConsentDecided(session);
     if (session.finishedAt) {
       const error = new Error('Session already finished');
       error.statusCode = 403;
@@ -515,6 +582,7 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
+    this._assertDataUsageConsentDecided(session);
     if (session.finishedAt) {
       const error = new Error('Session already finished');
       error.statusCode = 403;

@@ -55,7 +55,7 @@ class SessionService {
 
   // WRITE METHODS
 
-  async create(userId, replicationId, leiaId, isTest = false, replicationConfig = undefined) {
+  async create(userId, replicationId, leiaId, isTest = false, replicationConfig = undefined, dataUsageUsage = undefined) {
     const sessionData = {
       user: userId,
       replication: replicationId,
@@ -63,6 +63,14 @@ class SessionService {
       isTest,
     };
     if (replicationConfig) sessionData.replicationConfig = replicationConfig;
+    if (dataUsageUsage) {
+      sessionData.dataUsage = {
+        config: dataUsageUsage,
+        consentStatus: dataUsageUsage.dataUsageConsentRequired ? 'pending' : 'not_required',
+        decidedAt: null,
+        automatedRemovalApplied: false,
+      };
+    }
     return await SessionRepository.create(sessionData);
   }
 
@@ -107,8 +115,23 @@ class SessionService {
     return await SessionRepository.addMessage(id, messageId);
   }
 
+  async clearMessages(id) {
+    return await SessionRepository.clearMessages(id);
+  }
+
   async updateIsRunnerInitialized(id, isRunnerInitialized) {
     return await SessionRepository.update(id, { isRunnerInitialized });
+  }
+
+  async updateDataUsageConsent(id, accepted) {
+    return await SessionRepository.update(id, {
+      'dataUsage.consentStatus': accepted ? 'accepted' : 'declined',
+      'dataUsage.decidedAt': new Date(),
+    });
+  }
+
+  async markDataUsageAutomatedRemovalApplied(id) {
+    return await SessionRepository.update(id, { 'dataUsage.automatedRemovalApplied': true });
   }
 
   async saveDraft(id, draft) {
