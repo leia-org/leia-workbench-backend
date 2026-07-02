@@ -246,7 +246,10 @@ class ReplicationService {
 
   async getConversationsCSV(id) {
     const sessions = await SessionRepository.findByReplicationAndPopulateMessages(id);
-    const replicationConfigRows = sessions.map((session) => flattenObject(session.replicationConfig, 'replicationConfig'));
+    const exportableSessions = sessions.filter((session) => session.dataUsage?.consentStatus !== 'declined');
+    const replicationConfigRows = exportableSessions.map((session) =>
+      flattenObject(session.replicationConfig, 'replicationConfig')
+    );
     const replicationConfigColumns = [...new Set(replicationConfigRows.flatMap((row) => Object.keys(row)))]
       .filter((column) => !REPLICATION_CONFIG_CSV_EXCLUDED_COLUMNS.has(column))
       .sort();
@@ -263,7 +266,7 @@ class ReplicationService {
       ...replicationConfigColumns,
     ];
 
-    const records = sessions.flatMap((session, index) => {
+    const records = exportableSessions.flatMap((session, index) => {
       const baseRecord = {
         'Session ID': session.id || '',
         User: session.user?.email || session.user?.id || 'Anonymous',

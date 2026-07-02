@@ -101,6 +101,7 @@ describe('getConversationsCSV', () => {
         user: { email: 'student@example.com' },
         startedAt: '2026-01-01T10:00:00.000Z',
         finishedAt: '2026-01-01T10:30:00.000Z',
+        dataUsage: { consentStatus: 'accepted' },
         score: 0,
         evaluation: 'Buen trabajo',
         messages: [
@@ -131,6 +132,26 @@ describe('getConversationsCSV', () => {
           leia: { id: 'leia2' },
         },
       },
+      {
+        id: 'session3',
+        user: { email: 'declined@example.com' },
+        startedAt: '2026-01-03T10:00:00.000Z',
+        dataUsage: { consentStatus: 'declined' },
+        messages: [
+          {
+            text: 'Do not export this message',
+            isLeia: false,
+            timestamp: '2026-01-03T10:05:00.000Z',
+          },
+        ],
+        replicationConfig: {
+          replication: { id: 'rep1', name: 'Actividad privada' },
+          leia: {
+            id: 'leia3',
+            runnerConfiguration: { modelName: 'private-model' },
+          },
+        },
+      },
     ]);
 
     const csv = await ReplicationService.getConversationsCSV('rep1');
@@ -146,5 +167,8 @@ describe('getConversationsCSV', () => {
     expect(firstRow).toContain('gpt-4.1');
     expect(firstRow).toContain('"[{""name"":""editor""}]"');
     expect(secondRow).toContain('No messages');
+    expect(csv).not.toContain('declined@example.com');
+    expect(csv).not.toContain('Do not export this message');
+    expect(csv).not.toContain('private-model');
   });
 });
