@@ -5,7 +5,7 @@ vi.mock('../src/repositories/v1/ReplicationRepository.js', () => ({
   default: { findById: vi.fn(), toggleIsActive: vi.fn() },
 }));
 vi.mock('../src/repositories/v1/SessionRepository.js', () => ({
-  default: { hasReplicationStarted: vi.fn() },
+  default: { hasReplicationStarted: vi.fn(), findByReplicationAndPopulateMessages: vi.fn() },
 }));
 vi.mock('../src/services/v1/ManagerService.js', () => ({
   default: { findExperimentById: vi.fn() },
@@ -16,6 +16,7 @@ vi.mock('../src/utils/entity.js', () => ({
 vi.mock('axios', () => ({ default: { post: vi.fn() } }));
 
 import ReplicationRepository from '../src/repositories/v1/ReplicationRepository.js';
+import SessionRepository from '../src/repositories/v1/SessionRepository.js';
 import ReplicationService from '../src/services/v1/ReplicationService.js';
 
 // Construye una replicación con LEIAs cuya configuración de runner se puede afinar por test.
@@ -89,5 +90,61 @@ describe('toggleIsActive — bloqueo de activación incompleta', () => {
     ReplicationRepository.findById.mockResolvedValue(null);
 
     await expect(ReplicationService.toggleIsActive('fantasma')).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe('getConversationsCSV', () => {
+  test('agrega columnas aplanadas de replicationConfig con el prefijo requerido', async () => {
+    SessionRepository.findByReplicationAndPopulateMessages.mockResolvedValue([
+      {
+        id: 'session1',
+        user: { email: 'student@example.com' },
+        startedAt: '2026-01-01T10:00:00.000Z',
+        finishedAt: '2026-01-01T10:30:00.000Z',
+        score: 0,
+        evaluation: 'Buen trabajo',
+        messages: [
+          {
+            text: 'Hola, "LEIA"',
+            isLeia: false,
+            timestamp: '2026-01-01T10:05:00.000Z',
+          },
+        ],
+        replicationConfig: {
+          replication: { id: 'rep1', name: 'Actividad 1', duration: 30 },
+          leia: {
+            id: 'leia1',
+            configuration: { mode: 'chat', askSolution: true },
+            runnerConfiguration: { provider: 'openai-responses', modelName: 'gpt-4.1' },
+            activity: { widgets: [{ name: 'editor' }] },
+          },
+        },
+      },
+      {
+        id: 'session2',
+        user: null,
+        startedAt: '2026-01-02T10:00:00.000Z',
+        messages: [],
+        replicationConfig: {
+          capturedAt: new Date('2026-01-02T10:00:00.000Z'),
+          replication: { id: 'rep1', name: 'Actividad 1' },
+          leia: { id: 'leia2' },
+        },
+      },
+    ]);
+
+    const csv = await ReplicationService.getConversationsCSV('rep1');
+    const [headers, firstRow, secondRow] = csv.trim().split('\n');
+
+    expect(headers).not.toContain('replicationConfig_capturedAt');
+    expect(headers).not.toContain('replicationConfig_replication_id');
+    expect(headers).not.toContain('replicationConfig_leia_id');
+    expect(headers).toContain('replicationConfig_leia_runnerConfiguration_modelName');
+    expect(headers).toContain('replicationConfig_leia_activity_widgets');
+    expect(firstRow).toContain('"Hola, ""LEIA"""');
+    expect(firstRow).toContain('openai-responses');
+    expect(firstRow).toContain('gpt-4.1');
+    expect(firstRow).toContain('"[{""name"":""editor""}]"');
+    expect(secondRow).toContain('No messages');
   });
 });

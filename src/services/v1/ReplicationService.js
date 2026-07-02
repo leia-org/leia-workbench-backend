@@ -3,6 +3,45 @@ import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
 import axios from 'axios';
+import { stringify } from 'csv-stringify/sync';
+
+const REPLICATION_CONFIG_CSV_EXCLUDED_COLUMNS = new Set([
+  'replicationConfig_capturedAt',
+  'replicationConfig_replication_id',
+  'replicationConfig_leia_id',
+]);
+
+function normalizeCSVValue(value) {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value) || (value && typeof value === 'object')) return JSON.stringify(value);
+  return value;
+}
+
+function flattenObject(value, prefix = '') {
+  if (!value || typeof value !== 'object') return {};
+
+  const source = typeof value.toObject === 'function' ? value.toObject({ virtuals: false }) : value;
+  const flattened = {};
+
+  for (const [key, childValue] of Object.entries(source)) {
+    if (childValue === undefined) continue;
+
+    const path = prefix ? `${prefix}_${key}` : key;
+    const isPlainObject =
+      childValue &&
+      typeof childValue === 'object' &&
+      !Array.isArray(childValue) &&
+      !(childValue instanceof Date);
+
+    if (isPlainObject) {
+      Object.assign(flattened, flattenObject(childValue, path));
+    } else {
+      flattened[path] = normalizeCSVValue(childValue);
+    }
+  }
+
+  return flattened;
+}
 
 class ReplicationService {
   // READ METHODS
@@ -207,31 +246,44 @@ class ReplicationService {
 
   async getConversationsCSV(id) {
     const sessions = await SessionRepository.findByReplicationAndPopulateMessages(id);
+    const replicationConfigRows = sessions.map((session) => flattenObject(session.replicationConfig, 'replicationConfig'));
+    const replicationConfigColumns = [...new Set(replicationConfigRows.flatMap((row) => Object.keys(row)))]
+      .filter((column) => !REPLICATION_CONFIG_CSV_EXCLUDED_COLUMNS.has(column))
+      .sort();
+    const columns = [
+      'Session ID',
+      'User',
+      'Started At',
+      'Finished At',
+      'Message',
+      'Is LEIA',
+      'Timestamp',
+      'Score',
+      'Evaluation',
+      ...replicationConfigColumns,
+    ];
 
-    let csv = 'Session ID,User,Started At,Finished At,Message,Is LEIA,Timestamp,Score,Evaluation\n';
+    const records = sessions.flatMap((session, index) => {
+      const baseRecord = {
+        'Session ID': session.id || '',
+        User: session.user?.email || session.user?.id || 'Anonymous',
+        'Started At': session.startedAt ? new Date(session.startedAt).toISOString() : '',
+        'Finished At': session.finishedAt ? new Date(session.finishedAt).toISOString() : '',
+        Score: session.score ?? '',
+        Evaluation: session.evaluation || '',
+        ...replicationConfigRows[index],
+      };
+      const messages = session.messages?.length ? session.messages : [{ text: 'No messages' }];
 
-    for (const session of sessions) {
-      const sessionId = session.id || '';
-      const userId = session.user?.email || session.user?.id || 'Anonymous';
-      const startedAt = session.startedAt ? new Date(session.startedAt).toISOString() : '';
-      const finishedAt = session.finishedAt ? new Date(session.finishedAt).toISOString() : '';
-      const score = session.score || '';
-      const evaluation = session.evaluation ? `"${session.evaluation.replace(/"/g, '""')}"` : '';
+      return messages.map((message) => ({
+        ...baseRecord,
+        Message: message.text || '',
+        'Is LEIA': message.isLeia === undefined ? '' : message.isLeia ? 'TRUE' : 'FALSE',
+        Timestamp: message.timestamp ? new Date(message.timestamp).toISOString() : '',
+      }));
+    });
 
-      if (session.messages && session.messages.length > 0) {
-        for (const message of session.messages) {
-          const messageText = message.text ? `"${message.text.replace(/"/g, '""')}"` : '';
-          const isLeia = message.isLeia ? 'TRUE' : 'FALSE';
-          const timestamp = message.timestamp ? new Date(message.timestamp).toISOString() : '';
-
-          csv += `${sessionId},${userId},${startedAt},${finishedAt},${messageText},${isLeia},${timestamp},${score},${evaluation}\n`;
-        }
-      } else {
-        csv += `${sessionId},${userId},${startedAt},${finishedAt},"No messages",,,${score},${evaluation}\n`;
-      }
-    }
-
-    return csv;
+    return stringify(records, { header: true, columns, record_delimiter: '\n' });
   }
 
   async getProviderAndProviderModuleForReplication(modelName) {
