@@ -94,14 +94,23 @@ describe('toggleIsActive — bloqueo de activación incompleta', () => {
 });
 
 describe('getConversationsCSV', () => {
-  test('agrega columnas aplanadas de replicationConfig con el prefijo requerido', async () => {
+  test('agrega columnas aplanadas de replicationConfig y dataUsage con el prefijo requerido', async () => {
     SessionRepository.findByReplicationAndPopulateMessages.mockResolvedValue([
       {
         id: 'session1',
         user: { email: 'student@example.com' },
         startedAt: '2026-01-01T10:00:00.000Z',
         finishedAt: '2026-01-01T10:30:00.000Z',
-        dataUsage: { consentStatus: 'accepted' },
+        dataUsage: {
+          config: {
+            dataUsageConsentRequired: true,
+            dataUsageConsentMessage: 'Aceptas exportar datos',
+            conversationAutomatedRemoval: false,
+          },
+          consentStatus: 'accepted',
+          decidedAt: new Date('2026-01-01T10:01:00.000Z'),
+          automatedRemovalApplied: false,
+        },
         score: 0,
         evaluation: 'Buen trabajo',
         messages: [
@@ -136,7 +145,10 @@ describe('getConversationsCSV', () => {
         id: 'session3',
         user: { email: 'declined@example.com' },
         startedAt: '2026-01-03T10:00:00.000Z',
-        dataUsage: { consentStatus: 'declined' },
+        dataUsage: {
+          consentStatus: 'declined',
+          internalOnly: 'secret declined value',
+        },
         messages: [
           {
             text: 'Do not export this message',
@@ -162,13 +174,20 @@ describe('getConversationsCSV', () => {
     expect(headers).not.toContain('replicationConfig_leia_id');
     expect(headers).toContain('replicationConfig_leia_runnerConfiguration_modelName');
     expect(headers).toContain('replicationConfig_leia_activity_widgets');
+    expect(headers).toContain('dataUsage_consentStatus');
+    expect(headers).toContain('dataUsage_config_dataUsageConsentRequired');
+    expect(headers).toContain('dataUsage_decidedAt');
     expect(firstRow).toContain('"Hola, ""LEIA"""');
     expect(firstRow).toContain('openai-responses');
     expect(firstRow).toContain('gpt-4.1');
     expect(firstRow).toContain('"[{""name"":""editor""}]"');
+    expect(firstRow).toContain('accepted');
+    expect(firstRow).toContain('Aceptas exportar datos');
+    expect(firstRow).toContain('2026-01-01T10:01:00.000Z');
     expect(secondRow).toContain('No messages');
     expect(csv).not.toContain('declined@example.com');
     expect(csv).not.toContain('Do not export this message');
     expect(csv).not.toContain('private-model');
+    expect(csv).not.toContain('secret declined value');
   });
 });

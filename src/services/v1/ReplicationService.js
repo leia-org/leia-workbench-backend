@@ -253,6 +253,8 @@ class ReplicationService {
     const replicationConfigColumns = [...new Set(replicationConfigRows.flatMap((row) => Object.keys(row)))]
       .filter((column) => !REPLICATION_CONFIG_CSV_EXCLUDED_COLUMNS.has(column))
       .sort();
+    const dataUsageRows = exportableSessions.map((session) => flattenObject(session.dataUsage, 'dataUsage'));
+    const dataUsageColumns = [...new Set(dataUsageRows.flatMap((row) => Object.keys(row)))].sort();
     const columns = [
       'Session ID',
       'User',
@@ -264,6 +266,7 @@ class ReplicationService {
       'Score',
       'Evaluation',
       ...replicationConfigColumns,
+      ...dataUsageColumns,
     ];
 
     const records = exportableSessions.flatMap((session, index) => {
@@ -275,6 +278,7 @@ class ReplicationService {
         Score: session.score ?? '',
         Evaluation: session.evaluation || '',
         ...replicationConfigRows[index],
+        ...dataUsageRows[index],
       };
       const messages = session.messages?.length ? session.messages : [{ text: 'No messages' }];
 
