@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: WORKBENCH API
+  title: LEIA Workbench API
   version: '1.0.0'
-  description: WORKBENCH API documentation
+  description: LEIA Workbench API documentation
 servers:
   - url: /api
 
