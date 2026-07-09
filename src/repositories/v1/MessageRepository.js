@@ -23,6 +23,10 @@ class MessageRepository {
     const message = new Message(messageData);
     return await message.save();
   }
+
+  async deleteBySession(sessionId) {
+    return await Message.deleteMany({ session: sessionId });
+  }
 }
 
 export default new MessageRepository();

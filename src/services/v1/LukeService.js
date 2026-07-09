@@ -58,6 +58,7 @@ class LukeService {
           try {
             const isLeia = transcription.role === 'assistant';
             const message = await MessageService.create(transcription.text, isLeia, userSession.sessionId);
+            if (!message) return;
             await SessionService.addMessage(userSession.sessionId, message.id);
             // Observe luke (audio) exchanges too. Trigger on the LEIA turn; the
             // supervisor applies its own transcript-window + cadence logic.
@@ -97,6 +98,15 @@ class LukeService {
     if (!session) {
       const error = new Error('Session not found');
       error.statusCode = 404;
+      throw error;
+    }
+    if (
+      !session.isTest &&
+      session.dataUsage?.config?.dataUsageConsentRequired &&
+      !['accepted', 'declined', 'not_required'].includes(session.dataUsage?.consentStatus)
+    ) {
+      const error = new Error('Data usage consent decision is required before starting this activity');
+      error.statusCode = 403;
       throw error;
     }
 

@@ -99,6 +99,10 @@ class SessionRepository {
     return await Session.findByIdAndUpdate(id, { $push: { messages: messageId } }, { new: true });
   }
 
+  async clearMessages(id) {
+    return await Session.findByIdAndUpdate(id, { $set: { messages: [] } }, { new: true });
+  }
+
   // Append supervisor flags (if any) and advance the observation state in one write.
   async appendSupervisorObservation(id, flags, supervisorState) {
     const update = { $set: { supervisorState } };

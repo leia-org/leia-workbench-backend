@@ -12,6 +12,15 @@ class RealtimeService {
       error.statusCode = 404;
       throw error;
     }
+    if (
+      !session.isTest &&
+      session.dataUsage?.config?.dataUsageConsentRequired &&
+      !['accepted', 'declined', 'not_required'].includes(session.dataUsage?.consentStatus)
+    ) {
+      const error = new Error('Data usage consent decision is required before starting this activity');
+      error.statusCode = 403;
+      throw error;
+    }
 
     const leia = await ReplicationService.findLeia(session.replication, session.leia);
     if (!leia) {

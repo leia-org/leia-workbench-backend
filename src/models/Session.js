@@ -45,6 +45,14 @@ const sessionSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    replicationConfig: {
+      type: Schema.Types.Mixed,
+      default: undefined,
+    },
+    dataUsage: {
+      type: Schema.Types.Mixed,
+      default: undefined,
+    },
     draft: {
       type: String,
     },
