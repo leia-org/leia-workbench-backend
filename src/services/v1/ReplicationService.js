@@ -9,6 +9,7 @@ const REPLICATION_CONFIG_CSV_EXCLUDED_COLUMNS = new Set([
   'replicationConfig_capturedAt',
   'replicationConfig_replication_id',
   'replicationConfig_leia_id',
+  'replicationConfig_leia_activity_widgets'
 ]);
 
 function normalizeCSVValue(value) {
