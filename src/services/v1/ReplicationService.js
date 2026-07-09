@@ -12,10 +12,31 @@ const REPLICATION_CONFIG_CSV_EXCLUDED_COLUMNS = new Set([
   'replicationConfig_leia_activity_widgets'
 ]);
 
-function normalizeCSVValue(value) {
+function normalizeCSVValue(value, path = '') {
+  if (path === 'replicationConfig_replication_duration' && value == null) return 'No limit';
+  if (path === 'replicationConfig_replication_isRepeatable' && value == null) return 'FALSE';
+  if (path === 'dataUsage_automatedRemovalApplied' && value == null) return 'FALSE';
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value) || (value && typeof value === 'object')) return JSON.stringify(value);
   return value;
+}
+
+function applyReplicationConfigCSVDefaults(row) {
+  return {
+    ...row,
+    replicationConfig_replication_duration: row.replicationConfig_replication_duration ?? 'No limit',
+    replicationConfig_replication_isRepeatable: row.replicationConfig_replication_isRepeatable ?? 'FALSE',
+  };
+}
+
+function applyDataUsageCSVDefaults(row, dataUsage) {
+  if (!dataUsage) return row;
+
+  return {
+    ...row,
+    dataUsage_automatedRemovalApplied: row.dataUsage_automatedRemovalApplied ?? 'FALSE',
+  };
 }
 
 function flattenObject(value, prefix = '') {
@@ -37,7 +58,7 @@ function flattenObject(value, prefix = '') {
     if (isPlainObject) {
       Object.assign(flattened, flattenObject(childValue, path));
     } else {
-      flattened[path] = normalizeCSVValue(childValue);
+      flattened[path] = normalizeCSVValue(childValue, path);
     }
   }
 
@@ -249,12 +270,14 @@ class ReplicationService {
     const sessions = await SessionRepository.findByReplicationAndPopulateMessages(id);
     const exportableSessions = sessions.filter((session) => session.dataUsage?.consentStatus !== 'declined');
     const replicationConfigRows = exportableSessions.map((session) =>
-      flattenObject(session.replicationConfig, 'replicationConfig')
+      applyReplicationConfigCSVDefaults(flattenObject(session.replicationConfig, 'replicationConfig'))
     );
     const replicationConfigColumns = [...new Set(replicationConfigRows.flatMap((row) => Object.keys(row)))]
       .filter((column) => !REPLICATION_CONFIG_CSV_EXCLUDED_COLUMNS.has(column))
       .sort();
-    const dataUsageRows = exportableSessions.map((session) => flattenObject(session.dataUsage, 'dataUsage'));
+    const dataUsageRows = exportableSessions.map((session) =>
+      applyDataUsageCSVDefaults(flattenObject(session.dataUsage, 'dataUsage'), session.dataUsage)
+    );
     const dataUsageColumns = [...new Set(dataUsageRows.flatMap((row) => Object.keys(row)))].sort();
     const columns = [
       'Session ID',
