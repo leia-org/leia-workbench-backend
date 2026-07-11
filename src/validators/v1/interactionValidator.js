@@ -37,3 +37,7 @@ export const saveResultAndFinishSessionValidator = Joi.object({
 export const saveDraftValidator = Joi.object({
   draft: Joi.string().allow('').required(),
 });
+
+export const dataUsageConsentValidator = Joi.object({
+  accepted: Joi.boolean().required(),
+});
