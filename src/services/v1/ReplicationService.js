@@ -10,7 +10,9 @@ class ReplicationService {
   async findAll() {
     return await ReplicationRepository.findAll();
   }
-
+  async findAllByUser(userId) {
+    return await ReplicationRepository.findAllByUser(userId);
+  }
   async findById(id) {
     return await ReplicationRepository.findById(id);
   }
@@ -30,6 +32,7 @@ class ReplicationService {
   async checkAccess(id, isAdmin, token) {
     if (!isAdmin) {
       const hasAccess = await ReplicationRepository.checkSharedAccess(id, token);
+      
       if (!hasAccess) {
         const error = new Error('Access denied');
         error.status = 403;
@@ -43,8 +46,8 @@ class ReplicationService {
   }
   // WRITE METHODS
 
-  async create(replicationData) {
-    const experiment = await ManagerService.findExperimentById(replicationData.experiment);
+  async create(replicationData, authorization) {
+    const experiment = await ManagerService.findExperimentById(replicationData.experiment, authorization);
     const initializedExperiment = initializeExperiment(experiment);
     replicationData.experiment = initializedExperiment;
     return await ReplicationRepository.create(replicationData);

@@ -7,7 +7,9 @@ class ReplicationRepository {
   async findAll() {
     return await Replication.find();
   }
-
+  async findAllByUser(userId) {
+    return await Replication.find({ 'experiment.user.id': userId });
+  }
   async findById(id) {
     return await Replication.findById(id);
   }
