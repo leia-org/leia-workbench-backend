@@ -148,6 +148,12 @@ function applyProblemToolConfig(tools, leia) {
   return out;
 }
 
+function buildLeiaInfographicFallbackPaths(leiaId) {
+  const id = leiaId ? `${leiaId}`.trim() : '';
+  if (!id) return [];
+  return ['png', 'jpg'].map((extension) => `/images/leias/${id}/infographic/original.${extension}`);
+}
+
 class InteractionService {
   _assertDataUsageConsentDecided(session) {
     if (
@@ -343,6 +349,14 @@ class InteractionService {
     const runnerLukeConfig = leia.runnerConfiguration?.lukeConfig || null;
     const runnerProvider = leia.runnerConfiguration?.provider || null;
     const hideAudioTranscription = leia.runnerConfiguration?.hideAudioTranscription || null;
+    const infographicConfig = leia.runnerConfiguration?.infographic || {};
+    const infographicSrc = leia.leia?.spec?.infographic || null;
+    const infographicFallbackSources = buildLeiaInfographicFallbackPaths(leia.leia?.id || leia.leia?._id || leia.id);
+    const infographicFallbackSrc = infographicFallbackSources[0] || null;
+    if (leia.leia?.spec) {
+      delete leia.leia.spec.infographic;
+      delete leia.leia.spec.infographicSolution;
+    }
 
     // Widgets now live in the problem definition (authored in the designer)
     // and ride here inside leia.leia.spec.problem.spec.widgets. Fall back to
@@ -368,6 +382,13 @@ class InteractionService {
       (audioMode == null && runnerProvider === 'openai-responses');
 
     leia.audioMode = audioMode;
+    if (infographicConfig.showToStudent && (infographicSrc || infographicFallbackSrc)) {
+      leia.infographic = {
+        src: infographicSrc || infographicFallbackSrc,
+        fallbackSrc: infographicFallbackSrc,
+        fallbackSources: infographicFallbackSources,
+      };
+    }
     // Expose the widgets (+ luke provider/voice when present) to the FE under
     // `lukeConfig` — the shape Chat.tsx already consumes — whenever the active
     // mode can actually use them. The mode itself stays a workbench concern.
