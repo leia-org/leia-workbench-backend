@@ -1,0 +1,25 @@
+post:
+  tags:
+    - Spectator v1
+  summary: Generate a spectate token for a session
+  operationId: generateSpectateToken
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Workbench session identifier
+      schema:
+        type: string
+  requestBody:
+    required: false
+    content:
+      application/json:
+        schema:
+          $ref: '../../../components/schemas/v1/spectator/generateTokenRequest.yaml'
+  responses:
+    '200':
+      description: Spectate token generated successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/spectator/tokenResponse.yaml'

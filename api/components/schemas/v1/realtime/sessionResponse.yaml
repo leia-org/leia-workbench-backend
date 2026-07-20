@@ -1,0 +1,9 @@
+type: object
+additionalProperties: true
+properties:
+  sdp:
+    type: string
+    description: SDP answer returned by the realtime provider.
+  session:
+    type: object
+    additionalProperties: true

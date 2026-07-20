@@ -1,6 +1,88 @@
 type: object
 properties:
+  modelName:
+    type: string
+    description: Runner model selected for this LEIA.
+  apiKeyId:
+    type: string
+    nullable: true
+  apiKeyRequesterId:
+    type: string
+    nullable: true
   provider:
     type: string
     description: The provider used for the replication runner.
-    example: 'openai'
+    example: openai
+  audioMode:
+    type: string
+    nullable: true
+    enum:
+      - realtime
+      - luke
+      - null
+  hideAudioTranscription:
+    type: boolean
+    nullable: true
+  lukeConfig:
+    type: object
+    properties:
+      provider:
+        type: string
+        enum:
+          - openai
+          - gemini
+      voice:
+        type: string
+      widgets:
+        type: array
+        items:
+          type: object
+          properties:
+            widgetType:
+              type: string
+            slot:
+              type: string
+              enum:
+                - left
+                - right
+                - main
+            params:
+              type: object
+  realtimeConfig:
+    type: object
+    properties:
+      model:
+        type: string
+        default: gpt-4o-realtime-preview
+      voice:
+        type: string
+        default: marin
+        enum:
+          - alloy
+          - ash
+          - ballad
+          - cedar
+          - coral
+          - echo
+          - marin
+          - sage
+          - shimmer
+          - verse
+      instructions:
+        type: string
+      turnDetection:
+        type: object
+        properties:
+          type:
+            type: string
+            enum:
+              - server_vad
+              - none
+          threshold:
+            type: number
+            minimum: 0
+            maximum: 1
+          prefix_padding_ms:
+            type: number
+          silence_duration_ms:
+            type: number

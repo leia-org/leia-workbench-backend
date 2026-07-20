@@ -1,0 +1,7 @@
+type: object
+required:
+  - form
+properties:
+  form:
+    type: string
+    description: Form link for the replication.

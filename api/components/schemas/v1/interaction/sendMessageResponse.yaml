@@ -1,0 +1,18 @@
+type: object
+properties:
+  message:
+    type: string
+    description: Final LEIA text response.
+  toolCalls:
+    type: array
+    description: Tool calls the frontend must execute before continuing the turn.
+    items:
+      $ref: './toolCall.yaml'
+  nudge:
+    type: string
+    description: Optional supervisor nudge queued for the student.
+oneOf:
+  - required:
+      - message
+  - required:
+      - toolCalls

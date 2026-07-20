@@ -1,0 +1,14 @@
+type: object
+additionalProperties: true
+properties:
+  id:
+    type: string
+  text:
+    type: string
+  isLeia:
+    type: boolean
+  timestamp:
+    type: string
+    format: date-time
+  session:
+    type: string

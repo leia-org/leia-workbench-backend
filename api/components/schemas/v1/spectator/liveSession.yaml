@@ -1,0 +1,33 @@
+type: object
+properties:
+  id:
+    type: string
+  user:
+    nullable: true
+    oneOf:
+      - type: string
+      - $ref: '../interaction/user.yaml'
+  leia:
+    type: string
+  startedAt:
+    type: string
+    format: date-time
+  finishedAt:
+    type: string
+    format: date-time
+    nullable: true
+  isActive:
+    type: boolean
+  messageCount:
+    type: integer
+  lastMessage:
+    nullable: true
+    type: object
+    properties:
+      text:
+        type: string
+      isLeia:
+        type: boolean
+      timestamp:
+        type: string
+        format: date-time
