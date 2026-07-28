@@ -104,11 +104,29 @@ class ReplicationService {
   }
   // WRITE METHODS
 
-  async create(replicationData) {
+  async create(replicationData, authorization, apiKeyRequesterId) {
     const experiment = await ManagerService.findExperimentById(replicationData.experiment);
-    const initializedExperiment = initializeExperiment(experiment);
+    const defaultApiKey = await this.getDefaultApiKey(authorization);
+    const providerDriver = defaultApiKey
+      ? (await this.getProviderAndProviderModuleForReplication(defaultApiKey.model)).providerDriver
+      : 'default';
+    const initializedExperiment = initializeExperiment(
+      experiment,
+      defaultApiKey,
+      apiKeyRequesterId,
+      providerDriver
+    );
     replicationData.experiment = initializedExperiment;
     return await ReplicationRepository.create(replicationData);
+  }
+
+  async getDefaultApiKey(authorization) {
+    if (!authorization) return null;
+
+    const response = await axios.get(`${process.env.AUTH_URL}/api/v1/apikeys`, {
+      headers: { Authorization: authorization },
+    });
+    return response.data.find((apiKey) => apiKey.isDefault) || null;
   }
 
   async updateName(id, name) {
