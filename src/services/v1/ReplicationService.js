@@ -105,7 +105,10 @@ class ReplicationService {
   // WRITE METHODS
 
   async create(replicationData, authorization, apiKeyRequesterId) {
-    const experiment = await ManagerService.findExperimentById(replicationData.experiment);
+    const experiment = await ManagerService.findExperimentById(
+      replicationData.experiment,
+      authorization
+    );
     const defaultApiKey = await this.getDefaultApiKey(authorization);
     const providerDriver = defaultApiKey
       ? (await this.getProviderAndProviderModuleForReplication(defaultApiKey.model)).providerDriver
@@ -185,13 +188,13 @@ class ReplicationService {
     return await ReplicationRepository.update(id, { duration });
   }
 
-  async updateExperiment(id, experimentId) {
+  async updateExperiment(id, experimentId, authorization) {
     if (SessionRepository.hasReplicationStarted(id)) {
       const error = new Error('Replication has already started, cannot update experiment');
       error.status = 400;
       throw error;
     }
-    const experiment = await ManagerService.findExperimentById(experimentId);
+    const experiment = await ManagerService.findExperimentById(experimentId, authorization);
     const initializedExperiment = initializeExperiment(experiment);
     return await ReplicationRepository.update(id, { initializedExperiment });
   }
