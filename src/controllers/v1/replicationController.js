@@ -16,7 +16,11 @@ export const createReplication = async (req, res, next) => {
     const value = await createReplicationValidator.validateAsync(req.body, {
       abortEarly: false,
     });
-    const newReplication = await ReplicationService.create(value);
+    const newReplication = await ReplicationService.create(
+      value,
+      req.headers.authorization,
+      req.user.id
+    );
     res.status(201).json(newReplication);
   } catch (err) {
     next(err);
