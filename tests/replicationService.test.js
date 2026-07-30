@@ -58,6 +58,10 @@ describe('create — configuración inicial de las LEIAs', () => {
       'user1'
     );
 
+    expect(ManagerService.findExperimentById).toHaveBeenCalledWith(
+      'experiment1',
+      'Bearer token'
+    );
     expect(axios.get).toHaveBeenCalledWith(
       `${process.env.AUTH_URL}/api/v1/apikeys`,
       { headers: { Authorization: 'Bearer token' } }

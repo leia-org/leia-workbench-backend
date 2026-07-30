@@ -10,10 +10,10 @@ class ManagerService {
     return response.data;
   }
 
-  async findExperimentById(id) {
+  async findExperimentById(id, authorization) {
     const response = await axios.get(`${process.env.MANAGER_URL}/api/v1/experiments/${id}`, {
       headers: {
-        'x-api-key': process.env.MANAGER_KEY,
+        Authorization: authorization,
       },
     });
     return response.data;

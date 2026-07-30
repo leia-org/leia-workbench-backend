@@ -12,7 +12,7 @@ export const getAllExperiments = async (req, res, next) => {
 export const getExperimentById = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const experiment = await ManagerService.findExperimentById(id);
+    const experiment = await ManagerService.findExperimentById(id, req.headers.authorization);
     res.status(200).json(experiment);
   } catch (error) {
     next(error);
