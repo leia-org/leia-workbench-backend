@@ -1,0 +1,53 @@
+type: object
+additionalProperties: true
+properties:
+  id:
+    type: string
+  startedAt:
+    type: string
+    format: date-time
+  finishedAt:
+    type: string
+    format: date-time
+    nullable: true
+  result:
+    type: string
+    nullable: true
+  evaluation:
+    type: string
+    nullable: true
+  score:
+    type: number
+    nullable: true
+  messages:
+    type: array
+    items:
+      oneOf:
+        - type: string
+        - $ref: './message.yaml'
+  replication:
+    type: string
+  leia:
+    type: string
+  user:
+    nullable: true
+    oneOf:
+      - type: string
+      - $ref: './user.yaml'
+  isTest:
+    type: boolean
+  isRunnerInitialized:
+    type: boolean
+  draft:
+    type: string
+    nullable: true
+  spectateUrl:
+    type: string
+    nullable: true
+  spectateToken:
+    type: string
+    nullable: true
+  spectateExpiresAt:
+    type: string
+    format: date-time
+    nullable: true

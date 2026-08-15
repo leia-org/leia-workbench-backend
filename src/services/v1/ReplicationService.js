@@ -46,11 +46,32 @@ class ReplicationService {
   }
   // WRITE METHODS
 
-  async create(replicationData, authorization) {
-    const experiment = await ManagerService.findExperimentById(replicationData.experiment, authorization);
-    const initializedExperiment = initializeExperiment(experiment);
+  async create(replicationData, authorization, apiKeyRequesterId) {
+    const experiment = await ManagerService.findExperimentById(
+      replicationData.experiment,
+      authorization
+    );
+    const defaultApiKey = await this.getDefaultApiKey(authorization);
+    const providerDriver = defaultApiKey
+      ? (await this.getProviderAndProviderModuleForReplication(defaultApiKey.model)).providerDriver
+      : 'default';
+    const initializedExperiment = initializeExperiment(
+      experiment,
+      defaultApiKey,
+      apiKeyRequesterId,
+      providerDriver
+    );
     replicationData.experiment = initializedExperiment;
     return await ReplicationRepository.create(replicationData);
+  }
+
+  async getDefaultApiKey(authorization) {
+    if (!authorization) return null;
+
+    const response = await axios.get(`${process.env.AUTH_URL}/api/v1/apikeys`, {
+      headers: { Authorization: authorization },
+    });
+    return response.data.find((apiKey) => apiKey.isDefault) || null;
   }
 
   async updateName(id, name) {
@@ -109,13 +130,13 @@ class ReplicationService {
     return await ReplicationRepository.update(id, { duration });
   }
 
-  async updateExperiment(id, experimentId) {
+  async updateExperiment(id, experimentId, authorization) {
     if (SessionRepository.hasReplicationStarted(id)) {
       const error = new Error('Replication has already started, cannot update experiment');
       error.status = 400;
       throw error;
     }
-    const experiment = await ManagerService.findExperimentById(experimentId);
+    const experiment = await ManagerService.findExperimentById(experimentId, authorization);
     const initializedExperiment = initializeExperiment(experiment);
     return await ReplicationRepository.update(id, { initializedExperiment });
   }

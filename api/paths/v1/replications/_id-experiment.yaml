@@ -15,10 +15,7 @@ patch:
     content:
       application/json:
         schema:
-          type: object
-          properties:
-            experiment:
-              $ref: '../../../components/schemas/mongoId.yaml'
+          $ref: '../../../components/schemas/v1/replication/updateExperimentRequest.yaml'
   responses:
     '200':
       description: Successful response with Replication

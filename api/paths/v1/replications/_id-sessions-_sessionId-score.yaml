@@ -1,0 +1,31 @@
+patch:
+  tags:
+    - Replications v1
+  summary: Update a session score
+  operationId: updateSessionScore
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the replication
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+    - name: sessionId
+      in: path
+      required: true
+      description: Unique identifier for the session
+      schema:
+        type: string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../../components/schemas/v1/replication/updateSessionScoreRequest.yaml'
+  responses:
+    '200':
+      description: Successful response with updated session
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/interaction/session.yaml'

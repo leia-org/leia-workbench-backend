@@ -1,0 +1,12 @@
+type: object
+properties:
+  session:
+    $ref: './session.yaml'
+  messages:
+    type: array
+    items:
+      $ref: './message.yaml'
+  leia:
+    $ref: '../manager/leia.yaml'
+  replication:
+    $ref: '../replication/replication.yaml'

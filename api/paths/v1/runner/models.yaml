@@ -1,0 +1,12 @@
+get:
+  tags:
+    - Runner v1
+  summary: Retrieve runner models
+  operationId: getRunnerModels
+  responses:
+    '200':
+      description: Successful response with runner model names
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/runner/modelsResponse.yaml'

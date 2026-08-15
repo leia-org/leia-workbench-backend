@@ -16,7 +16,11 @@ export const createReplication = async (req, res, next) => {
     const value = await createReplicationValidator.validateAsync(req.body, {
       abortEarly: false,
     });
-    const newReplication = await ReplicationService.create(value, req.headers.authorization);
+    const newReplication = await ReplicationService.create(
+      value,
+      req.headers.authorization,
+      req.user.id
+    );
     res.status(201).json(newReplication);
   } catch (err) {
     next(err);
@@ -142,7 +146,11 @@ export const updateReplicationDuration = async (req, res, next) => {
 export const updateReplicationExperiment = async (req, res, next) => {
   try {
     const value = await updateReplicationExperimentValidator.validateAsync(req.body, { abortEarly: false });
-    const updatedReplication = await ReplicationService.updateExperiment(req.params.id, value.experiment);
+    const updatedReplication = await ReplicationService.updateExperiment(
+      req.params.id,
+      value.experiment,
+      req.headers.authorization
+    );
     res.json(updatedReplication);
   } catch (err) {
     next(err);

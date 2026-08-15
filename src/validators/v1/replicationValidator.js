@@ -30,6 +30,10 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
     then: Joi.boolean().optional().default(false),
     otherwise: Joi.valid(null).optional().default(null),
   }),
+  infographic: Joi.object({
+    showToStudent: Joi.boolean().optional().default(false),
+    allowDownload: Joi.any().strip(),
+  }).optional(),
   lukeConfig: Joi.object({
     // provider/voice are only meaningful when audioMode === 'luke'. The
     // same lukeConfig bucket is reused by text mode (which only needs
