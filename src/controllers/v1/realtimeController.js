@@ -64,11 +64,13 @@ export const saveAudioTranscription = async (req, res, next) => {
 
     // Save transcription as a message
     const message = await MessageService.create(transcript, isLeia, sessionId);
-    await SessionService.addMessage(sessionId, message.id);
+    if (message) {
+      await SessionService.addMessage(sessionId, message.id);
+    }
 
     res.status(201).json({
       message: 'Transcription saved successfully',
-      messageId: message.id,
+      messageId: message?.id,
     });
   } catch (error) {
     next(error);
