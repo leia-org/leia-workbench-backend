@@ -27,95 +27,6 @@ function stripSupervisorFields(session) {
   return data;
 }
 
-function toPlainObject(value) {
-  if (!value) return value;
-  if (typeof value.toObject === 'function') return value.toObject({ virtuals: true });
-  return JSON.parse(JSON.stringify(value));
-}
-
-function compactObject(value) {
-  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined));
-}
-
-function copyObject(value) {
-  if (!value || typeof value !== 'object') return undefined;
-  return JSON.parse(JSON.stringify(value));
-}
-
-function buildDataUsageSnapshot(replication) {
-  const source = toPlainObject(replication);
-  const config = source.dataUsageConfig || {};
-  const dataUsageConsentRequired = Boolean(config.dataUsageConsentRequired);
-  return {
-    dataUsageConsentRequired,
-    dataUsageConsentMessage: config.dataUsageConsentMessage || '',
-    conversationAutomatedRemoval: dataUsageConsentRequired && Boolean(config.conversationAutomatedRemoval),
-  };
-}
-
-function buildRunnerConfigurationSnapshot(runnerConfiguration = {}) {
-  const audioMode = runnerConfiguration.audioMode || null;
-  const snapshot = {
-    provider: runnerConfiguration.provider,
-    modelName: runnerConfiguration.modelName,
-    audioMode,
-    hideAudioTranscription: runnerConfiguration.hideAudioTranscription ?? null,
-  };
-
-  if (audioMode === 'realtime') {
-    snapshot.realtimeConfig = copyObject(runnerConfiguration.realtimeConfig);
-  }
-  if (audioMode === 'luke') {
-    snapshot.lukeConfig = copyObject(runnerConfiguration.lukeConfig);
-  }
-
-  return compactObject(snapshot);
-}
-
-function buildReplicationConfigSnapshot(replication, leiaId) {
-  const source = toPlainObject(replication);
-  const selectedLeiaId = leiaId?.toString?.() || `${leiaId}`;
-  const selectedLeia = source.experiment?.leias?.find((leia) => {
-    const id = leia?.id || leia?._id;
-    return id?.toString?.() === selectedLeiaId || `${id}` === selectedLeiaId;
-  });
-  const configuration = selectedLeia?.configuration || {};
-  const runnerConfiguration = selectedLeia?.runnerConfiguration || {};
-  const problemSpec = selectedLeia?.leia?.spec?.problem?.spec || {};
-  const audioMode = runnerConfiguration.audioMode || null;
-  const runnerProvider = runnerConfiguration.provider || null;
-  const isToolCapable = audioMode === 'luke' || (audioMode == null && runnerProvider === 'openai-responses');
-  const activity = compactObject({
-    solutionFormat: problemSpec.solutionFormat,
-    widgets: isToolCapable && Array.isArray(problemSpec.widgets) && problemSpec.widgets.length > 0
-      ? copyObject(problemSpec.widgets)
-      : undefined,
-  });
-
-  return {
-    capturedAt: new Date(),
-    replication: {
-      id: source.id || source._id?.toString(),
-      name: source.name,
-      duration: source.duration ?? null,
-      isRepeatable: source.isRepeatable,
-      form: source.form ?? null,
-    },
-    leia: compactObject({
-      id: selectedLeiaId,
-      name: selectedLeia?.leia?.metadata?.name || selectedLeia?.name || selectedLeia?.title || null,
-      configuration: compactObject({
-        mode: configuration.mode,
-        askSolution: configuration.askSolution,
-        evaluateSolution: configuration.evaluateSolution,
-        data: configuration.data ? copyObject(configuration.data) : undefined,
-      }),
-      runnerConfiguration: buildRunnerConfigurationSnapshot(runnerConfiguration),
-      activity: Object.keys(activity).length > 0 ? activity : undefined,
-    }),
-  };
-}
-
 function applyProblemToolConfig(tools, leia) {
   if (!Array.isArray(tools) || tools.length === 0) return tools;
 
@@ -149,23 +60,6 @@ function applyProblemToolConfig(tools, leia) {
 }
 
 class InteractionService {
-  _assertDataUsageConsentDecided(session) {
-    if (
-      !session.isTest &&
-      session.dataUsage?.config?.dataUsageConsentRequired &&
-      !['accepted', 'declined', 'not_required'].includes(session.dataUsage?.consentStatus)
-    ) {
-      const error = new Error('Data usage consent decision is required before starting this activity');
-      error.statusCode = 403;
-      throw error;
-    }
-  }
-
-  async _removePersistedConversation(sessionId) {
-    await MessageService.deleteBySession(sessionId);
-    return await SessionService.clearMessages(sessionId);
-  }
-
   async startSession(userEmail, replicationCode) {
     logger.info(`User ${userEmail} is trying to join replication ${replicationCode}`);
     const replication = await ReplicationService.findByCode(replicationCode);
@@ -204,14 +98,7 @@ class InteractionService {
       } else {
         logger.info(`Creating new session for user ${userEmail} and replication ${replicationCode}`);
         const nextLeiaId = await ReplicationService.getAndIncrementNextLeia(replication.id);
-        session = await SessionService.create(
-          user.id,
-          replication.id,
-          nextLeiaId,
-          false,
-          buildReplicationConfigSnapshot(replication, nextLeiaId),
-          buildDataUsageSnapshot(replication)
-        );
+        session = await SessionService.create(user.id, replication.id, nextLeiaId, false);
         logger.info(`Session created for user ${userEmail} and replication ${replicationCode}`);
       }
     }
@@ -256,14 +143,7 @@ class InteractionService {
       throw error;
     }
 
-    let session = await SessionService.create(
-      null,
-      replicationId,
-      leiaId,
-      true,
-      buildReplicationConfigSnapshot(replication, leiaId),
-      buildDataUsageSnapshot(replication)
-    );
+    let session = await SessionService.create(null, replicationId, leiaId, true);
 
     // Initialize runner for the session
     await RunnerService.initializeRunner(session.id, leia);
@@ -273,34 +153,6 @@ class InteractionService {
     logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
 
     return session.id;
-  }
-
-  async recordDataUsageConsent(sessionId, accepted) {
-    let session = await SessionService.findById(sessionId);
-    if (!session) {
-      const error = new Error('Session not found');
-      error.statusCode = 404;
-      throw error;
-    }
-    if (session.finishedAt) {
-      const error = new Error('Session already finished');
-      error.statusCode = 403;
-      throw error;
-    }
-    if (session.isTest || !session.dataUsage?.config?.dataUsageConsentRequired) {
-      return { session: stripSupervisorFields(session), removedConversation: false };
-    }
-
-    session = await SessionService.updateDataUsageConsent(session.id, accepted);
-    let removedConversation = false;
-
-    if (!accepted && MessageService.shouldSkipConversationPersistence(session)) {
-      await this._removePersistedConversation(session.id);
-      session = await SessionService.markDataUsageAutomatedRemovalApplied(session.id);
-      removedConversation = true;
-    }
-
-    return { session: stripSupervisorFields(session), removedConversation };
   }
 
   async getSessionData(sessionId) {
@@ -431,8 +283,6 @@ class InteractionService {
       throw error;
     }
 
-    this._assertDataUsageConsentDecided(session);
-
     const leia = await ReplicationService.findLeia(session.replication, session.leia);
 
     if (!leia) {
@@ -458,9 +308,7 @@ class InteractionService {
     // Continuations (toolResults) keep the same logical user turn going.
     if (!isToolContinuation && typeof message === 'string' && message.length > 0) {
       const newUserMessage = await MessageService.create(message, false, session.id);
-      if (newUserMessage) {
-        session = await SessionService.addMessage(session.id, newUserMessage.id);
-      }
+      session = await SessionService.addMessage(session.id, newUserMessage.id);
     }
 
     // Layer the problem's per-tool authoring (disable / usage guidance) onto
@@ -485,13 +333,11 @@ class InteractionService {
     const leiaMessage = typeof runnerResponse === 'string' ? runnerResponse : runnerResponse?.message;
     if (leiaMessage) {
       const newLeiaMessage = await MessageService.create(leiaMessage, true, session.id);
-      if (newLeiaMessage) {
-        session = await SessionService.addMessage(session.id, newLeiaMessage.id);
+      session = await SessionService.addMessage(session.id, newLeiaMessage.id);
 
-        // A full exchange completed: let the background supervisor observe it
-        // (fire-and-forget; respects cadence and is a no-op when disabled).
-        SupervisorService.observeAsync(session.id, leia);
-      }
+      // A full exchange completed: let the background supervisor observe it
+      // (fire-and-forget; respects cadence and is a no-op when disabled).
+      SupervisorService.observeAsync(session.id, leia);
     }
 
     // Deliver (and clear) any nudge the supervisor queued previously. The clear
@@ -512,8 +358,6 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
-
-    this._assertDataUsageConsentDecided(session);
 
     if (session.finishedAt) {
       const error = new Error('Session already finished');
@@ -547,7 +391,6 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
-    this._assertDataUsageConsentDecided(session);
     if (session.finishedAt) {
       const error = new Error('Session already finished');
       error.statusCode = 403;
@@ -582,7 +425,6 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
-    this._assertDataUsageConsentDecided(session);
     if (session.finishedAt) {
       const error = new Error('Session already finished');
       error.statusCode = 403;
