@@ -1,6 +1,6 @@
 import { verifyToken } from '../utils/jwt.js';
 import logger from '../utils/logger.js';
-
+import ReplicationService from '../services/v1/ReplicationService.js';
 export function auth(req, res, next) {
   req.auth = null;
 
@@ -82,33 +82,64 @@ export function admin(req, res, next) {
   }
 }
 
-export function authContext(req, res, next) {
-  const authorization = req.headers.authorization;
-  const token = req.query.token;
+export async function authContext(req, res, next) {
+    try {
+      const authorization = req.headers.authorization;
+      const shareToken = req.query.token;
 
-  if (authorization) {
-    const parts = authorization.split(' ');
-    if (parts.length === 2 && parts[0] === 'Bearer') {
-      try {
+      req.user = {};
+
+      if (authorization) {
+        const parts = authorization.split(' ');
+
+        if (parts.length !== 2 || parts[0] !== 'Bearer') {
+          const error = new Error('Invalid authorization header format');
+          error.statusCode = 401;
+          return next(error);
+        }
+
         const decoded = verifyToken(parts[1]);
+
         req.user = {
           ...decoded,
-          isAdmin: decoded.role === 'admin'
+          isAdmin: decoded.role === 'admin',
         };
-        return next();
-      } catch (err) {
-        console.error('[AUTH][authContext] Token JWT inválido o expirado:', err);
-    }
-    }
-  }
+      } else if (shareToken) {
+        req.user = { shareToken };
+      }
 
-  if (token) {
-    req.user = { shareToken: token };
-    return next();
-  }
-  const error = new Error('Authorization required: JWT or share token');
-  error.statusCode = 401;
-  return next(error);
+      const replication = await ReplicationService.findById(req.params.id);
+
+      if (!replication) {
+        const error = new Error('Replication not found');
+        error.statusCode = 404;
+        return next(error);
+      }
+
+      const replicationOwner =
+        replication.experiment?.user?._id ??
+        replication.experiment?.user?.id ??
+        replication.experiment?.user;
+
+      const isOwner =
+        replicationOwner?.toString() === req.user.id?.toString();
+
+      const canAccessReplication =
+        req.user.isAdmin === true || isOwner;
+
+      // checkAccess lanza "Access denied" cuando no tiene acceso
+      await ReplicationService.checkAccess(
+        req.params.id,
+        canAccessReplication,
+        req.user.shareToken
+      );
+
+      req.replication = replication;
+      return next();
+    } catch (error) {
+      error.statusCode ??= error.status ?? 500;
+      return next(error);
+    }
 }
 
 export function requireAdmin(req, res, next) {

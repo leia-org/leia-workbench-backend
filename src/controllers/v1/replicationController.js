@@ -10,19 +10,6 @@ import {
   updateSessionScoreValidator,
 } from '../../validators/v1/replicationValidator.js';
 
-const getAccessibleReplication = async (req) => {
-  const replication = await ReplicationService.findById(req.params.id);
-  if (!replication) {
-    const error = new Error('Replication not found');
-    error.statusCode = 404;
-    throw error;
-  }
-
-  const canAccessReplication = req.user.isAdmin || replication.experiment.user.id === req.user.id;
-  await ReplicationService.checkAccess(req.params.id, canAccessReplication, req.user.shareToken);
-
-  return replication;
-};
 
 export const createReplication = async (req, res, next) => {
   try {
@@ -38,7 +25,8 @@ export const createReplication = async (req, res, next) => {
 
 export const getReplicationById = async (req, res, next) => {
   try {
-    const replication = await getAccessibleReplication(req);
+    const replication =  req.replication;
+    console.log('Replication found:', replication);
     res.json(replication);
   } catch (err) {
     next(err);
@@ -74,7 +62,6 @@ export const updateReplicationName = async (req, res, next) => {
 
 export const regenerateReplicationCode = async (req, res, next) => {
   try {
-    await getAccessibleReplication(req);
     const updatedReplication = await ReplicationService.regenerateCode(req.params.id);
     res.json(updatedReplication);
   } catch (err) {
@@ -105,7 +92,6 @@ export const regenerateReplicationShareToken = async (req, res, next) => {
 
 export const toggleReplicationIsActive = async (req, res, next) => {
   try {
-    await getAccessibleReplication(req);
     const updatedReplication = await ReplicationService.toggleIsActive(req.params.id);
     res.json(updatedReplication);
   } catch (err) {
@@ -136,7 +122,6 @@ export const toggleReplicationIsShared = async (req, res, next) => {
 
 export const toggleReplicationIsRepeatable = async (req, res, next) => {
   try {
-    await getAccessibleReplication(req);
     const updatedReplication = await ReplicationService.toggleIsRepeatable(req.params.id);
     res.json(updatedReplication);
   } catch (err) {
@@ -146,7 +131,6 @@ export const toggleReplicationIsRepeatable = async (req, res, next) => {
 
 export const updateReplicationDuration = async (req, res, next) => {
   try {
-    await getAccessibleReplication(req);
     const value = await updateReplicationDurationValidator.validateAsync(req.body, { abortEarly: false });
     const updatedReplication = await ReplicationService.updateDuration(req.params.id, value.duration);
     res.json(updatedReplication);
@@ -167,7 +151,6 @@ export const updateReplicationExperiment = async (req, res, next) => {
 
 export const updateReplicationLeiaRunnerConfiguration = async (req, res, next) => {
   try {
-    await getAccessibleReplication(req);
     const { id, leiaId } = req.params;
     const value = await updateReplicationLeiaRunnerConfigurationValidator.validateAsync(req.body, {
       abortEarly: false,
@@ -203,7 +186,6 @@ export const updateReplicationLeiaRunnerConfiguration = async (req, res, next) =
 
 export const updateReplicationForm = async (req, res, next) => {
   try {
-    await getAccessibleReplication(req);
     const { id } = req.params;
     const value = await updateReplicationFormValidator.validateAsync(req.body, { abortEarly: false });
     const updatedReplication = await ReplicationService.updateForm(id, value.form);
@@ -215,7 +197,6 @@ export const updateReplicationForm = async (req, res, next) => {
 
 export const deleteReplicationForm = async (req, res, next) => {
   try {
-    await getAccessibleReplication(req);
     const { id } = req.params;
     const updatedReplication = await ReplicationService.deleteForm(id);
     res.json(updatedReplication);
@@ -226,7 +207,6 @@ export const deleteReplicationForm = async (req, res, next) => {
 
 export const toggleAskSolution = async (req, res, next) => {
   try {
-    await getAccessibleReplication(req);
     const { id, leiaId } = req.params;
     const updatedReplication = await ReplicationService.toggleAskSolution(id, leiaId);
     res.json(updatedReplication);
@@ -237,7 +217,6 @@ export const toggleAskSolution = async (req, res, next) => {
 
 export const toggleEvaluateSolution = async (req, res, next) => {
   try {
-    await getAccessibleReplication(req);
     const { id, leiaId } = req.params;
     const updatedReplication = await ReplicationService.toggleEvaluateSolution(id, leiaId);
     res.json(updatedReplication);
@@ -248,7 +227,6 @@ export const toggleEvaluateSolution = async (req, res, next) => {
 
 export const getReplicationConversations = async (req, res, next) => {
   try {
-    await getAccessibleReplication(req);
     const conversations = await ReplicationService.getConversations(req.params.id);
     res.json(conversations);
   } catch (err) {
@@ -258,7 +236,7 @@ export const getReplicationConversations = async (req, res, next) => {
 
 export const downloadReplicationConversationsCSV = async (req, res, next) => {
   try {
-    const replication = await getAccessibleReplication(req);
+    const replication =  req.replication;
     const csv = await ReplicationService.getConversationsCSV(req.params.id);
     const filename = `${replication.name.replace(/\s+/g, '_')}_conversations.csv`;
 
@@ -272,7 +250,6 @@ export const downloadReplicationConversationsCSV = async (req, res, next) => {
 
 export const updateSessionScore = async (req, res, next) => {
   try {
-    await getAccessibleReplication(req);
     const { sessionId } = req.params;
     const value = await updateSessionScoreValidator.validateAsync(req.body, { abortEarly: false });
     const updatedSession = await SessionService.saveScore(sessionId, value.score);
