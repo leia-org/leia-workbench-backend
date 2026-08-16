@@ -47,7 +47,7 @@ router.get('/', requireAdvanced, getAllReplications);
 router.get('/:id/conversations', authContext, getReplicationConversations);
 router.get('/:id/conversations/csv', authContext, downloadReplicationConversationsCSV);
 router.get('/:id', authContext, getReplicationById);
-router.get('/exists/:name', authContext, replicationNameExists);
+router.get('/exists/:name', requireAdvanced, replicationNameExists);
 // DELETE
 router.delete('/:id/form', authContext, deleteReplicationForm);
 

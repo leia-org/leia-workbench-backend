@@ -108,10 +108,11 @@ export async function authContext(req, res, next) {
         req.user = { shareToken };
       }
 
-      const replication = await ReplicationService.findById(req.params.id);
+      const replicationId = req.params.id || req.body.replicationId;
+      const replication = await ReplicationService.findById(replicationId);
 
       if (!replication) {
-        const error = new Error('Replication not found');
+        const error = new Error('Replication2 not found');
         error.statusCode = 404;
         return next(error);
       }

@@ -19,7 +19,7 @@ export const createReplication = async (req, res, next) => {
     const newReplication = await ReplicationService.create(
       value,
       req.headers.authorization,
-      req.user.id
+      req.auth.payload.id
     );
     res.status(201).json(newReplication);
   } catch (err) {
