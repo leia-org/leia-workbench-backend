@@ -30,7 +30,6 @@ export const createReplication = async (req, res, next) => {
 export const getReplicationById = async (req, res, next) => {
   try {
     const replication =  req.replication;
-    console.log('Replication found:', replication);
     res.json(replication);
   } catch (err) {
     next(err);
