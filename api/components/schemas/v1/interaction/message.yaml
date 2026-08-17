@@ -23,6 +23,11 @@ properties:
     type: array
     items:
       type: string
+  addressedToId:
+    type: string
+    description: Primary participant or LEIA addressed by this group-chat message.
+  addressedToName:
+    type: string
   sequence:
     type: integer
   turnId:

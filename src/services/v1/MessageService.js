@@ -30,6 +30,8 @@ class MessageService {
       'senderId',
       'senderName',
       'recipientIds',
+      'addressedToId',
+      'addressedToName',
       'sequence',
       'turnId',
       'timestamp',

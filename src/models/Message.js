@@ -27,6 +27,14 @@ const messageSchema = new Schema(
       type: [String],
       default: undefined,
     },
+    addressedToId: {
+      type: String,
+      default: undefined,
+    },
+    addressedToName: {
+      type: String,
+      default: undefined,
+    },
     sequence: {
       type: Number,
       default: undefined,
