@@ -431,6 +431,98 @@ class InteractionService {
     return { solution, solutionFormat };
   }
 
+  async streamSessionMessage(sessionId, message, options = {}) {
+    let session = await SessionService.findById(sessionId);
+    if (!session) {
+      const error = new Error('Session not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (session.interactionMode !== 'multi') {
+      const error = new Error('Streaming group chat is only available for MultiLEIA sessions');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const leia = await ReplicationService.findLeia(session.replication, session.leia);
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (leia.configuration?.mode === 'transcription') {
+      const error = new Error('Cannot send messages in transcription mode');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (typeof message !== 'string' || !message.trim()) {
+      const error = new Error('Message is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const turnId = randomUUID();
+    const participantSequence = Number(session.multiLeiaState?.lastSequence || 0) + 1;
+    let participantPersisted = false;
+    const createdMessages = [];
+
+    const persistParticipant = async () => {
+      if (participantPersisted) return;
+      const participantMessage = await MessageService.create(message, false, session.id, {
+        senderType: 'participant',
+        senderId: 'participant',
+        senderName: 'Participant',
+        recipientIds: (session.leias || []).map((id) => String(id)),
+        sequence: participantSequence,
+        turnId,
+      });
+      session = await SessionService.addMessage(session.id, participantMessage.id);
+      participantPersisted = true;
+    };
+
+    const runnerResult = await RunnerService.streamMultiLeiaMessage(
+      session.id,
+      message,
+      turnId,
+      {
+        onRoute: async (route) => options.onRoute?.(route),
+        onMessage: async (event) => {
+          await persistParticipant();
+          const createdMessage = await MessageService.create(event.text, true, session.id, {
+            senderType: 'agent',
+            senderId: event.senderId,
+            senderName: event.senderName,
+            recipientIds: event.recipientIds,
+            sequence: event.sequence,
+            turnId,
+            timestamp: event.timestamp,
+          });
+          session = await SessionService.addMessage(session.id, createdMessage.id);
+          createdMessages.push(createdMessage);
+          await options.onMessage?.(createdMessage);
+        },
+      }
+    );
+
+    if (runnerResult.state) {
+      session = await SessionService.updateMultiLeiaState(session.id, runnerResult.state);
+    }
+    if (createdMessages.length > 0) {
+      SupervisorService.observeAsync(session.id, leia);
+    }
+
+    const pendingNudge = session.supervisorState?.pendingNudge || null;
+    if (pendingNudge) {
+      await SessionService.clearPendingNudge(session.id, pendingNudge);
+    }
+    return {
+      turnId,
+      state: runnerResult.state,
+      partial: Boolean(runnerResult.partial),
+      ...(pendingNudge ? { nudge: pendingNudge } : {}),
+    };
+  }
+
   async sendSessionMessage(sessionId, message, options = {}) {
     let session = await SessionService.findById(sessionId);
     if (!session) {

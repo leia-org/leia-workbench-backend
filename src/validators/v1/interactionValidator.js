@@ -35,6 +35,10 @@ export const sendSessionMessageValidator = Joi.object({
   ),
 }).or('message', 'toolResults');
 
+export const streamSessionMessageValidator = Joi.object({
+  message: Joi.string().trim().required(),
+});
+
 export const saveResultAndFinishSessionValidator = Joi.object({
   result: Joi.string().required(),
 });
