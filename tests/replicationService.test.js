@@ -73,6 +73,46 @@ describe('create — configuración inicial de las LEIAs', () => {
     );
     expect(ReplicationRepository.create).toHaveBeenCalled();
   });
+
+  test('resuelve un modelo válido para una clave por defecto heredada', async () => {
+    const experiment = { id: 'experiment1', leias: [{ configuration: { mode: 'standard' } }] };
+    const legacyDefaultApiKey = {
+      id: 'legacy-key',
+      provider: 'openai',
+      isDefault: true,
+    };
+    ManagerService.findExperimentById.mockResolvedValue(experiment);
+    axios.get.mockImplementation(async (url) => {
+      if (url === `${process.env.AUTH_URL}/api/v1/apikeys`) {
+        return { data: [legacyDefaultApiKey] };
+      }
+      return {
+        data: {
+          apiKeyProviders: { openai: ['gpt-5.4-mini'] },
+          providerProviderModuleMap: { openai: 'openai-responses' },
+        },
+      };
+    });
+    ReplicationRepository.create.mockImplementation(async (data) => data);
+
+    await ReplicationService.create(
+      { name: 'Legacy default replication', experiment: 'experiment1' },
+      'Bearer token',
+      'user1'
+    );
+
+    expect(initializeExperiment).toHaveBeenCalledWith(
+      experiment,
+      expect.objectContaining({
+        id: 'legacy-key',
+        provider: 'openai',
+        model: 'gpt-5.4-mini',
+      }),
+      'user1',
+      'openai-responses'
+    );
+    expect(ReplicationRepository.create).toHaveBeenCalled();
+  });
 });
 
 

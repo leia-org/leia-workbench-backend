@@ -90,12 +90,22 @@ class ReplicationService {
       authorization
     );
     const defaultApiKey = await this.getDefaultApiKey(authorization);
-    const providerDriver = defaultApiKey
-      ? (await this.getProviderAndProviderModuleForReplication(defaultApiKey.model)).providerDriver
-      : 'default';
+    let initializedDefaultApiKey = defaultApiKey;
+    let providerDriver = 'default';
+    if (defaultApiKey) {
+      const providerConfiguration = await this.getProviderAndProviderModuleForReplication(
+        defaultApiKey.model,
+        defaultApiKey.provider
+      );
+      providerDriver = providerConfiguration.providerDriver;
+      initializedDefaultApiKey = {
+        ...defaultApiKey,
+        model: providerConfiguration.modelName,
+      };
+    }
     const initializedExperiment = initializeExperiment(
       experiment,
-      defaultApiKey,
+      initializedDefaultApiKey,
       apiKeyRequesterId,
       providerDriver
     );
@@ -299,20 +309,47 @@ class ReplicationService {
     return csv;
   }
 
-  async getProviderAndProviderModuleForReplication(modelName) {
+  async getProviderAndProviderModuleForReplication(modelName, preferredProvider = null) {
     const {data} = await axios.get(`${process.env.RUNNER_URL}/api/v1/models`, {
       headers: {
         Authorization: 'Bearer ' + process.env.RUNNER_KEY,
       },
     });
-    const provider = Object.entries(data.apiKeyProviders || {})
-      .find(([, models]) => models.includes(modelName))?.[0];
+    let resolvedModelName =
+      typeof modelName === 'string' && modelName.trim() ? modelName.trim() : null;
+    let provider = resolvedModelName
+      ? Object.entries(data.apiKeyProviders || {})
+          .find(([, models]) => models.includes(resolvedModelName))?.[0]
+      : null;
 
-    if (!provider) throw new Error(`Model '${modelName}' not mapped to provider`);
+    // API keys created before the model field was introduced still carry a
+    // provider. Pick that provider's first available model so old defaults do
+    // not prevent a replication from being created.
+    if (!resolvedModelName && preferredProvider) {
+      const providerModels = data.apiKeyProviders?.[preferredProvider];
+      if (Array.isArray(providerModels) && providerModels.length > 0) {
+        provider = preferredProvider;
+        resolvedModelName = providerModels[0];
+      }
+    }
+
+    if (!provider || !resolvedModelName) {
+      const error = new Error(
+        resolvedModelName
+          ? `Model '${resolvedModelName}' not mapped to provider`
+          : `No model is available for provider '${preferredProvider || 'unknown'}'`
+      );
+      error.statusCode = 400;
+      throw error;
+    }
     const providerDriver = data.providerProviderModuleMap?.[provider];
-    if (!providerDriver) throw new Error(`No provider module for provider '${provider}'`);
+    if (!providerDriver) {
+      const error = new Error(`No provider module for provider '${provider}'`);
+      error.statusCode = 400;
+      throw error;
+    }
 
-    return { provider, providerDriver };
+    return { provider, providerDriver, modelName: resolvedModelName };
   }
 
   async validateApiKeyProviderForReplication(provider, apiKeyId, apiKeyRequesterId) {
