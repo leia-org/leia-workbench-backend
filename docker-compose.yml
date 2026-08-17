@@ -12,6 +12,7 @@ services:
       - RUNNER_KEY=${RUNNER_KEY}
       - MANAGER_URL=${MANAGER_URL}
       - MANAGER_KEY=${MANAGER_KEY}
+      - AUTH_URL=${AUTH_URL}
       - NODE_ENV=${NODE_ENV}
       - PORT=80
       - ADMIN_SECRET=${ADMIN_SECRET}
