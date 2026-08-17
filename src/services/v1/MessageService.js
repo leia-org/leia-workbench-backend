@@ -19,12 +19,23 @@ class MessageService {
 
   // WRITE METHODS
 
-  async create(text, isLeia, sessionId) {
+  async create(text, isLeia, sessionId, metadata = {}) {
     const messageData = {
       text,
       isLeia,
       session: sessionId,
     };
+    for (const key of [
+      'senderType',
+      'senderId',
+      'senderName',
+      'recipientIds',
+      'sequence',
+      'turnId',
+      'timestamp',
+    ]) {
+      if (metadata[key] !== undefined) messageData[key] = metadata[key];
+    }
     const message = await MessageRepository.create(messageData);
 
     // Emit WebSocket event to spectators and dashboard

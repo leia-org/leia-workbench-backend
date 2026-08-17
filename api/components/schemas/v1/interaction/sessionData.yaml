@@ -10,3 +10,5 @@ properties:
     $ref: '../manager/leia.yaml'
   replication:
     $ref: '../replication/replication.yaml'
+  multiLeia:
+    $ref: './multiLeia.yaml'

@@ -4,6 +4,44 @@ import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
 import axios from 'axios';
 
+function normalizeProcess(process) {
+  if (!Array.isArray(process)) return '';
+  return process
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .sort()
+    .join('|');
+}
+
+function validateMultiLeiaProcesses(experiment) {
+  const leias = experiment?.leias || [];
+  const problemLeiaId =
+    experiment?.orchestration?.problemLeiaId ||
+    experiment?.orchestration?.openingLeiaId ||
+    leias[0]?.id;
+  const problemLeia = leias.find(
+    (entry) => String(entry.id) === String(problemLeiaId)
+  );
+  if (!problemLeia) {
+    const error = new Error('Shared problem LEIA must belong to the MultiLEIA activity');
+    error.statusCode = 400;
+    throw error;
+  }
+  const sharedProcess = normalizeProcess(
+    problemLeia.leia?.spec?.problem?.spec?.process
+  );
+  if (
+    leias.some(
+      (entry) =>
+        normalizeProcess(entry.leia?.spec?.behaviour?.spec?.process) !== sharedProcess
+    )
+  ) {
+    const error = new Error('Every MultiLEIA behaviour must use the shared problem process');
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
 class ReplicationService {
   // READ METHODS
 
@@ -94,6 +132,20 @@ class ReplicationService {
       throw error;
     }
     if (!replication.isActive) {
+      if (replication.experiment?.orchestration?.mode === 'multi') {
+        const leias = replication.experiment?.leias || [];
+        if (leias.length < 2) {
+          const error = new Error('MultiLEIA requires at least two LEIAs');
+          error.statusCode = 400;
+          throw error;
+        }
+        if (leias.some((leia) => Boolean(leia.runnerConfiguration?.audioMode))) {
+          const error = new Error('MultiLEIA currently supports text mode only');
+          error.statusCode = 400;
+          throw error;
+        }
+        validateMultiLeiaProcesses(replication.experiment);
+      }
       const invalidLeias = this._getLeiasWithInvalidRunnerConfiguration(replication);
       if (invalidLeias.length > 0) {
         const error = new Error('Some Leias have invalid runner configurations');

@@ -18,6 +18,42 @@ class RunnerService {
     return response.data.sessionId;
   }
 
+  async initializeMultiLeia(sessionId, leias, orchestration) {
+    const actors = leias.map((entry) => ({
+      id: String(entry.id),
+      name:
+        entry.leia?.spec?.persona?.spec?.firstName ||
+        entry.leia?.spec?.persona?.spec?.fullName ||
+        entry.leia?.metadata?.name ||
+        String(entry.id),
+      leia: entry.leia,
+      runnerConfiguration: entry.runnerConfiguration,
+    }));
+    const response = await axios.post(
+      `${process.env.RUNNER_URL}/api/v1/multi-leias`,
+      {
+        sessionId,
+        actors,
+        orchestration: {
+          maxInternalTurns: orchestration.maxInternalTurns,
+          openingActorId: orchestration.openingLeiaId
+            ? String(orchestration.openingLeiaId)
+            : null,
+          problemActorId: orchestration.problemLeiaId
+            ? String(orchestration.problemLeiaId)
+            : null,
+          sharedTask: orchestration.sharedTask || '',
+        },
+      },
+      {
+        headers: {
+          Authorization: 'Bearer ' + process.env.RUNNER_KEY,
+        },
+      }
+    );
+    return response.data;
+  }
+
   async sendMessage(sessionId, message, options = {}) {
     const body = {};
     if (typeof message === 'string' && message.length > 0) body.message = message;
@@ -35,6 +71,19 @@ class RunnerService {
     );
     // Forward the full response shape upward so the caller can branch on
     // toolCalls vs. final text.
+    return response.data;
+  }
+
+  async sendMultiLeiaMessage(sessionId, message, turnId) {
+    const response = await axios.post(
+      `${process.env.RUNNER_URL}/api/v1/multi-leias/${sessionId}/messages`,
+      { message, turnId },
+      {
+        headers: {
+          Authorization: 'Bearer ' + process.env.RUNNER_KEY,
+        },
+      }
+    );
     return response.data;
   }
 

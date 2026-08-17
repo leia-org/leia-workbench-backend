@@ -16,15 +16,14 @@ vi.mock('../src/utils/entity.js', () => ({
 vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 
 import ReplicationRepository from '../src/repositories/v1/ReplicationRepository.js';
-import SessionRepository from '../src/repositories/v1/SessionRepository.js';
 import ManagerService from '../src/services/v1/ManagerService.js';
 import { initializeExperiment } from '../src/utils/entity.js';
 import axios from 'axios';
 import ReplicationService from '../src/services/v1/ReplicationService.js';
 
 // Construye una replicación con LEIAs cuya configuración de runner se puede afinar por test.
-function buildReplication({ isActive = false, leias = [] } = {}) {
-  return { _id: 'rep1', isActive, experiment: { leias } };
+function buildReplication({ isActive = false, leias = [], orchestration } = {}) {
+  return { _id: 'rep1', isActive, experiment: { leias, orchestration } };
 }
 
 // Configuración de runner completa y válida.
@@ -115,6 +114,100 @@ describe('toggleIsActive — bloqueo de activación incompleta', () => {
 
     await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({ statusCode: 400 });
     expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+  });
+
+  test('impide activar una actividad MultiLEIA con menos de dos agentes', async () => {
+    const replication = buildReplication({
+      isActive: false,
+      orchestration: { mode: 'multi' },
+      leias: [{ runnerConfiguration: { ...completeConfig } }],
+    });
+    ReplicationRepository.findById.mockResolvedValue(replication);
+
+    await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({
+      statusCode: 400,
+    });
+    expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+  });
+
+  test('impide activar audio en una actividad MultiLEIA de texto', async () => {
+    const replication = buildReplication({
+      isActive: false,
+      orchestration: { mode: 'multi' },
+      leias: [
+        { runnerConfiguration: { ...completeConfig } },
+        { runnerConfiguration: { ...completeConfig, audioMode: 'luke' } },
+      ],
+    });
+    ReplicationRepository.findById.mockResolvedValue(replication);
+
+    await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({
+      statusCode: 400,
+    });
+    expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+  });
+
+  test('impide activar behaviours incompatibles con el problema compartido', async () => {
+    const leias = [
+      {
+        id: 'opening',
+        runnerConfiguration: { ...completeConfig },
+        leia: {
+          spec: {
+            problem: { spec: { process: ['game'] } },
+            behaviour: { spec: { process: ['game'] } },
+          },
+        },
+      },
+      {
+        id: 'problem',
+        runnerConfiguration: { ...completeConfig },
+        leia: {
+          spec: {
+            problem: { spec: { process: ['requirements-elicitation'] } },
+            behaviour: { spec: { process: ['requirements-elicitation'] } },
+          },
+        },
+      },
+    ];
+    const replication = buildReplication({
+      isActive: false,
+      orchestration: { mode: 'multi', problemLeiaId: 'problem' },
+      leias,
+    });
+    ReplicationRepository.findById.mockResolvedValue(replication);
+
+    await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({
+      statusCode: 400,
+    });
+    expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+  });
+
+  test('activa MultiLEIA cuando todos los behaviours comparten el process', async () => {
+    const leias = ['opening', 'problem'].map((id) => ({
+      id,
+      runnerConfiguration: { ...completeConfig },
+      leia: {
+        spec: {
+          problem: { spec: { process: ['requirements-elicitation'] } },
+          behaviour: { spec: { process: ['requirements-elicitation'] } },
+        },
+      },
+    }));
+    const replication = buildReplication({
+      isActive: false,
+      orchestration: { mode: 'multi', problemLeiaId: 'problem' },
+      leias,
+    });
+    ReplicationRepository.findById.mockResolvedValue(replication);
+    ReplicationRepository.toggleIsActive.mockResolvedValue({
+      ...replication,
+      isActive: true,
+    });
+
+    await ReplicationService.toggleIsActive('rep1');
+
+    expect(ReplicationRepository.toggleIsActive).toHaveBeenCalledWith('rep1');
   });
 
   test('al desactivar una replicación ya activa no se aplica la comprobación de configuración', async () => {

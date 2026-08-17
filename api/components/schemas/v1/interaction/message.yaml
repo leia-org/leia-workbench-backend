@@ -12,3 +12,18 @@ properties:
     format: date-time
   session:
     type: string
+  senderType:
+    type: string
+    enum: [participant, agent, system]
+  senderId:
+    type: string
+  senderName:
+    type: string
+  recipientIds:
+    type: array
+    items:
+      type: string
+  sequence:
+    type: integer
+  turnId:
+    type: string

@@ -10,6 +10,31 @@ const messageSchema = new Schema(
       type: Boolean,
       required: true,
     },
+    senderType: {
+      type: String,
+      enum: ['participant', 'agent', 'system'],
+      default: undefined,
+    },
+    senderId: {
+      type: String,
+      default: undefined,
+    },
+    senderName: {
+      type: String,
+      default: undefined,
+    },
+    recipientIds: {
+      type: [String],
+      default: undefined,
+    },
+    sequence: {
+      type: Number,
+      default: undefined,
+    },
+    turnId: {
+      type: String,
+      default: undefined,
+    },
     timestamp: {
       type: Date,
       default: Date.now,
@@ -33,5 +58,6 @@ const messageSchema = new Schema(
 );
 
 messageSchema.index({ session: 1 });
+messageSchema.index({ session: 1, sequence: 1 });
 
 export default model('Message', messageSchema);
