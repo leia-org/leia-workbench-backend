@@ -333,6 +333,9 @@ class InteractionService {
       delete leia.leia.spec.problem.spec.solution;
       delete leia.leia.spec.problem.spec.evaluationPrompt;
     }
+    
+    //Expose a safe, read-only "display role" for headers from student's chats 
+    const roleDisplay = leia.leia?.spec?.problem?.spec?.overrides?.behaviour?.spec?.role || leia.leia?.spec?.behaviour?.spec?.role || null;
 
     delete leia.leia.spec.behaviour.spec.description;
     delete leia.leia.spec.behaviour.spec.role;
@@ -375,10 +378,12 @@ class InteractionService {
       leia.lukeConfig = { ...(runnerLukeConfig || {}), widgets };
     }
     leia.hideAudioTranscription = hideAudioTranscription;
-
+    leia.roleDisplay = roleDisplay;
     // Supervisor data is instructor-only: strip it (and the supervisor config)
     // from the payload the student receives.
+    const sessionUser = session.user ? await UserService.findById(session.user) : null;
     const sessionData = stripSupervisorFields(session);
+    sessionData.userEmail = sessionUser?.email || null;
     if (leia.leia?.spec) delete leia.leia.spec.supervisorConfig;
 
     return { session: sessionData, messages, leia, replication };
