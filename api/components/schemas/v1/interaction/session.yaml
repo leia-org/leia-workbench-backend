@@ -29,6 +29,16 @@ properties:
     type: string
   leia:
     type: string
+  leias:
+    type: array
+    items:
+      type: string
+  interactionMode:
+    type: string
+    enum: [single, multi]
+  multiLeiaState:
+    type: object
+    additionalProperties: true
   user:
     nullable: true
     oneOf:

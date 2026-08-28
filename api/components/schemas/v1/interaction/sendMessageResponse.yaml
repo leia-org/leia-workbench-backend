@@ -8,6 +8,16 @@ properties:
     description: Tool calls the frontend must execute before continuing the turn.
     items:
       $ref: './toolCall.yaml'
+  messages:
+    type: array
+    description: Ordered actor responses produced by a MultiLEIA traversal.
+    items:
+      $ref: './message.yaml'
+  state:
+    type: object
+    additionalProperties: true
+  partial:
+    type: boolean
   nudge:
     type: string
     description: Optional supervisor nudge queued for the student.
@@ -16,3 +26,5 @@ oneOf:
       - message
   - required:
       - toolCalls
+  - required:
+      - messages

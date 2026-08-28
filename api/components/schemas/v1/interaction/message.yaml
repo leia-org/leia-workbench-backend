@@ -12,3 +12,23 @@ properties:
     format: date-time
   session:
     type: string
+  senderType:
+    type: string
+    enum: [participant, agent, system]
+  senderId:
+    type: string
+  senderName:
+    type: string
+  recipientIds:
+    type: array
+    items:
+      type: string
+  addressedToId:
+    type: string
+    description: Primary participant or LEIA addressed by this group-chat message.
+  addressedToName:
+    type: string
+  sequence:
+    type: integer
+  turnId:
+    type: string

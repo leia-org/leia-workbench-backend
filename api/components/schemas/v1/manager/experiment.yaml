@@ -10,3 +10,5 @@ properties:
     type: array
     items:
       $ref: './leia.yaml'
+  orchestration:
+    $ref: './orchestration.yaml'

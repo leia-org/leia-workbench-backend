@@ -1,9 +1,13 @@
 type: object
 required:
   - replicationId
-  - leiaId
 properties:
   replicationId:
     $ref: '../../mongoId.yaml'
   leiaId:
     $ref: '../../mongoId.yaml'
+    nullable: true
+    description: Required for a single-LEIA test and omitted for a MultiLEIA test.
+  multiLeia:
+    type: boolean
+    default: false

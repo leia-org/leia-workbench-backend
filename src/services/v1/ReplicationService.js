@@ -4,6 +4,44 @@ import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
 import axios from 'axios';
 
+function normalizeProcess(process) {
+  if (!Array.isArray(process)) return '';
+  return process
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .sort()
+    .join('|');
+}
+
+function validateMultiLeiaProcesses(experiment) {
+  const leias = experiment?.leias || [];
+  const problemLeiaId =
+    experiment?.orchestration?.problemLeiaId ||
+    experiment?.orchestration?.openingLeiaId ||
+    leias[0]?.id;
+  const problemLeia = leias.find(
+    (entry) => String(entry.id) === String(problemLeiaId)
+  );
+  if (!problemLeia) {
+    const error = new Error('Shared problem LEIA must belong to the MultiLEIA activity');
+    error.statusCode = 400;
+    throw error;
+  }
+  const sharedProcess = normalizeProcess(
+    problemLeia.leia?.spec?.problem?.spec?.process
+  );
+  if (
+    leias.some(
+      (entry) =>
+        normalizeProcess(entry.leia?.spec?.behaviour?.spec?.process) !== sharedProcess
+    )
+  ) {
+    const error = new Error('Every MultiLEIA behaviour must use the shared problem process');
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
 class ReplicationService {
   // READ METHODS
 
@@ -52,12 +90,22 @@ class ReplicationService {
       authorization
     );
     const defaultApiKey = await this.getDefaultApiKey(authorization);
-    const providerDriver = defaultApiKey
-      ? (await this.getProviderAndProviderModuleForReplication(defaultApiKey.model)).providerDriver
-      : 'default';
+    let initializedDefaultApiKey = defaultApiKey;
+    let providerDriver = 'default';
+    if (defaultApiKey) {
+      const providerConfiguration = await this.getProviderAndProviderModuleForReplication(
+        defaultApiKey.model,
+        defaultApiKey.provider
+      );
+      providerDriver = providerConfiguration.providerDriver;
+      initializedDefaultApiKey = {
+        ...defaultApiKey,
+        model: providerConfiguration.modelName,
+      };
+    }
     const initializedExperiment = initializeExperiment(
       experiment,
-      defaultApiKey,
+      initializedDefaultApiKey,
       apiKeyRequesterId,
       providerDriver
     );
@@ -94,6 +142,20 @@ class ReplicationService {
       throw error;
     }
     if (!replication.isActive) {
+      if (replication.experiment?.orchestration?.mode === 'multi') {
+        const leias = replication.experiment?.leias || [];
+        if (leias.length < 2) {
+          const error = new Error('MultiLEIA requires at least two LEIAs');
+          error.statusCode = 400;
+          throw error;
+        }
+        if (leias.some((leia) => Boolean(leia.runnerConfiguration?.audioMode))) {
+          const error = new Error('MultiLEIA currently supports text mode only');
+          error.statusCode = 400;
+          throw error;
+        }
+        validateMultiLeiaProcesses(replication.experiment);
+      }
       const invalidLeias = this._getLeiasWithInvalidRunnerConfiguration(replication);
       if (invalidLeias.length > 0) {
         const error = new Error('Some Leias have invalid runner configurations');
@@ -247,20 +309,47 @@ class ReplicationService {
     return csv;
   }
 
-  async getProviderAndProviderModuleForReplication(modelName) {
+  async getProviderAndProviderModuleForReplication(modelName, preferredProvider = null) {
     const {data} = await axios.get(`${process.env.RUNNER_URL}/api/v1/models`, {
       headers: {
         Authorization: 'Bearer ' + process.env.RUNNER_KEY,
       },
     });
-    const provider = Object.entries(data.apiKeyProviders || {})
-      .find(([, models]) => models.includes(modelName))?.[0];
+    let resolvedModelName =
+      typeof modelName === 'string' && modelName.trim() ? modelName.trim() : null;
+    let provider = resolvedModelName
+      ? Object.entries(data.apiKeyProviders || {})
+          .find(([, models]) => models.includes(resolvedModelName))?.[0]
+      : null;
 
-    if (!provider) throw new Error(`Model '${modelName}' not mapped to provider`);
+    // API keys created before the model field was introduced still carry a
+    // provider. Pick that provider's first available model so old defaults do
+    // not prevent a replication from being created.
+    if (!resolvedModelName && preferredProvider) {
+      const providerModels = data.apiKeyProviders?.[preferredProvider];
+      if (Array.isArray(providerModels) && providerModels.length > 0) {
+        provider = preferredProvider;
+        resolvedModelName = providerModels[0];
+      }
+    }
+
+    if (!provider || !resolvedModelName) {
+      const error = new Error(
+        resolvedModelName
+          ? `Model '${resolvedModelName}' not mapped to provider`
+          : `No model is available for provider '${preferredProvider || 'unknown'}'`
+      );
+      error.statusCode = 400;
+      throw error;
+    }
     const providerDriver = data.providerProviderModuleMap?.[provider];
-    if (!providerDriver) throw new Error(`No provider module for provider '${provider}'`);
+    if (!providerDriver) {
+      const error = new Error(`No provider module for provider '${provider}'`);
+      error.statusCode = 400;
+      throw error;
+    }
 
-    return { provider, providerDriver };
+    return { provider, providerDriver, modelName: resolvedModelName };
   }
 
   async validateApiKeyProviderForReplication(provider, apiKeyId, apiKeyRequesterId) {

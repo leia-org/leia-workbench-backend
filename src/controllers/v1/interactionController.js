@@ -3,6 +3,7 @@ import ReplicationService from '../../services/v1/ReplicationService.js';
 import {
   startSessionValidator,
   sendSessionMessageValidator,
+  streamSessionMessageValidator,
   saveResultAndFinishSessionValidator,
   startTestSessionValidator,
   saveDraftValidator,
@@ -20,9 +21,9 @@ export const startSession = async (req, res, next) => {
 
 export const startTestSession = async (req, res, next) => {
   try {
-    const { replicationId, leiaId } = await startTestSessionValidator.validateAsync(req.body);
+    const { replicationId, leiaId, multiLeia } = await startTestSessionValidator.validateAsync(req.body);
     await ReplicationService.checkAccess(replicationId, req.user.isAdmin, req.user.shareToken);
-    const sessionId = await InteractionService.startTestSession(replicationId, leiaId);
+    const sessionId = await InteractionService.startTestSession(replicationId, leiaId, multiLeia);
     res.status(201).json({ sessionId });
   } catch (error) {
     next(error);
@@ -51,11 +52,67 @@ export const sendSessionMessage = async (req, res, next) => {
     // calls that the frontend has to execute. We forward whichever shape
     // came back; the frontend distinguishes by the presence of toolCalls.
     const nudge = result && typeof result === 'object' && result.nudge ? result.nudge : undefined;
-    if (result && Array.isArray(result.toolCalls) && result.toolCalls.length > 0) {
+    if (result && Array.isArray(result.messages)) {
+      res.json({
+        messages: result.messages,
+        state: result.state,
+        partial: Boolean(result.partial),
+        ...(nudge ? { nudge } : {}),
+      });
+    } else if (result && Array.isArray(result.toolCalls) && result.toolCalls.length > 0) {
       res.json({ toolCalls: result.toolCalls, ...(nudge ? { nudge } : {}) });
     } else {
       const message = typeof result === 'string' ? result : result?.message;
       res.json({ message, ...(nudge ? { nudge } : {}) });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+const writeSse = (res, event, data) => {
+  if (res.writableEnded || res.destroyed) return;
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+};
+
+export const streamSessionMessage = async (req, res, next) => {
+  try {
+    const value = await streamSessionMessageValidator.validateAsync(req.body);
+    const { sessionId } = req.params;
+
+    res.status(200);
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders?.();
+    writeSse(res, 'ready', { connected: true });
+
+    const heartbeat = setInterval(() => {
+      if (!res.writableEnded && !res.destroyed) res.write(': keep-alive\n\n');
+    }, 15000);
+
+    try {
+      const result = await InteractionService.streamSessionMessage(
+        sessionId,
+        value.message,
+        {
+          onRoute: async (route) => writeSse(res, 'route', route),
+          onMessage: async (message) => writeSse(res, 'message', { message }),
+        }
+      );
+      writeSse(res, 'complete', result);
+    } catch (error) {
+      const statusCode = error.statusCode || 500;
+      writeSse(res, 'error', {
+        error: statusCode >= 500 ? 'The MultiLEIA conversation stream failed' : error.message,
+        statusCode,
+      });
+    } finally {
+      clearInterval(heartbeat);
+      if (!res.writableEnded && !res.destroyed) res.end();
     }
   } catch (error) {
     next(error);

@@ -55,13 +55,20 @@ class SessionService {
 
   // WRITE METHODS
 
-  async create(userId, replicationId, leiaId, isTest = false) {
+  async create(userId, replicationId, leiaId, isTest = false, options = {}) {
     const sessionData = {
       user: userId,
       replication: replicationId,
       leia: leiaId,
       isTest,
+      interactionMode: options.interactionMode || 'single',
     };
+    if (Array.isArray(options.leias) && options.leias.length > 0) {
+      sessionData.leias = options.leias;
+    }
+    if (options.multiLeiaState) {
+      sessionData.multiLeiaState = options.multiLeiaState;
+    }
     return await SessionRepository.create(sessionData);
   }
 
@@ -108,6 +115,10 @@ class SessionService {
 
   async updateIsRunnerInitialized(id, isRunnerInitialized) {
     return await SessionRepository.update(id, { isRunnerInitialized });
+  }
+
+  async updateMultiLeiaState(id, multiLeiaState) {
+    return await SessionRepository.update(id, { multiLeiaState });
   }
 
   async saveDraft(id, draft) {

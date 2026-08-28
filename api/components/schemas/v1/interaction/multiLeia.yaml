@@ -1,0 +1,42 @@
+type: object
+required:
+  - enabled
+  - actors
+  - orchestration
+properties:
+  enabled:
+    type: boolean
+    enum: [true]
+  actors:
+    type: array
+    items:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        avatar:
+          type: string
+          nullable: true
+        leiaId:
+          type: string
+          nullable: true
+        personaId:
+          type: string
+          nullable: true
+  orchestration:
+    type: object
+    properties:
+      maxInternalTurns:
+        type: integer
+      openingLeiaId:
+        type: string
+        nullable: true
+      problemLeiaId:
+        type: string
+        nullable: true
+  state:
+    type: object
+    nullable: true
+    additionalProperties: true
