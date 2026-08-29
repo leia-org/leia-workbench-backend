@@ -3,66 +3,43 @@ import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
 import axios from 'axios';
-import { stringify } from 'csv-stringify/sync';
 
-const REPLICATION_CONFIG_CSV_EXCLUDED_COLUMNS = new Set([
-  'replicationConfig_capturedAt',
-  'replicationConfig_replication_id',
-  'replicationConfig_leia_id',
-  'replicationConfig_leia_activity_widgets'
-]);
-
-function normalizeCSVValue(value, path = '') {
-  if (path === 'replicationConfig_replication_duration' && value == null) return 'No limit';
-  if (path === 'replicationConfig_replication_isRepeatable' && value == null) return 'FALSE';
-  if (path === 'dataUsage_automatedRemovalApplied' && value == null) return 'FALSE';
-  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
-  if (value instanceof Date) return value.toISOString();
-  if (Array.isArray(value) || (value && typeof value === 'object')) return JSON.stringify(value);
-  return value;
+function normalizeProcess(process) {
+  if (!Array.isArray(process)) return '';
+  return process
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .sort()
+    .join('|');
 }
 
-function applyReplicationConfigCSVDefaults(row) {
-  return {
-    ...row,
-    replicationConfig_replication_duration: row.replicationConfig_replication_duration ?? 'No limit',
-    replicationConfig_replication_isRepeatable: row.replicationConfig_replication_isRepeatable ?? 'FALSE',
-  };
-}
-
-function applyDataUsageCSVDefaults(row, dataUsage) {
-  if (!dataUsage) return row;
-
-  return {
-    ...row,
-    dataUsage_automatedRemovalApplied: row.dataUsage_automatedRemovalApplied ?? 'FALSE',
-  };
-}
-
-function flattenObject(value, prefix = '') {
-  if (!value || typeof value !== 'object') return {};
-
-  const source = typeof value.toObject === 'function' ? value.toObject({ virtuals: false }) : value;
-  const flattened = {};
-
-  for (const [key, childValue] of Object.entries(source)) {
-    if (childValue === undefined) continue;
-
-    const path = prefix ? `${prefix}_${key}` : key;
-    const isPlainObject =
-      childValue &&
-      typeof childValue === 'object' &&
-      !Array.isArray(childValue) &&
-      !(childValue instanceof Date);
-
-    if (isPlainObject) {
-      Object.assign(flattened, flattenObject(childValue, path));
-    } else {
-      flattened[path] = normalizeCSVValue(childValue, path);
-    }
+function validateMultiLeiaProcesses(experiment) {
+  const leias = experiment?.leias || [];
+  const problemLeiaId =
+    experiment?.orchestration?.problemLeiaId ||
+    experiment?.orchestration?.openingLeiaId ||
+    leias[0]?.id;
+  const problemLeia = leias.find(
+    (entry) => String(entry.id) === String(problemLeiaId)
+  );
+  if (!problemLeia) {
+    const error = new Error('Shared problem LEIA must belong to the MultiLEIA activity');
+    error.statusCode = 400;
+    throw error;
   }
-
-  return flattened;
+  const sharedProcess = normalizeProcess(
+    problemLeia.leia?.spec?.problem?.spec?.process
+  );
+  if (
+    leias.some(
+      (entry) =>
+        normalizeProcess(entry.leia?.spec?.behaviour?.spec?.process) !== sharedProcess
+    )
+  ) {
+    const error = new Error('Every MultiLEIA behaviour must use the shared problem process');
+    error.statusCode = 400;
+    throw error;
+  }
 }
 
 class ReplicationService {
@@ -71,7 +48,9 @@ class ReplicationService {
   async findAll() {
     return await ReplicationRepository.findAll();
   }
-
+  async findAllByUser(userId) {
+    return await ReplicationRepository.findAllByUser(userId);
+  }
   async findById(id) {
     return await ReplicationRepository.findById(id);
   }
@@ -91,6 +70,7 @@ class ReplicationService {
   async checkAccess(id, isAdmin, token) {
     if (!isAdmin) {
       const hasAccess = await ReplicationRepository.checkSharedAccess(id, token);
+      
       if (!hasAccess) {
         const error = new Error('Access denied');
         error.status = 403;
@@ -104,11 +84,42 @@ class ReplicationService {
   }
   // WRITE METHODS
 
-  async create(replicationData) {
-    const experiment = await ManagerService.findExperimentById(replicationData.experiment);
-    const initializedExperiment = initializeExperiment(experiment);
+  async create(replicationData, authorization, apiKeyRequesterId) {
+    const experiment = await ManagerService.findExperimentById(
+      replicationData.experiment,
+      authorization
+    );
+    const defaultApiKey = await this.getDefaultApiKey(authorization);
+    let initializedDefaultApiKey = defaultApiKey;
+    let providerDriver = 'default';
+    if (defaultApiKey) {
+      const providerConfiguration = await this.getProviderAndProviderModuleForReplication(
+        defaultApiKey.model,
+        defaultApiKey.provider
+      );
+      providerDriver = providerConfiguration.providerDriver;
+      initializedDefaultApiKey = {
+        ...defaultApiKey,
+        model: providerConfiguration.modelName,
+      };
+    }
+    const initializedExperiment = initializeExperiment(
+      experiment,
+      initializedDefaultApiKey,
+      apiKeyRequesterId,
+      providerDriver
+    );
     replicationData.experiment = initializedExperiment;
     return await ReplicationRepository.create(replicationData);
+  }
+
+  async getDefaultApiKey(authorization) {
+    if (!authorization) return null;
+
+    const response = await axios.get(`${process.env.AUTH_URL}/api/v1/apikeys`, {
+      headers: { Authorization: authorization },
+    });
+    return response.data.find((apiKey) => apiKey.isDefault) || null;
   }
 
   async updateName(id, name) {
@@ -131,6 +142,20 @@ class ReplicationService {
       throw error;
     }
     if (!replication.isActive) {
+      if (replication.experiment?.orchestration?.mode === 'multi') {
+        const leias = replication.experiment?.leias || [];
+        if (leias.length < 2) {
+          const error = new Error('MultiLEIA requires at least two LEIAs');
+          error.statusCode = 400;
+          throw error;
+        }
+        if (leias.some((leia) => Boolean(leia.runnerConfiguration?.audioMode))) {
+          const error = new Error('MultiLEIA currently supports text mode only');
+          error.statusCode = 400;
+          throw error;
+        }
+        validateMultiLeiaProcesses(replication.experiment);
+      }
       const invalidLeias = this._getLeiasWithInvalidRunnerConfiguration(replication);
       if (invalidLeias.length > 0) {
         const error = new Error('Some Leias have invalid runner configurations');
@@ -167,13 +192,13 @@ class ReplicationService {
     return await ReplicationRepository.update(id, { duration });
   }
 
-  async updateExperiment(id, experimentId) {
+  async updateExperiment(id, experimentId, authorization) {
     if (SessionRepository.hasReplicationStarted(id)) {
       const error = new Error('Replication has already started, cannot update experiment');
       error.status = 400;
       throw error;
     }
-    const experiment = await ManagerService.findExperimentById(experimentId);
+    const experiment = await ManagerService.findExperimentById(experimentId, authorization);
     const initializedExperiment = initializeExperiment(experiment);
     return await ReplicationRepository.update(id, { initializedExperiment });
   }
@@ -192,17 +217,6 @@ class ReplicationService {
 
   async deleteForm(id) {
     return await ReplicationRepository.update(id, { form: null });
-  }
-
-  async updateDataUsage(id, dataUsageConfig) {
-    return await ReplicationRepository.update(id, {
-      dataUsageConfig: {
-        ...dataUsageConfig,
-        conversationAutomatedRemoval: dataUsageConfig.dataUsageConsentRequired
-          ? dataUsageConfig.conversationAutomatedRemoval
-          : false,
-      },
-    });
   }
 
   async deleteDuration(id) {
@@ -268,69 +282,74 @@ class ReplicationService {
 
   async getConversationsCSV(id) {
     const sessions = await SessionRepository.findByReplicationAndPopulateMessages(id);
-    const exportableSessions = sessions.filter((session) => session.dataUsage?.consentStatus !== 'declined');
-    const replicationConfigRows = exportableSessions.map((session) =>
-      applyReplicationConfigCSVDefaults(flattenObject(session.replicationConfig, 'replicationConfig'))
-    );
-    const replicationConfigColumns = [...new Set(replicationConfigRows.flatMap((row) => Object.keys(row)))]
-      .filter((column) => !REPLICATION_CONFIG_CSV_EXCLUDED_COLUMNS.has(column))
-      .sort();
-    const dataUsageRows = exportableSessions.map((session) =>
-      applyDataUsageCSVDefaults(flattenObject(session.dataUsage, 'dataUsage'), session.dataUsage)
-    );
-    const dataUsageColumns = [...new Set(dataUsageRows.flatMap((row) => Object.keys(row)))].sort();
-    const columns = [
-      'Session ID',
-      'User',
-      'Started At',
-      'Finished At',
-      'Message',
-      'Is LEIA',
-      'Timestamp',
-      'Score',
-      'Evaluation',
-      ...replicationConfigColumns,
-      ...dataUsageColumns,
-    ];
 
-    const records = exportableSessions.flatMap((session, index) => {
-      const baseRecord = {
-        'Session ID': session.id || '',
-        User: session.user?.email || session.user?.id || 'Anonymous',
-        'Started At': session.startedAt ? new Date(session.startedAt).toISOString() : '',
-        'Finished At': session.finishedAt ? new Date(session.finishedAt).toISOString() : '',
-        Score: session.score ?? '',
-        Evaluation: session.evaluation || '',
-        ...replicationConfigRows[index],
-        ...dataUsageRows[index],
-      };
-      const messages = session.messages?.length ? session.messages : [{ text: 'No messages' }];
+    let csv = 'Session ID,User,Started At,Finished At,Message,Is LEIA,Timestamp,Score,Evaluation\n';
 
-      return messages.map((message) => ({
-        ...baseRecord,
-        Message: message.text || '',
-        'Is LEIA': message.isLeia === undefined ? '' : message.isLeia ? 'TRUE' : 'FALSE',
-        Timestamp: message.timestamp ? new Date(message.timestamp).toISOString() : '',
-      }));
-    });
+    for (const session of sessions) {
+      const sessionId = session.id || '';
+      const userId = session.user?.email || session.user?.id || 'Anonymous';
+      const startedAt = session.startedAt ? new Date(session.startedAt).toISOString() : '';
+      const finishedAt = session.finishedAt ? new Date(session.finishedAt).toISOString() : '';
+      const score = session.score || '';
+      const evaluation = session.evaluation ? `"${session.evaluation.replace(/"/g, '""')}"` : '';
 
-    return stringify(records, { header: true, columns, record_delimiter: '\n' });
+      if (session.messages && session.messages.length > 0) {
+        for (const message of session.messages) {
+          const messageText = message.text ? `"${message.text.replace(/"/g, '""')}"` : '';
+          const isLeia = message.isLeia ? 'TRUE' : 'FALSE';
+          const timestamp = message.timestamp ? new Date(message.timestamp).toISOString() : '';
+
+          csv += `${sessionId},${userId},${startedAt},${finishedAt},${messageText},${isLeia},${timestamp},${score},${evaluation}\n`;
+        }
+      } else {
+        csv += `${sessionId},${userId},${startedAt},${finishedAt},"No messages",,,${score},${evaluation}\n`;
+      }
+    }
+
+    return csv;
   }
 
-  async getProviderAndProviderModuleForReplication(modelName) {
+  async getProviderAndProviderModuleForReplication(modelName, preferredProvider = null) {
     const {data} = await axios.get(`${process.env.RUNNER_URL}/api/v1/models`, {
       headers: {
         Authorization: 'Bearer ' + process.env.RUNNER_KEY,
       },
     });
-    const provider = Object.entries(data.apiKeyProviders || {})
-      .find(([, models]) => models.includes(modelName))?.[0];
+    let resolvedModelName =
+      typeof modelName === 'string' && modelName.trim() ? modelName.trim() : null;
+    let provider = resolvedModelName
+      ? Object.entries(data.apiKeyProviders || {})
+          .find(([, models]) => models.includes(resolvedModelName))?.[0]
+      : null;
 
-    if (!provider) throw new Error(`Model '${modelName}' not mapped to provider`);
+    // API keys created before the model field was introduced still carry a
+    // provider. Pick that provider's first available model so old defaults do
+    // not prevent a replication from being created.
+    if (!resolvedModelName && preferredProvider) {
+      const providerModels = data.apiKeyProviders?.[preferredProvider];
+      if (Array.isArray(providerModels) && providerModels.length > 0) {
+        provider = preferredProvider;
+        resolvedModelName = providerModels[0];
+      }
+    }
+
+    if (!provider || !resolvedModelName) {
+      const error = new Error(
+        resolvedModelName
+          ? `Model '${resolvedModelName}' not mapped to provider`
+          : `No model is available for provider '${preferredProvider || 'unknown'}'`
+      );
+      error.statusCode = 400;
+      throw error;
+    }
     const providerDriver = data.providerProviderModuleMap?.[provider];
-    if (!providerDriver) throw new Error(`No provider module for provider '${provider}'`);
+    if (!providerDriver) {
+      const error = new Error(`No provider module for provider '${provider}'`);
+      error.statusCode = 400;
+      throw error;
+    }
 
-    return { provider, providerDriver };
+    return { provider, providerDriver, modelName: resolvedModelName };
   }
 
   async validateApiKeyProviderForReplication(provider, apiKeyId, apiKeyRequesterId) {

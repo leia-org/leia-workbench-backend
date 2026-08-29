@@ -15,11 +15,7 @@ patch:
     content:
       application/json:
         schema:
-          type: object
-          properties:
-            duration:
-              type: number
-              description: New duration in seconds for the replication
+          $ref: '../../../components/schemas/v1/replication/updateDurationRequest.yaml'
   responses:
     '200':
       description: Successful response with Replication

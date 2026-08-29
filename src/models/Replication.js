@@ -2,9 +2,6 @@ import mongoose, { Schema } from 'mongoose';
 import { generateUniqueCode } from '../utils/entity.js';
 import generatePassword from 'omgopass';
 
-export const DEFAULT_DATA_USAGE_CONSENT_MESSAGE =
-  'Before starting this activity, please indicate whether you consent to the use of your conversation data for educational and research purposes. Your choice will be recorded with this conversation.';
-
 const ReplicationSchema = new Schema(
   {
     name: {
@@ -37,23 +34,6 @@ const ReplicationSchema = new Schema(
     },
     form: {
       type: String,
-    },
-    dataUsageConfig: {
-      dataUsageConsentRequired: {
-        type: Boolean,
-        required: true,
-        default: false,
-      },
-      dataUsageConsentMessage: {
-        type: String,
-        required: true,
-        default: DEFAULT_DATA_USAGE_CONSENT_MESSAGE,
-      },
-      conversationAutomatedRemoval: {
-        type: Boolean,
-        required: true,
-        default: false,
-      },
     },
     isShared: {
       type: Boolean,

@@ -1,0 +1,8 @@
+type: object
+required:
+  - score
+properties:
+  score:
+    type: number
+    minimum: 0
+    maximum: 100

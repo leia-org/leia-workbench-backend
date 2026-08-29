@@ -33,6 +33,19 @@ const sessionSchema = new Schema(
       type: Schema.Types.ObjectId,
       required: true,
     },
+    leias: {
+      type: [Schema.Types.ObjectId],
+      default: undefined,
+    },
+    interactionMode: {
+      type: String,
+      enum: ['single', 'multi'],
+      default: 'single',
+    },
+    multiLeiaState: {
+      type: Schema.Types.Mixed,
+      default: undefined,
+    },
     user: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -44,14 +57,6 @@ const sessionSchema = new Schema(
     isRunnerInitialized: {
       type: Boolean,
       default: false,
-    },
-    replicationConfig: {
-      type: Schema.Types.Mixed,
-      default: undefined,
-    },
-    dataUsage: {
-      type: Schema.Types.Mixed,
-      default: undefined,
     },
     draft: {
       type: String,

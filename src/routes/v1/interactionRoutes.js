@@ -3,13 +3,13 @@ import {
   startSession,
   getSessionData,
   sendSessionMessage,
+  streamSessionMessage,
   saveResultAndFinishSession,
   getEvaluation,
   startTestSession,
   getSolution,
   finishSession,
   saveDraft,
-  recordDataUsageConsent,
 } from '../../controllers/v1/interactionController.js';
 import { authContext } from '../../middlewares/auth.js';
 
@@ -19,7 +19,7 @@ const router = Router();
 router.post('/', startSession);
 router.post('/test', authContext, startTestSession);
 router.post('/:sessionId/messages', sendSessionMessage);
-router.post('/:sessionId/data-usage-consent', recordDataUsageConsent);
+router.post('/:sessionId/messages/stream', streamSessionMessage);
 router.post('/:sessionId/result', saveResultAndFinishSession);
 router.post('/:sessionId/finish', finishSession);
 router.post('/:sessionId/draft', saveDraft);

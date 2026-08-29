@@ -11,4 +11,4 @@ get:
           schema:
             type: array
             items:
-              type: object
+              $ref: '../../../components/schemas/v1/manager/experiment.yaml'

@@ -1,0 +1,11 @@
+type: object
+properties:
+  token:
+    type: string
+  expiresAt:
+    type: string
+    format: date-time
+  sessionId:
+    type: string
+  spectateUrl:
+    type: string

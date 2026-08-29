@@ -7,7 +7,11 @@ class ReplicationRepository {
   async findAll() {
     return await Replication.find();
   }
-
+  async findAllByUser(userId) {
+    return await Replication.find({
+       $or: [{ 'experiment.user.id': userId }, { 'experiment.user._id': userId }, { 'experiment.user': userId }],
+     });
+  }
   async findById(id) {
     return await Replication.findById(id);
   }
