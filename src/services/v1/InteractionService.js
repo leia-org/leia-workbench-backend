@@ -322,7 +322,6 @@ class InteractionService {
     }
 
     delete leia.leia.spec.behaviour.spec.description;
-    delete leia.leia.spec.behaviour.spec.role;
 
     // Extract audioMode, lukeConfig and the runner provider for the
     // frontend; everything else in runnerConfiguration stays private.
@@ -380,7 +379,10 @@ class InteractionService {
 
     // Supervisor data is instructor-only: strip it (and the supervisor config)
     // from the payload the student receives.
+    
+    const sessionUser = session.user ? await UserService.findById(session.user) : null;
     const sessionData = stripSupervisorFields(session);
+    sessionData.userEmail = sessionUser?.email || null;
     if (leia.leia?.spec) delete leia.leia.spec.supervisorConfig;
 
     return {
