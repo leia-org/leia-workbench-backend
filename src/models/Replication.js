@@ -43,6 +43,11 @@ const ReplicationSchema = new Schema(
     shareToken: {
       type: String,
     },
+    language: {
+      type: String,
+      required: true,
+      default: 'en',
+    },
   },
   {
     strict: false,
