@@ -41,13 +41,14 @@ async function consumeSseStream(stream, onEvent) {
 }
 
 class RunnerService {
-  async initializeRunner(sessionId, leia) {
+  async initializeRunner(sessionId, leia, language) {
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/leias`,
       {
         sessionId,
         leia: leia.leia,
         runnerConfiguration: leia.runnerConfiguration,
+        language: language || 'en',
       },
       {
         headers: {

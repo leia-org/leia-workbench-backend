@@ -275,3 +275,14 @@ export const replicationNameExists = async (req, res, next) => {
     next(err);
   }
 };
+
+export const updateReplicationLanguage = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { language } = req.body;
+    const updatedReplication = await ReplicationService.updateLanguage(id, language);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};

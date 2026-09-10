@@ -209,7 +209,7 @@ class InteractionService {
         );
         session = await SessionService.updateMultiLeiaState(session.id, result.state);
       } else {
-        await RunnerService.initializeRunner(session.id, leia);
+        await RunnerService.initializeRunner(session.id, leia, replication.language);
       }
 
       // Update the runner status
@@ -279,7 +279,7 @@ class InteractionService {
     let session = await SessionService.create(null, replicationId, leiaId, true);
 
     // Initialize runner for the session
-    await RunnerService.initializeRunner(session.id, leia);
+    await RunnerService.initializeRunner(session.id, leia, replication.language);
 
     // Update the runner status
     session = await SessionService.updateIsRunnerInitialized(session.id, true);

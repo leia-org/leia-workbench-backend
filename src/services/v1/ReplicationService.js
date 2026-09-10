@@ -366,6 +366,10 @@ class ReplicationService {
       throw new Error('Invalid API Key provider');
     }
   }
+
+  async updateLanguage(id, language) {
+    return await ReplicationRepository.update(id, { language });
+  } 
 }
 
 export default new ReplicationService();

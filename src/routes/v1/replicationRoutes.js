@@ -19,6 +19,7 @@ import {
   updateSessionScore,
   regenerateReplicationShareToken,
   toggleReplicationIsShared,
+  updateReplicationLanguage,
   replicationNameExists
 } from '../../controllers/v1/replicationController.js';
 import { authContext, requireAdvanced } from '../../middlewares/auth.js';
@@ -35,6 +36,7 @@ router.patch('/:id/regenerate-share-token', requireAdvanced, regenerateReplicati
 router.patch('/:id/toggle-active', authContext, toggleReplicationIsActive);
 router.patch('/:id/toggle-repeatable', authContext, toggleReplicationIsRepeatable);
 router.patch('/:id/toggle-shared', requireAdvanced, toggleReplicationIsShared);
+router.patch('/:id/language', authContext, updateReplicationLanguage);
 router.patch('/:id/leia/:leiaId/toggle-ask-solution', authContext, toggleAskSolution);
 router.patch('/:id/leia/:leiaId/toggle-evaluate-solution', authContext, toggleEvaluateSolution);
 router.patch('/:id/duration', authContext, updateReplicationDuration);
