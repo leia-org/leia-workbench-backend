@@ -10,6 +10,8 @@ import {
   getSolution,
   finishSession,
   saveDraft,
+  getPrairieLearnReceipt,
+  getPrairieLearnReceiptJwks,
 } from '../../controllers/v1/interactionController.js';
 import { authContext } from '../../middlewares/auth.js';
 
@@ -25,7 +27,9 @@ router.post('/:sessionId/finish', finishSession);
 router.post('/:sessionId/draft', saveDraft);
 
 // GET
+router.get('/integrations/prairielearn/jwks', getPrairieLearnReceiptJwks);
 router.get('/:sessionId', getSessionData);
 router.get('/:sessionId/solution', getSolution);
 router.get('/:sessionId/evaluation', getEvaluation);
+router.get('/:sessionId/integrations/prairielearn/receipt', getPrairieLearnReceipt);
 export default router;

@@ -56,6 +56,16 @@ class SessionRepository {
     });
   }
 
+  async findOneByPrairieLearnContext(userId, replicationId, contextId) {
+    return await Session.findOne({
+      user: userId,
+      replication: replicationId,
+      isTest: false,
+      'integration.platform': 'prairielearn',
+      'integration.contextId': contextId,
+    }).sort({ finishedAt: -1, startedAt: -1 });
+  }
+
   async hasAnyFinished(userId, replicationId) {
     return await Session.exists({ user: userId, replication: replicationId, finishedAt: { $ne: null }, isTest: false });
   }

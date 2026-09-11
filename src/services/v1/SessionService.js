@@ -49,6 +49,9 @@ class SessionService {
   async findOneUnfinishedByUserAndReplication(userId, replicationId) {
     return await SessionRepository.findOneUnfinishedByUserAndReplication(userId, replicationId);
   }
+  async findOneByPrairieLearnContext(userId, replicationId, contextId) {
+    return await SessionRepository.findOneByPrairieLearnContext(userId, replicationId, contextId);
+  }
   async hasAnyFinished(userId, replicationId) {
     return await SessionRepository.hasAnyFinished(userId, replicationId);
   }
@@ -68,6 +71,9 @@ class SessionService {
     }
     if (options.multiLeiaState) {
       sessionData.multiLeiaState = options.multiLeiaState;
+    }
+    if (options.integration) {
+      sessionData.integration = options.integration;
     }
     return await SessionRepository.create(sessionData);
   }
@@ -123,6 +129,10 @@ class SessionService {
 
   async saveDraft(id, draft) {
     return await SessionRepository.update(id, { draft });
+  }
+
+  async setIntegration(id, integration) {
+    return await SessionRepository.update(id, { integration });
   }
 
   async appendSupervisorObservation(id, flags, supervisorState) {

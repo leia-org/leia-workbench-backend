@@ -5,6 +5,7 @@ import MessageService from './MessageService.js';
 import RunnerService from './RunnerService.js';
 import SpectatorService from './SpectatorService.js';
 import SupervisorService from './SupervisorService.js';
+import PrairieLearnReceiptService from './PrairieLearnReceiptService.js';
 import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
 import { randomUUID } from 'crypto';
@@ -139,7 +140,18 @@ function buildMultiLeiaPayload(replication, session) {
 }
 
 class InteractionService {
-  async startSession(userEmail, replicationCode) {
+  async startSession(userEmail, replicationCode, integration = null) {
+    const integrationMetadata =
+      integration?.platform === 'prairielearn'
+        ? {
+          platform: 'prairielearn',
+          participantId: userEmail,
+          activityCode: replicationCode,
+          contextId: integration.contextId,
+          }
+        : null;
+    if (integrationMetadata) PrairieLearnReceiptService.assertConfigured();
+
     logger.info(`User ${userEmail} is trying to join replication ${replicationCode}`);
     const replication = await ReplicationService.findByCode(replicationCode);
     if (!replication) {
@@ -163,7 +175,16 @@ class InteractionService {
 
     logger.info(`User ${userEmail} found`);
 
-    let session = await SessionService.findOneUnfinishedByUserAndReplication(user.id, replication.id);
+    // A PrairieLearn context identifies one question attempt. Reopening or
+    // re-rendering that question must return the same session, including a
+    // completed one, so its signed receipt can be delivered again.
+    let session = integrationMetadata
+      ? await SessionService.findOneByPrairieLearnContext(
+        user.id,
+        replication.id,
+        integrationMetadata.contextId
+      )
+      : await SessionService.findOneUnfinishedByUserAndReplication(user.id, replication.id);
 
     if (!session) {
       logger.info(
@@ -182,17 +203,38 @@ class InteractionService {
           session = await SessionService.create(user.id, replication.id, problemLeia.id, false, {
             interactionMode: 'multi',
             leias: entries.map((entry) => entry.id),
+            integration: integrationMetadata,
           });
         } else {
           const nextLeiaId = await ReplicationService.getAndIncrementNextLeia(replication.id);
-          session = await SessionService.create(user.id, replication.id, nextLeiaId, false);
+          session = await SessionService.create(user.id, replication.id, nextLeiaId, false, {
+            integration: integrationMetadata,
+          });
         }
         logger.info(`Session created for user ${userEmail} and replication ${replicationCode}`);
       }
     }
 
+    if (integrationMetadata) {
+      const currentIntegration = session.integration;
+      if (
+        currentIntegration &&
+        (currentIntegration.platform !== integrationMetadata.platform ||
+          currentIntegration.participantId !== integrationMetadata.participantId ||
+          currentIntegration.activityCode !== integrationMetadata.activityCode ||
+          currentIntegration.contextId !== integrationMetadata.contextId)
+      ) {
+        const error = new Error('Existing session belongs to a different integration launch');
+        error.statusCode = 409;
+        throw error;
+      }
+      if (!currentIntegration) {
+        session = await SessionService.setIntegration(session.id, integrationMetadata);
+      }
+    }
+
     logger.info(`Session found for user ${userEmail} and replication ${replicationCode}`);
-    if (!session.isRunnerInitialized) {
+    if (!session.finishedAt && !session.isRunnerInitialized) {
       logger.info(`Runner for session ${session.id} is not initialized, initializing now`);
       const leia = replication.experiment.leias.find((leia) => session.leia.equals(leia.id));
       if (!leia) {

@@ -1,9 +1,17 @@
 import Joi from 'joi';
 
-export const startSessionValidator = Joi.object({
-  email: Joi.string().email().required(),
-  code: Joi.string().required(),
-});
+export const startSessionValidator = Joi.alternatives().try(
+  Joi.object({
+    email: Joi.string().email().required(),
+    code: Joi.string().required(),
+  }),
+  Joi.object({
+    integration: Joi.object({
+      platform: Joi.string().valid('prairielearn').required(),
+      launchToken: Joi.string().required(),
+    }).required(),
+  })
+);
 
 export const startTestSessionValidator = Joi.object({
   replicationId: Joi.string().hex().length(24).required(),

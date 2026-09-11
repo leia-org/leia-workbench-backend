@@ -1,5 +1,9 @@
 import InteractionService from '../../services/v1/InteractionService.js';
 import ReplicationService from '../../services/v1/ReplicationService.js';
+import PrairieLearnReceiptService, {
+  getLeiaReceiptJwks,
+  verifyPrairieLearnLaunch,
+} from '../../services/v1/PrairieLearnReceiptService.js';
 import {
   startSessionValidator,
   sendSessionMessageValidator,
@@ -12,7 +16,19 @@ import {
 export const startSession = async (req, res, next) => {
   try {
     const value = await startSessionValidator.validateAsync(req.body);
-    const sessionId = await InteractionService.startSession(value.email, value.code);
+    const launch = value.integration
+      ? await verifyPrairieLearnLaunch(value.integration.launchToken)
+      : null;
+    const sessionId = await InteractionService.startSession(
+      launch?.participantId || value.email,
+      launch?.activityCode || value.code,
+      launch
+        ? {
+            platform: 'prairielearn',
+            contextId: launch.contextId,
+          }
+        : null
+    );
     res.status(201).json({ sessionId });
   } catch (error) {
     next(error);
@@ -135,6 +151,24 @@ export const finishSession = async (req, res, next) => {
     const { sessionId } = req.params;
     const session = await InteractionService.finishSession(sessionId);
     res.json(session);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPrairieLearnReceipt = async (req, res, next) => {
+  try {
+    const receipt = await PrairieLearnReceiptService.issue(req.params.sessionId);
+    res.json({ receipt });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPrairieLearnReceiptJwks = (_req, res, next) => {
+  try {
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json(getLeiaReceiptJwks());
   } catch (error) {
     next(error);
   }

@@ -8,6 +8,7 @@
     "dev": "node --env-file-if-exists=.env --watch ./src/index.js",
     "test": "vitest",
     "test:watch": "vitest --watch",
+    "keys:prairielearn": "node ./scripts/generatePrairieLearnKeys.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write ."
