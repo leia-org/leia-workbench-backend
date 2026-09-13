@@ -1,5 +1,8 @@
 type: object
 properties:
+  reflectiveAvailable:
+    type: boolean
+    description: A reflective interview can be started from this finished session's submitted solution.
   session:
     $ref: './session.yaml'
   messages:

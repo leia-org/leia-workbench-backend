@@ -2,6 +2,8 @@ import { Schema, model } from 'mongoose';
 
 const sessionSchema = new Schema(
   {
+    previousSession: { type: Schema.Types.ObjectId, ref: 'Session', immutable: true },
+    leiaSnapshot: { type: Schema.Types.Mixed, immutable: true },
     startedAt: {
       type: Date,
       default: Date.now,
@@ -80,11 +82,13 @@ const sessionSchema = new Schema(
       transform: (doc, ret) => {
         delete ret._id;
         delete ret.__v;
+        delete ret.leiaSnapshot;
       },
     },
   }
 );
 
 sessionSchema.index({ user: 1, replication: 1, isTest: 1 }, { partialFilterExpression: { isTest: false } });
+sessionSchema.index({ previousSession: 1 }, { unique: true, sparse: true });
 
 export default model('Session', sessionSchema);

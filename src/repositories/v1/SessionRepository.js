@@ -1,6 +1,9 @@
 import Session from '../../models/Session.js';
 
 class SessionRepository {
+  async findByPreviousSession(previousSession) {
+    return await Session.findOne({ previousSession });
+  }
   // READ METHODS
 
   async findAll() {

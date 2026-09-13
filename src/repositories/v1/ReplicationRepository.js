@@ -147,11 +147,12 @@ class ReplicationRepository {
     const replication = await Replication.findById(id, {
       'experiment.leias.id': 1,
       'experiment.leias.sessionCount': 1,
+      'experiment.leias.leia.spec.behaviour.spec.reflective': 1,
     });
     if (!replication) {
       throw new Error('Replication not found');
     }
-    const leias = replication.experiment?.leias;
+    const leias = replication.experiment?.leias?.filter((entry) => !entry.leia?.spec?.behaviour?.spec?.reflective);
     if (!leias || leias.length === 0) {
       throw new Error('No leias found in the replication experiment');
     }

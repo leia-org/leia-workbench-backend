@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   startSession,
+  startReflectiveSession,
   getSessionData,
   sendSessionMessage,
   streamSessionMessage,
@@ -18,6 +19,7 @@ const router = Router();
 // POST
 router.post('/', startSession);
 router.post('/test', authContext, startTestSession);
+router.post('/:sessionId/reflective', startReflectiveSession);
 router.post('/:sessionId/messages', sendSessionMessage);
 router.post('/:sessionId/messages/stream', streamSessionMessage);
 router.post('/:sessionId/result', saveResultAndFinishSession);

@@ -52,8 +52,9 @@ export function initializeExperiment(
       },
     };
     leia.sessionCount = 0;
-    leia.configuration.askSolution = true;
-    leia.configuration.evaluateSolution = true;
+    const reflective = leia.leia?.spec?.behaviour?.spec?.reflective === true;
+    leia.configuration.askSolution = !reflective;
+    leia.configuration.evaluateSolution = !reflective;
   }
   return experiment;
 }

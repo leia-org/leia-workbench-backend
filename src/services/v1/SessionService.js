@@ -3,6 +3,9 @@ import ReplicationService from './ReplicationService.js';
 import { emitToSession, emitToReplication } from '../../socket/index.js';
 
 class SessionService {
+  async findByPreviousSession(previousSession) {
+    return await SessionRepository.findByPreviousSession(previousSession);
+  }
   // READ METHODS
 
   async findAll() {
@@ -62,6 +65,8 @@ class SessionService {
       leia: leiaId,
       isTest,
       interactionMode: options.interactionMode || 'single',
+      ...(options.previousSession ? { previousSession: options.previousSession } : {}),
+      ...(options.leiaSnapshot ? { leiaSnapshot: options.leiaSnapshot } : {}),
     };
     if (Array.isArray(options.leias) && options.leias.length > 0) {
       sessionData.leias = options.leias;

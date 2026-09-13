@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   createReplication,
+  toggleReplicationReflective,
   getReplicationById,
   getAllReplications,
   updateReplicationName,
@@ -34,6 +35,7 @@ router.patch('/:id/name', requireAdvanced, updateReplicationName);
 router.patch('/:id/regenerate-code', authContext, regenerateReplicationCode);
 router.patch('/:id/regenerate-share-token', requireAdvanced, regenerateReplicationShareToken);
 router.patch('/:id/toggle-active', authContext, toggleReplicationIsActive);
+router.patch('/:id/toggle-reflective', authContext, toggleReplicationReflective);
 router.patch('/:id/toggle-repeatable', authContext, toggleReplicationIsRepeatable);
 router.patch('/:id/toggle-shared', requireAdvanced, toggleReplicationIsShared);
 router.patch('/:id/language', authContext, updateReplicationLanguage);

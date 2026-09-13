@@ -1,6 +1,12 @@
 type: object
 additionalProperties: true
 properties:
+  previousSession:
+    type: string
+    description: Immutable reference to the preceding normal session for a reflective interview.
+  reflectiveAvailable:
+    type: boolean
+    description: Returned when submitting a normal solution that has an enabled reflective successor.
   id:
     type: string
   startedAt:

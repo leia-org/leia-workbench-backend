@@ -1,5 +1,9 @@
 type: object
 properties:
+  reflectiveEnabled:
+    type: boolean
+    default: false
+    description: Enables LN to LR continuations. Existing interviews remain resumable when disabled.
   id:
     $ref: '../../mongoId.yaml'
     description: Unique identifier for the replication

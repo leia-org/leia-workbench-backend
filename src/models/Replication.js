@@ -48,6 +48,7 @@ const ReplicationSchema = new Schema(
       required: true,
       default: 'en',
     },
+    reflectiveEnabled: { type: Boolean, default: false },
   },
   {
     strict: false,

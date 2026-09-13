@@ -8,6 +8,8 @@ import SupervisorService from './SupervisorService.js';
 import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
 import { randomUUID } from 'crypto';
+import { isReflective, validateReflectiveChain, reflectiveError, getReflectiveSuccessor, buildReflectiveContext } from '../../utils/reflective.js';
+import reflectiveRuntime from '../../utils/reflectiveRuntime.cjs';
 
 // Applies the problem's per-tool authoring to the tool schemas the client
 // sends to the runner: drops tools the instructor disabled and appends their
@@ -25,6 +27,7 @@ function stripSupervisorFields(session) {
   delete data.__v;
   delete data.supervisorFlags;
   delete data.supervisorState;
+  delete data.leiaSnapshot;
   return data;
 }
 
@@ -139,7 +142,48 @@ function buildMultiLeiaPayload(replication, session) {
 }
 
 class InteractionService {
-  async startSession(userEmail, replicationCode) {
+  async startReflectiveSession(previousSessionId) {
+    const previous = await SessionService.findById(previousSessionId);
+    if (!previous) throw reflectiveError('Previous session not found', 404);
+    if (!previous.finishedAt || typeof previous.result !== 'string' || !previous.result.trim()) {
+      throw reflectiveError('Finish the normal LEIA and submit its solution before starting the reflection');
+    }
+    const replication = await ReplicationService.findById(previous.replication);
+    const successor = getReflectiveSuccessor(replication, previous);
+    if (!successor) throw reflectiveError('No Reflective LEIA is enabled after this session');
+    if (!previous.isTest && !replication.isActive) throw reflectiveError('Replication is not active', 403);
+    validateReflectiveChain(replication.experiment);
+    let session = await SessionService.findByPreviousSession(previous.id);
+    if (!session) {
+      const messages = await MessageService.findBySession(previous.id);
+      const context = await buildReflectiveContext({ messages, session: previous });
+      const snapshot = structuredClone(successor.leia);
+      snapshot.spec.reflectiveContext = context;
+      // Validate before persisting; actual instantiation happens once in each runner.
+      reflectiveRuntime.instantiateLeia(snapshot);
+      try {
+        session = await SessionService.create(previous.user, previous.replication, successor.id, previous.isTest, {
+          previousSession: previous.id, leiaSnapshot: snapshot,
+        });
+      } catch (error) {
+        if (error.code !== 11000) throw error;
+        session = await SessionService.findByPreviousSession(previous.id);
+        if (!session) throw error;
+      }
+    }
+    if (!session.isRunnerInitialized && !session.finishedAt) {
+      try {
+        await RunnerService.initializeRunner(session.id, { ...successor, leia: session.leiaSnapshot }, replication.language);
+      } catch (error) {
+        // A retry may find the runner created before Workbench persisted its initialized flag.
+        if (error.response?.status !== 409) throw error;
+      }
+      await SessionService.updateIsRunnerInitialized(session.id, true);
+    }
+    return session.id;
+  }
+
+  async startSession(userEmail, replicationCode, previousSessionId) {
     logger.info(`User ${userEmail} is trying to join replication ${replicationCode}`);
     const replication = await ReplicationService.findByCode(replicationCode);
     if (!replication) {
@@ -163,9 +207,24 @@ class InteractionService {
 
     logger.info(`User ${userEmail} found`);
 
+    if (previousSessionId) {
+      const previous = await SessionService.findById(previousSessionId);
+      if (!previous || previous.isTest || String(previous.user) !== String(user.id) || String(previous.replication) !== String(replication.id)) {
+        throw reflectiveError('Previous session does not belong to this student and replication', 403);
+      }
+      return await this.startReflectiveSession(previousSessionId);
+    }
+
     let session = await SessionService.findOneUnfinishedByUserAndReplication(user.id, replication.id);
 
     if (!session) {
+      const history = replication.reflectiveEnabled ? await SessionService.findByUserAndReplication(user.id, replication.id) : [];
+      const latest = history.filter((entry) => !entry.isTest && entry.finishedAt)
+        .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))[0];
+      if (latest?.result && getReflectiveSuccessor(replication, latest)) {
+        const continuation = await SessionService.findByPreviousSession(latest.id);
+        if (!continuation || !continuation.finishedAt) return await this.startReflectiveSession(latest.id);
+      }
       logger.info(
         `Session not found for user ${userEmail} and replication ${replicationCode} checking possibility of creating a new one`
       );
@@ -209,7 +268,11 @@ class InteractionService {
         );
         session = await SessionService.updateMultiLeiaState(session.id, result.state);
       } else {
-        await RunnerService.initializeRunner(session.id, leia, replication.language);
+        try {
+          await RunnerService.initializeRunner(session.id, session.leiaSnapshot ? { ...leia, leia: session.leiaSnapshot } : leia, replication.language);
+        } catch (error) {
+          if (!session.previousSession || error.response?.status !== 409) throw error;
+        }
       }
 
       // Update the runner status
@@ -276,6 +339,15 @@ class InteractionService {
       throw error;
     }
 
+    if (isReflective(leia)) {
+      const entries = replication.experiment.leias;
+      const index = entries.findIndex((entry) => String(entry.id) === String(leia.id));
+      if (!replication.reflectiveEnabled || index < 1 || isReflective(entries[index - 1])) {
+        throw reflectiveError('Enable Reflective LEIA and place it after a normal LEIA before testing');
+      }
+      return await this.startTestSession(replicationId, entries[index - 1].id);
+    }
+
     let session = await SessionService.create(null, replicationId, leiaId, true);
 
     // Initialize runner for the session
@@ -313,6 +385,7 @@ class InteractionService {
     }
 
     const multiLeia = buildMultiLeiaPayload(replication, session);
+    const reflectiveAvailable = Boolean(session.finishedAt && session.result && getReflectiveSuccessor(replication, session));
 
     delete replication.experiment;
 
@@ -323,6 +396,12 @@ class InteractionService {
 
     delete leia.leia.spec.behaviour.spec.description;
     delete leia.leia.spec.behaviour.spec.role;
+    delete leia.leia.spec.behaviour.spec.evaluationPrompt;
+    delete leia.leia.spec.behaviour.spec.stoppingPrompt;
+    if (session.previousSession || isReflective(leia)) {
+      leia.configuration.askSolution = false;
+      leia.configuration.evaluateSolution = false;
+    }
 
     // Extract audioMode, lukeConfig and the runner provider for the
     // frontend; everything else in runnerConfiguration stays private.
@@ -388,6 +467,7 @@ class InteractionService {
       messages,
       leia,
       replication,
+      reflectiveAvailable,
       ...(multiLeia ? { multiLeia } : {}),
     };
   }
@@ -532,6 +612,7 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
+    if (session.finishedAt) throw reflectiveError('Session already finished', 403);
 
     const leia = await ReplicationService.findLeia(session.replication, session.leia);
 
@@ -678,6 +759,8 @@ class InteractionService {
       throw error;
     }
 
+    const entry = await ReplicationService.findLeia(session.replication, session.leia);
+    if (session.previousSession || isReflective(entry)) throw reflectiveError('Reflective LEIA does not accept a new solution');
     session = await SessionService.saveResultAndFinish(session.id, result);
 
     // Final supervisor pass (covers the onFinish cadence and the last turns).
@@ -694,6 +777,7 @@ class InteractionService {
       spectateUrl,
       spectateToken: spectatorData.token,
       spectateExpiresAt: spectatorData.expiresAt,
+      reflectiveAvailable: Boolean(getReflectiveSuccessor(await ReplicationService.findById(session.replication), session)),
     };
   }
 
@@ -743,6 +827,7 @@ class InteractionService {
       error.statusCode = 403;
       throw error;
     }
+    if (session.previousSession) throw reflectiveError('Reflective LEIA does not accept a new solution');
     const updated = await SessionService.saveDraft(session.id, draft);
     return stripSupervisorFields(updated);
   }

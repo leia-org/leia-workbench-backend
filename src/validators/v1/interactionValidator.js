@@ -3,6 +3,7 @@ import Joi from 'joi';
 export const startSessionValidator = Joi.object({
   email: Joi.string().email().required(),
   code: Joi.string().required(),
+  previousSessionId: Joi.string().hex().length(24).optional(),
 });
 
 export const startTestSessionValidator = Joi.object({

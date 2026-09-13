@@ -3,6 +3,10 @@ required:
   - email
   - code
 properties:
+  previousSessionId:
+    type: string
+    pattern: '^[a-fA-F0-9]{24}$'
+    description: Optional launch URL parameter identifying the finished normal session; must belong to this student and replication.
   email:
     type: string
     format: email

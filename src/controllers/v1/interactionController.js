@@ -12,7 +12,7 @@ import {
 export const startSession = async (req, res, next) => {
   try {
     const value = await startSessionValidator.validateAsync(req.body);
-    const sessionId = await InteractionService.startSession(value.email, value.code);
+    const sessionId = await InteractionService.startSession(value.email, value.code, value.previousSessionId);
     res.status(201).json({ sessionId });
   } catch (error) {
     next(error);
@@ -28,6 +28,16 @@ export const startTestSession = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+export const startReflectiveSession = async (req, res, next) => {
+  try {
+    if (!/^[a-f\d]{24}$/i.test(req.params.sessionId)) {
+      return res.status(400).json({ message: 'Invalid previous session ID' });
+    }
+    const sessionId = await InteractionService.startReflectiveSession(req.params.sessionId);
+    res.status(201).json({ sessionId });
+  } catch (error) { next(error); }
 };
 
 export const getSessionData = async (req, res, next) => {

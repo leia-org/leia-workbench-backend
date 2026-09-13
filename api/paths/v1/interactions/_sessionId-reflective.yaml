@@ -1,0 +1,26 @@
+post:
+  tags: [Interactions v1]
+  summary: Start or resume the reflective interview for a finished normal session
+  description: Uses the same session-ID access model as the other student interaction endpoints. Loads previous conversation and submitted solution server-side. Retries return the same continuation.
+  operationId: startReflectiveSession
+  security: []
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-fA-F0-9]{24}$'
+  responses:
+    '201':
+      description: New or existing reflective session ID.
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/interaction/sessionIdResponse.yaml'
+    '400':
+      description: Missing submitted solution, unfinished session, or reflection is not enabled.
+    '403':
+      description: Replication is inactive.
+    '404':
+      description: Previous session does not exist.

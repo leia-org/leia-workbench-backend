@@ -102,6 +102,13 @@ export const toggleReplicationIsActive = async (req, res, next) => {
   }
 };
 
+export const toggleReplicationReflective = async (req, res, next) => {
+  try {
+    // authContext already checks administrator, activity owner, or share-token access.
+    res.json(await ReplicationService.toggleReflective(req.params.id));
+  } catch (error) { next(error); }
+};
+
 export const toggleReplicationIsShared = async (req, res, next) => {
   try {
     const replication = await ReplicationService.findById(req.params.id);

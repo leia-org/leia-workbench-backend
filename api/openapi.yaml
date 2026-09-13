@@ -51,6 +51,8 @@ paths:
     $ref: './paths/v1/replications/_id-toggleActive.yaml'
   /v1/replications/{id}/toggle-repeatable:
     $ref: './paths/v1/replications/_id-toggleRepeatable.yaml'
+  /v1/replications/{id}/toggle-reflective:
+    $ref: './paths/v1/replications/_id-toggleReflective.yaml'
   /v1/replications/{id}/toggle-shared:
     $ref: './paths/v1/replications/_id-toggleShared.yaml'
   /v1/replications/{id}/regenerate-share-token:
@@ -93,6 +95,8 @@ paths:
     $ref: './paths/v1/interactions/_sessionId-result.yaml'
   /v1/interactions/{sessionId}/finish:
     $ref: './paths/v1/interactions/_sessionId-finish.yaml'
+  /v1/interactions/{sessionId}/reflective:
+    $ref: './paths/v1/interactions/_sessionId-reflective.yaml'
   /v1/interactions/{sessionId}/evaluation:
     $ref: './paths/v1/interactions/_sessionId-evaluation.yaml'
   /v1/interactions/{sessionId}/solution:

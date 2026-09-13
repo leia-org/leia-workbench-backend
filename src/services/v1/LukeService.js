@@ -1,5 +1,6 @@
 import { createLukeServer, openai, gemini } from '@leia-org/luke-server';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
+import reflectiveRuntime from '../../utils/reflectiveRuntime.cjs';
 import ReplicationService from './ReplicationService.js';
 import MessageService from './MessageService.js';
 import SessionService from './SessionService.js';
@@ -51,6 +52,10 @@ class LukeService {
         },
         getSystemInstruction: async (userSession) => {
           if (!userSession?.leia) return undefined;
+          if (userSession.session?.leiaSnapshot) {
+            const instance = reflectiveRuntime.instantiateLeia(userSession.session.leiaSnapshot);
+            return reflectiveRuntime.buildReflectiveInstructions(instance);
+          }
           return buildInstructions(userSession.leia);
         },
         saveHistory: async (userSession, transcription) => {

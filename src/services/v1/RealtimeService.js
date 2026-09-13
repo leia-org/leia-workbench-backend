@@ -1,6 +1,7 @@
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ReplicationService from './ReplicationService.js';
 import logger from '../../utils/logger.js';
+import reflectiveRuntime from '../../utils/reflectiveRuntime.cjs';
 
 class RealtimeService {
   async createRealtimeSession(sessionId, sdpOffer) {
@@ -34,6 +35,9 @@ class RealtimeService {
     const behaviourSpec = leia.leia?.spec?.behaviour?.spec || {};
 
     let instructions = realtimeConfig.instructions;
+    if (session.leiaSnapshot) {
+      instructions = reflectiveRuntime.buildReflectiveInstructions(reflectiveRuntime.instantiateLeia(session.leiaSnapshot));
+    }
     if (!instructions) {
       const instructionParts = [];
 

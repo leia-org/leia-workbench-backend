@@ -1,0 +1,21 @@
+patch:
+  tags: [Replications v1]
+  summary: Enable or disable new Reflective LEIA interviews
+  operationId: toggleReplicationReflective
+  parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    '200':
+      description: Updated replication; existing interviews are unaffected.
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/replication/replication.yaml'
+    '400':
+      description: Invalid LN to LR chain, missing reflective LEIA, or preceding LEIA does not collect a solution.
+    '403':
+      description: Activity owner, administrator, or valid shared access required.
