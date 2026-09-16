@@ -38,12 +38,13 @@ export const getReplicationById = async (req, res, next) => {
 
 export const getAllReplications = async (req, res, next) => {
   try {
+    const lastReplicationId = req.query.lastReplicationId;
     if (req.auth.payload.role === 'admin') {
-      const replications = await ReplicationService.findAll();
+      const replications = await ReplicationService.findAll(lastReplicationId);
       res.json(replications);
     }
     else {
-    const replications = await ReplicationService.findAllByUser(req.auth?.payload?.id);
+    const replications = await ReplicationService.findAllByUser(req.auth?.payload?.id, lastReplicationId);
     res.json(replications);
     }
   } catch (err) {
