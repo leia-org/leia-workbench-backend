@@ -1,6 +1,7 @@
 import { verifyToken } from '../utils/jwt.js';
 import logger from '../utils/logger.js';
 import ReplicationService from '../services/v1/ReplicationService.js';
+import SessionService from '../services/v1/SessionService.js';
 export function auth(req, res, next) {
   req.auth = null;
 
@@ -131,6 +132,75 @@ export async function authContext(req, res, next) {
       // checkAccess lanza "Access denied" cuando no tiene acceso
       await ReplicationService.checkAccess(
         req.params.id,
+        canAccessReplication,
+        req.user.shareToken
+      );
+
+      req.replication = replication;
+      return next();
+    } catch (error) {
+      error.statusCode ??= error.status ?? 500;
+      return next(error);
+    }
+}
+
+export async function authContextForSession(req, res, next) {
+    try {
+      const authorization = req.headers.authorization;
+      const shareToken = req.query.token;
+
+      req.user = {};
+
+      if (authorization) {
+        const parts = authorization.split(' ');
+
+        if (parts.length !== 2 || parts[0] !== 'Bearer') {
+          const error = new Error('Invalid authorization header format');
+          error.statusCode = 401;
+          return next(error);
+        }
+
+        const decoded = verifyToken(parts[1]);
+
+        req.user = {
+          ...decoded,
+          isAdmin: decoded.role === 'admin',
+        };
+      } else if (shareToken) {
+        req.user = { shareToken };
+      }
+
+      const sessionId = req.params.id;
+      const session = await SessionService.findById(sessionId);
+
+      if (!session) {
+        const error = new Error('Session not found');
+        error.statusCode = 404;
+        return next(error);
+      }
+
+      const replicationId = session.replication.toString();
+      const replication = await ReplicationService.findById(replicationId);
+
+      if (!replication) {
+        const error = new Error('Replication not found');
+        error.statusCode = 404;
+        return next(error);
+      }
+
+      const replicationOwner =
+        replication.experiment?.user?._id ??
+        replication.experiment?.user?.id ??
+        replication.experiment?.user;
+
+      const isOwner =
+        replicationOwner?.toString() === req.user.id?.toString();
+
+      const canAccessReplication =
+        req.user.isAdmin === true || isOwner;
+
+      await ReplicationService.checkAccess(
+        replicationId,
         canAccessReplication,
         req.user.shareToken
       );
