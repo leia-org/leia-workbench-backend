@@ -380,9 +380,11 @@ class InteractionService {
     // Supervisor data is instructor-only: strip it (and the supervisor config)
     // from the payload the student receives.
     
-    const sessionUser = session.user ? await UserService.findById(session.user) : null;
     const sessionData = stripSupervisorFields(session);
-    sessionData.userEmail = sessionUser?.email || null;
+    if (session.user) {
+        const sessionUser = await UserService.findById(session.user);
+        sessionData.userEmail = sessionUser?.email;
+    }
     if (leia.leia?.spec) delete leia.leia.spec.supervisorConfig;
 
     return {
