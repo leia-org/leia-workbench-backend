@@ -61,6 +61,13 @@ const sessionSchema = new Schema(
     draft: {
       type: String,
     },
+    // Assigned once at creation (SessionService.create) and never recomputed:
+    // which of the 4 scenario variants of the LEIA's fixed pattern this
+    // student sees. Widgets that don't use a repo-based scenario source
+    // simply ignore this field.
+    scenarioNumber: {
+      type: Number,
+    },
     // Background supervisor (instructor-only). Flags raised while observing the
     // activity; never exposed to the student. supervisorState tracks the
     // observation cursor and any pending student nudge.

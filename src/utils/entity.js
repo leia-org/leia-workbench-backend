@@ -52,6 +52,9 @@ export function initializeExperiment(
       },
     };
     leia.sessionCount = 0;
+    // One counter per scenario variant, balanced the same way as sessionCount
+    // (least-count, not Math.random()) — see getAndIncrementNextScenario.
+    leia.scenarioCounts = [0, 0, 0, 0];
     leia.configuration.askSolution = true;
     leia.configuration.evaluateSolution = true;
   }
