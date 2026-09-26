@@ -5,9 +5,32 @@ import MessageService from './MessageService.js';
 import RunnerService from './RunnerService.js';
 import SpectatorService from './SpectatorService.js';
 import SupervisorService from './SupervisorService.js';
+import ScenarioRepoService from './ScenarioRepoService.js';
 import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
 import { randomUUID } from 'crypto';
+
+// Finds the first widget config carrying a `scenarioSource` — not restricted
+// to a single widgetType so any future widget can opt in without touching
+// this lookup.
+function findScenarioSource(widgets) {
+  const widget = (widgets || []).find((w) => w?.params?.scenarioSource?.pattern);
+  return widget?.params?.scenarioSource ?? null;
+}
+
+// Strips `params.scenarioSource` from every widget before it can reach the
+// student's browser: the repo folder it names IS the answer to the exercise
+// (see ScenarioRepoService). The frontend doesn't need it — it fetches the
+// actual files via GET /:sessionId/scenario-files instead (see
+// getScenarioFiles), which never returns the pattern/repo either.
+function redactScenarioSource(widgets) {
+  return (widgets || []).map((w) => {
+    if (!w?.params?.scenarioSource) return w;
+    const params = { ...w.params };
+    delete params.scenarioSource;
+    return { ...w, params };
+  });
+}
 
 // Applies the problem's per-tool authoring to the tool schemas the client
 // sends to the runner: drops tools the instructor disabled and appends their
@@ -343,6 +366,16 @@ class InteractionService {
     // and ride here inside leia.leia.spec.problem.spec.widgets. Fall back to
     // the legacy runnerConfiguration.lukeConfig.widgets for LEIAs configured
     // before the migration (dual-read).
+    //
+    // Must redact IN PLACE on leia.leia.spec.problem.spec.widgets, not just in
+    // a local copy: the frontend reads that exact nested path directly,
+    // bypassing lukeConfig.widgets below. `leia` is also embedded in
+    // replication.experiment.leias[], serialized into this same response —
+    // mutating it here is what keeps every copy of the payload redacted.
+    if (leia.leia?.spec?.problem?.spec && Array.isArray(leia.leia.spec.problem.spec.widgets)) {
+      leia.leia.spec.problem.spec.widgets = redactScenarioSource(leia.leia.spec.problem.spec.widgets);
+    }
+
     const problemWidgets = leia.leia?.spec?.problem?.spec?.widgets;
     const widgets = Array.isArray(problemWidgets) && problemWidgets.length > 0
       ? problemWidgets
@@ -523,6 +556,43 @@ class InteractionService {
       partial: Boolean(runnerResult.partial),
       ...(pendingNudge ? { nudge: pendingNudge } : {}),
     };
+  }
+
+  // Server-side proxy for the scenario repo (see ScenarioRepoService).
+  // Returns only file contents — never `source.pattern`, `repoOwner`/
+  // `repoName`, or `scenarioNumber` — since the pattern name is the
+  // exercise's answer and the repo folder it lives in IS that name.
+  async getScenarioFiles(sessionId) {
+    const session = await SessionService.findById(sessionId);
+    if (!session) {
+      const error = new Error('Session not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const leia = await ReplicationService.findLeia(session.replication, session.leia);
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const widgets = leia.leia?.spec?.problem?.spec?.widgets;
+    const source = findScenarioSource(widgets);
+    if (!source) {
+      const error = new Error('This session has no scenario source configured');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (!session.scenarioNumber) {
+      const error = new Error('This session has no scenario number assigned');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const files = await ScenarioRepoService.fetchScenarioFiles(source, session.scenarioNumber);
+    return { files };
   }
 
   async sendSessionMessage(sessionId, message, options = {}) {

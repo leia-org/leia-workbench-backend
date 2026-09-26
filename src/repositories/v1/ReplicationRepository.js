@@ -165,6 +165,52 @@ class ReplicationRepository {
 
     return nextLeia.id;
   }
+
+  async incrementLeiaScenarioCount(id, leiaId, scenarioIndex) {
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.leias.id': leiaId },
+      { $inc: { [`experiment.leias.$.scenarioCounts.${scenarioIndex}`]: 1 } },
+      { new: true }
+    );
+  }
+
+  // Same least-count balancing as getAndIncrementNextLeia, applied to which
+  // of the 4 scenario variants is served within a single leia, instead of
+  // Math.random() (which can repeat the same number several sessions in a
+  // row). Scoped per-leia, not per-replication: each leia/pattern has its
+  // own scenario pool.
+  async getAndIncrementNextScenario(id, leiaId) {
+    const replication = await Replication.findById(id, {
+      'experiment.leias.id': 1,
+      'experiment.leias.scenarioCounts': 1,
+    });
+    if (!replication) {
+      throw new Error('Replication not found');
+    }
+    leiaId = new mongoose.Types.ObjectId(String(leiaId));
+    const leia = replication.experiment?.leias?.find((l) => leiaId.equals(l.id));
+    if (!leia) {
+      throw new Error('Leia not found in the replication experiment');
+    }
+
+    // Leias created before this feature (or added without going through
+    // initializeExperiment) may not have scenarioCounts yet — treat as
+    // all-zero rather than failing the session.
+    const counts = leia.scenarioCounts?.length === 4 ? leia.scenarioCounts : [0, 0, 0, 0];
+
+    // Find the scenario index with the least uses so far (ties go to the
+    // lowest index, same tie-break as getAndIncrementNextLeia).
+    let nextIndex = 0;
+    for (let i = 1; i < counts.length; i++) {
+      if (counts[i] < counts[nextIndex]) {
+        nextIndex = i;
+      }
+    }
+
+    await this.incrementLeiaScenarioCount(id, leia.id, nextIndex);
+
+    return nextIndex + 1;
+  }
 }
 
 export default new ReplicationRepository();

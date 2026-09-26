@@ -40,6 +40,16 @@ export const getSessionData = async (req, res, next) => {
   }
 };
 
+export const getScenarioFiles = async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+    const data = await InteractionService.getScenarioFiles(sessionId);
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const sendSessionMessage = async (req, res, next) => {
   try {
     const value = await sendSessionMessageValidator.validateAsync(req.body);

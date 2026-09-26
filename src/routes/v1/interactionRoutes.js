@@ -8,6 +8,7 @@ import {
   getEvaluation,
   startTestSession,
   getSolution,
+  getScenarioFiles,
   finishSession,
   saveDraft,
 } from '../../controllers/v1/interactionController.js';
@@ -27,5 +28,6 @@ router.post('/:sessionId/draft', saveDraft);
 // GET
 router.get('/:sessionId', getSessionData);
 router.get('/:sessionId/solution', getSolution);
+router.get('/:sessionId/scenario-files', getScenarioFiles);
 router.get('/:sessionId/evaluation', getEvaluation);
 export default router;
