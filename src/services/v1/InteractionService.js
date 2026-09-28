@@ -32,9 +32,8 @@ function stripSupervisorFields(session) {
 }
 
 function hasStoppingCondition(leia) {
-  // Audio runs through Luke/Realtime and does not return the runner's
-  // structured completion signal.
-  return !leia?.runnerConfiguration?.audioMode &&
+  const audioMode = leia?.runnerConfiguration?.audioMode;
+  return (audioMode == null || audioMode === 'luke') &&
     leia?.leia?.spec?.behaviour?.spec?.conversationDynamics?.stoppingCondition?.enabled === true;
 }
 

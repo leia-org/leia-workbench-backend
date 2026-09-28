@@ -3,6 +3,7 @@ import {
   createRealtimeSession,
   saveAudioTranscription,
   createLukeToken,
+  finishLukeConversation,
 } from '../../controllers/v1/realtimeController.js';
 
 const router = express.Router();
@@ -17,5 +18,6 @@ router.post('/transcriptions/:sessionId', saveAudioTranscription);
 
 // POST /api/v1/realtime/luke-token/:sessionId - Get Luke WebSocket auth token
 router.post('/luke-token/:sessionId', createLukeToken);
+router.post('/luke-finish/:sessionId', finishLukeConversation);
 
 export default router;

@@ -2,6 +2,7 @@ import RealtimeService from '../../services/v1/RealtimeService.js';
 import LukeService from '../../services/v1/LukeService.js';
 import MessageService from '../../services/v1/MessageService.js';
 import SessionService from '../../services/v1/SessionService.js';
+import jwt from 'jsonwebtoken';
 
 /**
  * Create a Realtime API session
@@ -91,6 +92,34 @@ export const createLukeToken = async (req, res, next) => {
 
     const result = await LukeService.createLukeToken(sessionId);
     res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const finishLukeConversation = async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+    const rawToken = req.headers?.['x-luke-token'];
+    if (!rawToken || typeof rawToken !== 'string') {
+      const error = new Error('Luke token is required');
+      error.statusCode = 401;
+      throw error;
+    }
+    let token;
+    try {
+      token = jwt.verify(rawToken, process.env.JWT_SECRET || 'secret');
+    } catch {
+      const error = new Error('Invalid Luke token');
+      error.statusCode = 401;
+      throw error;
+    }
+    if (!token?.sessionId || !token?.leiaId) {
+      const error = new Error('Luke token is required');
+      error.statusCode = 401;
+      throw error;
+    }
+    res.status(200).json(await LukeService.finishConversation(sessionId, token.sessionId, token.leiaId));
   } catch (error) {
     next(error);
   }

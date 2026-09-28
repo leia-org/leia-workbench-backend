@@ -8,6 +8,8 @@ import SupervisorService from './SupervisorService.js';
 import logger from '../../utils/logger.js';
 import jwt from 'jsonwebtoken';
 
+const FINISH_CONVERSATION_INSTRUCTION = 'When the stopping instructions are satisfied, call finish_conversation exactly once. Then give a final spoken reply to the participant. Do not call it merely because the participant asks to finish.';
+
 class LukeService {
   initialize(httpServer) {
     const providers = [];
@@ -52,11 +54,17 @@ class LukeService {
         },
         getSystemInstruction: async (userSession) => {
           if (!userSession?.leia) return undefined;
+          let instructions;
           if (userSession.session?.leiaSnapshot) {
             const instance = reflectiveRuntime.instantiateLeia(userSession.session.leiaSnapshot);
-            return reflectiveRuntime.buildReflectiveInstructions(instance);
+            instructions = reflectiveRuntime.buildReflectiveInstructions(instance);
+          } else {
+            instructions = buildInstructions(userSession.leia);
           }
-          return buildInstructions(userSession.leia);
+          if (hasStoppingCondition(userSession.leia)) {
+            instructions += `\n\n${FINISH_CONVERSATION_INSTRUCTION}`;
+          }
+          return instructions;
         },
         saveHistory: async (userSession, transcription) => {
           if (!userSession?.sessionId || !transcription.final) return;
@@ -133,6 +141,37 @@ class LukeService {
       voice: lukeConfig.voice || 'Puck',
     };
   }
+
+  async finishConversation(sessionId, tokenSessionId, tokenLeiaId) {
+    if (sessionId !== tokenSessionId) {
+      const error = new Error('Luke token does not match this session');
+      error.statusCode = 403;
+      throw error;
+    }
+    const session = await SessionRepository.findById(sessionId);
+    if (!session || String(session.leia) !== String(tokenLeiaId)) {
+      const error = new Error('Luke session not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    const leia = await ReplicationService.findLeia(session.replication, session.leia);
+    if (!leia || leia.runnerConfiguration?.audioMode !== 'luke' || !hasStoppingCondition(leia)) {
+      const error = new Error('Luke stopping condition is not enabled');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (session.finishedAt) {
+      const error = new Error('Session already finished');
+      error.statusCode = 409;
+      throw error;
+    }
+    if (!session.conversationEnded) await SessionService.markConversationEnded(sessionId);
+    return { conversationEnded: true };
+  }
+}
+
+function hasStoppingCondition(leia) {
+  return leia?.leia?.spec?.behaviour?.spec?.conversationDynamics?.stoppingCondition?.enabled === true;
 }
 
 function buildInstructions(leia) {

@@ -129,6 +129,20 @@ describe('Previous conversation context', () => {
     expect(SessionService.finish).toHaveBeenCalledWith('previous');
   });
 
+  test('requires Luke completion while leaving Realtime sessions unchanged', async () => {
+    previous.finishedAt = null;
+    const leia = replication.experiment.leias[1];
+    leia.runnerConfiguration = { audioMode: 'luke' };
+    ReplicationService.findLeia.mockResolvedValue(leia);
+    await expect(InteractionService.finishSession('previous')).rejects.toMatchObject({ statusCode: 409 });
+    leia.runnerConfiguration.audioMode = 'realtime';
+    SessionService.finish.mockResolvedValue({ ...previous, finishedAt: new Date() });
+    SpectatorService.generateSpectateToken.mockResolvedValue({ token: 'token', expiresAt: new Date() });
+    SpectatorService.generateSpectateUrl.mockReturnValue('https://example.test/spectate');
+    await InteractionService.finishSession('previous');
+    expect(SessionService.finish).toHaveBeenCalledWith('previous');
+  });
+
   test('persists the completion signal returned by Runner and exposes it to the chat', async () => {
     previous.finishedAt = null;
     ReplicationService.findLeia.mockResolvedValue(replication.experiment.leias[1]);
