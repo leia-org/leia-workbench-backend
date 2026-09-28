@@ -8,7 +8,7 @@ import SupervisorService from './SupervisorService.js';
 import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
 import { randomUUID } from 'crypto';
-import { isReflective, validateReflectiveChain, reflectiveError, getReflectiveSuccessor, buildReflectiveContext } from '../../utils/reflective.js';
+import { needsPreviousConversation, validateReflectiveChain, reflectiveError, getReflectiveSuccessor, buildReflectiveContext } from '../../utils/reflective.js';
 import reflectiveRuntime from '../../utils/reflectiveRuntime.cjs';
 
 // Applies the problem's per-tool authoring to the tool schemas the client
@@ -145,12 +145,12 @@ class InteractionService {
   async startReflectiveSession(previousSessionId) {
     const previous = await SessionService.findById(previousSessionId);
     if (!previous) throw reflectiveError('Previous session not found', 404);
-    if (!previous.finishedAt || typeof previous.result !== 'string' || !previous.result.trim()) {
-      throw reflectiveError('Finish the normal LEIA and submit its solution before starting the reflection');
+    if (!previous.finishedAt) {
+      throw reflectiveError('Finish the previous LEIA before continuing');
     }
     const replication = await ReplicationService.findById(previous.replication);
     const successor = getReflectiveSuccessor(replication, previous);
-    if (!successor) throw reflectiveError('No Reflective LEIA is enabled after this session');
+    if (!successor) throw reflectiveError('No LEIA using previous conversation context follows this session');
     if (!previous.isTest && !replication.isActive) throw reflectiveError('Replication is not active', 403);
     validateReflectiveChain(replication.experiment);
     let session = await SessionService.findByPreviousSession(previous.id);
@@ -218,10 +218,10 @@ class InteractionService {
     let session = await SessionService.findOneUnfinishedByUserAndReplication(user.id, replication.id);
 
     if (!session) {
-      const history = replication.reflectiveEnabled ? await SessionService.findByUserAndReplication(user.id, replication.id) : [];
+      const history = await SessionService.findByUserAndReplication(user.id, replication.id);
       const latest = history.filter((entry) => !entry.isTest && entry.finishedAt)
         .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))[0];
-      if (latest?.result && getReflectiveSuccessor(replication, latest)) {
+      if (latest && getReflectiveSuccessor(replication, latest)) {
         const continuation = await SessionService.findByPreviousSession(latest.id);
         if (!continuation || !continuation.finishedAt) return await this.startReflectiveSession(latest.id);
       }
@@ -339,11 +339,11 @@ class InteractionService {
       throw error;
     }
 
-    if (isReflective(leia)) {
+    if (needsPreviousConversation(leia)) {
       const entries = replication.experiment.leias;
       const index = entries.findIndex((entry) => String(entry.id) === String(leia.id));
-      if (!replication.reflectiveEnabled || index < 1 || isReflective(entries[index - 1])) {
-        throw reflectiveError('Enable Reflective LEIA and place it after a normal LEIA before testing');
+      if (index < 1) {
+        throw reflectiveError('Place this LEIA after another LEIA before testing');
       }
       return await this.startTestSession(replicationId, entries[index - 1].id);
     }
@@ -385,7 +385,7 @@ class InteractionService {
     }
 
     const multiLeia = buildMultiLeiaPayload(replication, session);
-    const reflectiveAvailable = Boolean(session.finishedAt && session.result && getReflectiveSuccessor(replication, session));
+    const reflectiveAvailable = Boolean(session.finishedAt && getReflectiveSuccessor(replication, session));
 
     delete replication.experiment;
 
@@ -396,12 +396,9 @@ class InteractionService {
 
     delete leia.leia.spec.behaviour.spec.description;
     delete leia.leia.spec.behaviour.spec.role;
-    delete leia.leia.spec.behaviour.spec.evaluationPrompt;
-    delete leia.leia.spec.behaviour.spec.stoppingPrompt;
-    if (session.previousSession || isReflective(leia)) {
-      leia.configuration.askSolution = false;
-      leia.configuration.evaluateSolution = false;
-    }
+    const dynamics = leia.leia.spec.behaviour.spec.conversationDynamics;
+    if (dynamics?.stoppingCondition) delete dynamics.stoppingCondition.prompt;
+    if (dynamics?.speaksFirst) delete dynamics.speaksFirst.prompt;
 
     // Extract audioMode, lukeConfig and the runner provider for the
     // frontend; everything else in runnerConfiguration stays private.
@@ -745,6 +742,25 @@ class InteractionService {
     return { message: leiaMessage };
   }
 
+  async startConversation(sessionId) {
+    let session = await SessionService.findById(sessionId);
+    if (!session) throw reflectiveError('Session not found', 404);
+    if (session.finishedAt || session.interactionMode === 'multi') return null;
+    if (!session.isTest && session.dataUsage?.config?.dataUsageConsentRequired &&
+      !['accepted', 'declined', 'not_required'].includes(session.dataUsage.consentStatus)) return null;
+    const leia = await ReplicationService.findLeia(session.replication, session.leia);
+    if (!leia?.leia?.spec?.behaviour?.spec?.conversationDynamics?.speaksFirst?.enabled || leia.configuration?.mode === 'transcription') return null;
+    const existing = await MessageService.findBySession(session.id);
+    if (existing.length) return existing.find((message) => message.isLeia) || null;
+    const response = await RunnerService.sendMessage(session.id, 'Begin the conversation with your opening message.');
+    const text = typeof response === 'string' ? response : response?.message;
+    if (!text) return null;
+    const message = await MessageService.create(text, true, session.id);
+    session = await SessionService.addMessage(session.id, message.id);
+    SupervisorService.observeAsync(session.id, leia);
+    return message;
+  }
+
   async saveResultAndFinishSession(sessionId, result) {
     let session = await SessionService.findById(sessionId);
     if (!session) {
@@ -759,8 +775,6 @@ class InteractionService {
       throw error;
     }
 
-    const entry = await ReplicationService.findLeia(session.replication, session.leia);
-    if (session.previousSession || isReflective(entry)) throw reflectiveError('Reflective LEIA does not accept a new solution');
     session = await SessionService.saveResultAndFinish(session.id, result);
 
     // Final supervisor pass (covers the onFinish cadence and the last turns).
@@ -812,6 +826,7 @@ class InteractionService {
       spectateUrl,
       spectateToken: spectatorData.token,
       spectateExpiresAt: spectatorData.expiresAt,
+      reflectiveAvailable: Boolean(getReflectiveSuccessor(await ReplicationService.findById(session.replication), session)),
     };
   }
 
@@ -827,7 +842,6 @@ class InteractionService {
       error.statusCode = 403;
       throw error;
     }
-    if (session.previousSession) throw reflectiveError('Reflective LEIA does not accept a new solution');
     const updated = await SessionService.saveDraft(session.id, draft);
     return stripSupervisorFields(updated);
   }

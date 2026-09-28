@@ -52,9 +52,8 @@ export function initializeExperiment(
       },
     };
     leia.sessionCount = 0;
-    const reflective = leia.leia?.spec?.behaviour?.spec?.reflective === true;
-    leia.configuration.askSolution = !reflective;
-    leia.configuration.evaluateSolution = !reflective;
+    leia.configuration.askSolution = true;
+    leia.configuration.evaluateSolution = true;
   }
   return experiment;
 }

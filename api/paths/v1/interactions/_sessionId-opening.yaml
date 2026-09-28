@@ -1,0 +1,15 @@
+post:
+  tags: [Interactions v1]
+  summary: Generate the optional first LEIA message
+  description: Returns the existing opening message on retries. Returns null when the behaviour does not start the conversation or the session already has a participant message.
+  operationId: startConversation
+  security: []
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    '200':
+      description: Opening LEIA message, or null.

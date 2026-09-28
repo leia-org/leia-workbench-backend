@@ -3,6 +3,7 @@ import {
   startSession,
   startReflectiveSession,
   getSessionData,
+  startConversation,
   sendSessionMessage,
   streamSessionMessage,
   saveResultAndFinishSession,
@@ -20,6 +21,7 @@ const router = Router();
 router.post('/', startSession);
 router.post('/test', authContext, startTestSession);
 router.post('/:sessionId/reflective', startReflectiveSession);
+router.post('/:sessionId/opening', startConversation);
 router.post('/:sessionId/messages', sendSessionMessage);
 router.post('/:sessionId/messages/stream', streamSessionMessage);
 router.post('/:sessionId/result', saveResultAndFinishSession);

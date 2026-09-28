@@ -3,10 +3,10 @@ additionalProperties: true
 properties:
   previousSession:
     type: string
-    description: Immutable reference to the preceding normal session for a reflective interview.
+    description: Reference to the preceding session when this LEIA uses previous conversation context.
   reflectiveAvailable:
     type: boolean
-    description: Returned when submitting a normal solution that has an enabled reflective successor.
+    description: Whether the next LEIA in the activity uses this session's conversation context.
   id:
     type: string
   startedAt:

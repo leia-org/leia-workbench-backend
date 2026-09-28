@@ -140,7 +140,7 @@ class RealtimeService {
       }
 
       Object.keys(behaviourSpec).forEach((key) => {
-        if (!['description', 'role', 'character', 'process'].includes(key) && behaviourSpec[key]) {
+        if (!['description', 'role', 'character', 'process', 'conversationDynamics'].includes(key) && behaviourSpec[key]) {
           if (typeof behaviourSpec[key] === 'object') {
             instructionParts.push(`${key}: ${JSON.stringify(behaviourSpec[key])}`);
           } else {
@@ -150,6 +150,12 @@ class RealtimeService {
       });
 
       instructions = instructionParts.filter((part) => part.trim() !== '').join('\n');
+    }
+    if (!session.leiaSnapshot) {
+      const optionalInstructions = reflectiveRuntime.buildReflectiveInstructions({ spec: { behaviour: { spec: {
+        conversationDynamics: behaviourSpec.conversationDynamics,
+      } } } });
+      instructions = [instructions, optionalInstructions].filter(Boolean).join('\n\n');
     }
 
     const sessionConfig = {

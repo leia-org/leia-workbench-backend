@@ -2,7 +2,7 @@ type: object
 properties:
   reflectiveAvailable:
     type: boolean
-    description: A reflective interview can be started from this finished session's submitted solution.
+    description: The next LEIA can be started with the finished session's conversation context.
   session:
     $ref: './session.yaml'
   messages:

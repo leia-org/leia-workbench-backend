@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import Replication from '../../models/Replication.js';
+import { needsPreviousConversation } from '../../utils/reflective.js';
 
 class ReplicationRepository {
   // READ METHODS
@@ -147,12 +148,12 @@ class ReplicationRepository {
     const replication = await Replication.findById(id, {
       'experiment.leias.id': 1,
       'experiment.leias.sessionCount': 1,
-      'experiment.leias.leia.spec.behaviour.spec.reflective': 1,
+      'experiment.leias.leia.spec.behaviour.spec': 1,
     });
     if (!replication) {
       throw new Error('Replication not found');
     }
-    const leias = replication.experiment?.leias?.filter((entry) => !entry.leia?.spec?.behaviour?.spec?.reflective);
+    const leias = replication.experiment?.leias?.filter((entry) => !needsPreviousConversation(entry));
     if (!leias || leias.length === 0) {
       throw new Error('No leias found in the replication experiment');
     }

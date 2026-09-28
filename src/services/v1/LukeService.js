@@ -192,7 +192,7 @@ function buildInstructions(leia) {
   }
 
   Object.keys(behaviourSpec).forEach((key) => {
-    if (!['description', 'role', 'character', 'process'].includes(key) && behaviourSpec[key]) {
+    if (!['description', 'role', 'character', 'process', 'conversationDynamics'].includes(key) && behaviourSpec[key]) {
       if (typeof behaviourSpec[key] === 'object') {
         instructionParts.push(`${key}: ${JSON.stringify(behaviourSpec[key])}`);
       } else {
@@ -200,6 +200,9 @@ function buildInstructions(leia) {
       }
     }
   });
+  instructionParts.push(reflectiveRuntime.buildReflectiveInstructions({ spec: { behaviour: { spec: {
+    conversationDynamics: behaviourSpec.conversationDynamics,
+  } } } }));
 
   // Widgets now come from the problem definition (authored in the designer)
   // and ride inside leia.leia.spec.problem.spec.widgets. Fall back to the

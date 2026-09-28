@@ -1,37 +1,40 @@
 import reflectiveRuntime from './reflectiveRuntime.cjs';
 
-export const isReflective = (entry) => entry?.leia?.spec?.behaviour?.spec?.reflective === true;
+const contextReference = /{{\s*reflectiveContext\.(?:previousConversation|previousSolution)\s*}}/;
+
+export const needsPreviousConversation = (entry) => {
+  const spec = { ...entry?.leia?.spec?.behaviour?.spec };
+  const dynamics = spec.conversationDynamics || {};
+  spec.conversationDynamics = Object.fromEntries(
+    Object.entries(dynamics).filter(([, dynamic]) => dynamic?.enabled)
+  );
+  return contextReference.test(JSON.stringify(spec));
+};
 
 export function reflectiveError(message, statusCode = 400) {
   return Object.assign(new Error(message), { statusCode });
 }
 
-// Activity order defines LN -> LR pairs. A reflective LEIA is never a root.
 export function validateReflectiveChain(experiment) {
   const entries = experiment?.leias || [];
   entries.forEach((entry, index) => {
-    if (!isReflective(entry)) return;
+    if (!needsPreviousConversation(entry)) return;
     if (experiment.orchestration?.mode === 'multi') {
-      throw reflectiveError('Reflective LEIA requires sequential LN → LR sessions');
+      throw reflectiveError('Previous conversation context requires sequential sessions');
     }
-    if (index === 0 || isReflective(entries[index - 1])) {
-      throw reflectiveError('Each Reflective LEIA must immediately follow a normal LEIA');
+    if (index === 0) {
+      throw reflectiveError('A LEIA using reflectiveContext must follow another LEIA in the activity');
     }
     if (entry.configuration?.mode === 'transcription') {
-      throw reflectiveError('Reflective LEIA requires an interactive session');
-    }
-    const spec = entry.leia.spec.behaviour.spec;
-    if (!spec.evaluationPrompt?.trim() || !spec.stoppingPrompt?.trim()) {
-      throw reflectiveError('Reflective LEIA requires evaluationPrompt and stoppingPrompt');
+      throw reflectiveError('Previous conversation context requires an interactive session');
     }
   });
 }
 
 export function getReflectiveSuccessor(replication, session) {
-  if (!replication?.reflectiveEnabled || session.previousSession) return null;
-  const entries = replication.experiment?.leias || [];
+  const entries = replication?.experiment?.leias || [];
   const index = entries.findIndex((entry) => String(entry.id) === String(session.leia));
-  return index >= 0 && !isReflective(entries[index]) && isReflective(entries[index + 1])
+  return index >= 0 && needsPreviousConversation(entries[index + 1])
     ? entries[index + 1] : null;
 }
 

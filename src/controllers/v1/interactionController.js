@@ -50,6 +50,13 @@ export const getSessionData = async (req, res, next) => {
   }
 };
 
+export const startConversation = async (req, res, next) => {
+  try {
+    const message = await InteractionService.startConversation(req.params.sessionId);
+    res.json({ message });
+  } catch (error) { next(error); }
+};
+
 export const sendSessionMessage = async (req, res, next) => {
   try {
     const value = await sendSessionMessageValidator.validateAsync(req.body);

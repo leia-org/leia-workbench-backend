@@ -3,7 +3,7 @@ import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
 import axios from 'axios';
-import { isReflective, validateReflectiveChain, reflectiveError } from '../../utils/reflective.js';
+import { validateReflectiveChain } from '../../utils/reflective.js';
 
 function normalizeProcess(process) {
   if (!Array.isArray(process)) return '';
@@ -44,22 +44,6 @@ function validateMultiLeiaProcesses(experiment) {
 }
 
 class ReplicationService {
-  async toggleReflective(id) {
-    const replication = await this.findById(id);
-    if (!replication) throw reflectiveError('Replication not found', 404);
-    if (!replication.reflectiveEnabled) {
-      validateReflectiveChain(replication.experiment);
-      if (!replication.experiment.leias.some(isReflective)) {
-        throw reflectiveError('Add a Reflective LEIA after a normal LEIA in the activity first');
-      }
-      for (let i = 1; i < replication.experiment.leias.length; i++) {
-        if (isReflective(replication.experiment.leias[i]) && !replication.experiment.leias[i - 1].configuration?.askSolution) {
-          throw reflectiveError('The preceding normal LEIA must ask for a student solution');
-        }
-      }
-    }
-    return await ReplicationRepository.update(id, { reflectiveEnabled: !replication.reflectiveEnabled });
-  }
   // READ METHODS
 
   async findAll() {
@@ -188,7 +172,6 @@ class ReplicationService {
   _getLeiasWithInvalidRunnerConfiguration(replication) {
     const invalidLeias = [];
     for (const leia of replication.experiment.leias) {
-      if (isReflective(leia) && !replication.reflectiveEnabled) continue;
       const config = leia.runnerConfiguration || {};
       const missingFields = [];
       if (!config.modelName) missingFields.push('modelName');
@@ -251,13 +234,6 @@ class ReplicationService {
       throw error;
     }
 
-    if (isReflective(leia)) throw reflectiveError('Reflective LEIA does not request a new solution');
-    const replication = await this.findById(id);
-    const entries = replication.experiment.leias;
-    const index = entries.findIndex((entry) => String(entry.id) === String(leiaId));
-    if (replication.reflectiveEnabled && isReflective(entries[index + 1]) && leia.configuration.askSolution) {
-      throw reflectiveError('The preceding normal LEIA must ask for a student solution');
-    }
     const askSolutionStatus = !leia.configuration.askSolution;
     const evaluatedSolutionStatus = leia.configuration.evaluateSolution;
 
@@ -284,7 +260,6 @@ class ReplicationService {
       throw error;
     }
 
-    if (isReflective(leia)) throw reflectiveError('Reflective LEIA does not evaluate a new solution');
     const askSolutionStatus = leia.configuration.askSolution;
     const evaluateSolutionStatus = !leia.configuration.evaluateSolution;
 

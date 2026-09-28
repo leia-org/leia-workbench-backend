@@ -1,7 +1,7 @@
 post:
   tags: [Interactions v1]
-  summary: Start or resume the reflective interview for a finished normal session
-  description: Uses the same session-ID access model as the other student interaction endpoints. Loads previous conversation and submitted solution server-side. Retries return the same continuation.
+  summary: Continue to the next LEIA using the previous conversation
+  description: Loads the previous conversation and any submitted solution server-side. Retries return the same continuation.
   operationId: startReflectiveSession
   security: []
   parameters:
@@ -13,13 +13,13 @@ post:
         pattern: '^[a-fA-F0-9]{24}$'
   responses:
     '201':
-      description: New or existing reflective session ID.
+      description: New or existing continuation session ID.
       content:
         application/json:
           schema:
             $ref: '../../../components/schemas/v1/interaction/sessionIdResponse.yaml'
     '400':
-      description: Missing submitted solution, unfinished session, or reflection is not enabled.
+      description: The preceding session is unfinished or no contextual LEIA follows it.
     '403':
       description: Replication is inactive.
     '404':
