@@ -11,6 +11,10 @@ const sessionSchema = new Schema(
     finishedAt: {
       type: Date,
     },
+    conversationEnded: {
+      type: Boolean,
+      default: false,
+    },
     result: {
       type: String,
     },

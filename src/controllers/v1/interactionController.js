@@ -1,4 +1,5 @@
 import InteractionService from '../../services/v1/InteractionService.js';
+import SessionService from '../../services/v1/SessionService.js';
 import ReplicationService from '../../services/v1/ReplicationService.js';
 import {
   startSessionValidator,
@@ -53,7 +54,8 @@ export const getSessionData = async (req, res, next) => {
 export const startConversation = async (req, res, next) => {
   try {
     const message = await InteractionService.startConversation(req.params.sessionId);
-    res.json({ message });
+    const session = await SessionService.findById(req.params.sessionId);
+    res.json({ message, conversationEnded: session?.conversationEnded === true });
   } catch (error) { next(error); }
 };
 
@@ -69,18 +71,20 @@ export const sendSessionMessage = async (req, res, next) => {
     // calls that the frontend has to execute. We forward whichever shape
     // came back; the frontend distinguishes by the presence of toolCalls.
     const nudge = result && typeof result === 'object' && result.nudge ? result.nudge : undefined;
+    const completion = result?.conversationEnded === true ? { conversationEnded: true } : {};
     if (result && Array.isArray(result.messages)) {
       res.json({
         messages: result.messages,
         state: result.state,
         partial: Boolean(result.partial),
         ...(nudge ? { nudge } : {}),
+        ...completion,
       });
     } else if (result && Array.isArray(result.toolCalls) && result.toolCalls.length > 0) {
-      res.json({ toolCalls: result.toolCalls, ...(nudge ? { nudge } : {}) });
+      res.json({ toolCalls: result.toolCalls, ...(nudge ? { nudge } : {}), ...completion });
     } else {
       const message = typeof result === 'string' ? result : result?.message;
-      res.json({ message, ...(nudge ? { nudge } : {}) });
+      res.json({ message, ...(nudge ? { nudge } : {}), ...completion });
     }
   } catch (error) {
     next(error);

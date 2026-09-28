@@ -7,19 +7,22 @@ vi.mock('../src/services/v1/SessionService.js', () => ({ default: {
   findById: vi.fn(), findByPreviousSession: vi.fn(), create: vi.fn(), updateIsRunnerInitialized: vi.fn(),
   findOneUnfinishedByUserAndReplication: vi.fn(), findByUserAndReplication: vi.fn(),
   saveResultAndFinish: vi.fn(), saveDraft: vi.fn(),
+  finish: vi.fn(), markConversationEnded: vi.fn(),
 } }));
 vi.mock('../src/services/v1/MessageService.js', () => ({ default: { findBySession: vi.fn(), create: vi.fn() } }));
-vi.mock('../src/services/v1/RunnerService.js', () => ({ default: { initializeRunner: vi.fn(), sendMessage: vi.fn() } }));
+vi.mock('../src/services/v1/RunnerService.js', () => ({ default: { initializeRunner: vi.fn(), sendMessage: vi.fn(), deleteCache: vi.fn() } }));
 vi.mock('../src/services/v1/UserService.js', () => ({ default: { findByEmail: vi.fn() } }));
-vi.mock('../src/services/v1/SpectatorService.js', () => ({ default: {} }));
+vi.mock('../src/services/v1/SpectatorService.js', () => ({ default: { generateSpectateToken: vi.fn().mockResolvedValue({ token: 'token', expiresAt: new Date() }), generateSpectateUrl: vi.fn().mockReturnValue('https://example.test/spectate') } }));
 vi.mock('../src/services/v1/SupervisorService.js', () => ({ default: { observeAsync: vi.fn() } }));
 vi.mock('../src/utils/logger.js', () => ({ default: { info: vi.fn() } }));
 
 import InteractionService from '../src/services/v1/InteractionService.js';
+import { sendSessionMessage as sendSessionMessageController } from '../src/controllers/v1/interactionController.js';
 import ReplicationService from '../src/services/v1/ReplicationService.js';
 import SessionService from '../src/services/v1/SessionService.js';
 import MessageService from '../src/services/v1/MessageService.js';
 import RunnerService from '../src/services/v1/RunnerService.js';
+import SpectatorService from '../src/services/v1/SpectatorService.js';
 import UserService from '../src/services/v1/UserService.js';
 
 let replication, previous;
@@ -108,5 +111,53 @@ describe('Previous conversation context', () => {
     previous.dataUsage = { config: { dataUsageConsentRequired: true }, consentStatus: 'pending' };
     expect(await InteractionService.startConversation('previous')).toBeNull();
     expect(RunnerService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  test('blocks both finish routes until LEIA signals the end of a stopping-condition conversation', async () => {
+    previous.finishedAt = null;
+    ReplicationService.findLeia.mockResolvedValue(replication.experiment.leias[1]);
+    await expect(InteractionService.finishSession('previous')).rejects.toMatchObject({ statusCode: 409 });
+    await expect(InteractionService.saveResultAndFinishSession('previous', 'answer')).rejects.toMatchObject({ statusCode: 409 });
+    expect(SessionService.finish).not.toHaveBeenCalled();
+    expect(SessionService.saveResultAndFinish).not.toHaveBeenCalled();
+
+    previous.conversationEnded = true;
+    SessionService.finish.mockResolvedValue({ ...previous, finishedAt: new Date() });
+    SpectatorService.generateSpectateToken.mockResolvedValue({ token: 'token', expiresAt: new Date() });
+    SpectatorService.generateSpectateUrl.mockReturnValue('https://example.test/spectate');
+    await InteractionService.finishSession('previous');
+    expect(SessionService.finish).toHaveBeenCalledWith('previous');
+  });
+
+  test('persists the completion signal returned by Runner and exposes it to the chat', async () => {
+    previous.finishedAt = null;
+    ReplicationService.findLeia.mockResolvedValue(replication.experiment.leias[1]);
+    RunnerService.sendMessage.mockResolvedValue({ message: 'Goodbye.', conversationEnded: true });
+    SessionService.markConversationEnded.mockResolvedValue({ ...previous, conversationEnded: true });
+    MessageService.create.mockResolvedValue({ id: 'last-message' });
+    SessionService.addMessage = vi.fn().mockResolvedValue({ ...previous, conversationEnded: true });
+
+    expect(await InteractionService.sendSessionMessage('previous', 'Thank you')).toMatchObject({
+      message: 'Goodbye.', conversationEnded: true,
+    });
+    expect(SessionService.markConversationEnded).toHaveBeenCalledWith('previous');
+  });
+
+  test('forwards completion through the HTTP response used by the chat', async () => {
+    const send = vi.spyOn(InteractionService, 'sendSessionMessage').mockResolvedValue({
+      message: 'Goodbye.', conversationEnded: true,
+    });
+    const res = { json: vi.fn() };
+    const next = vi.fn();
+    await sendSessionMessageController({ params: { sessionId: 'previous' }, body: { message: 'Thanks' } }, res, next);
+    expect(send).toHaveBeenCalledWith('previous', 'Thanks', expect.any(Object));
+    expect(res.json).toHaveBeenCalledWith({ message: 'Goodbye.', conversationEnded: true });
+    expect(next).not.toHaveBeenCalled();
+    send.mockResolvedValue({ toolCalls: [{ callId: 'widget-call', name: 'read_editor', arguments: '{}' }], conversationEnded: true });
+    await sendSessionMessageController({ params: { sessionId: 'previous' }, body: { message: 'One more thing' } }, res, next);
+    expect(res.json).toHaveBeenLastCalledWith({
+      toolCalls: [{ callId: 'widget-call', name: 'read_editor', arguments: '{}' }], conversationEnded: true,
+    });
+    send.mockRestore();
   });
 });

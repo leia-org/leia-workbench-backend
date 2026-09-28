@@ -31,6 +31,20 @@ function stripSupervisorFields(session) {
   return data;
 }
 
+function hasStoppingCondition(leia) {
+  // Audio runs through Luke/Realtime and does not return the runner's
+  // structured completion signal.
+  return !leia?.runnerConfiguration?.audioMode &&
+    leia?.leia?.spec?.behaviour?.spec?.conversationDynamics?.stoppingCondition?.enabled === true;
+}
+
+async function requireConversationEnded(session) {
+  const leia = await ReplicationService.findLeia(session.replication, session.leia);
+  if (hasStoppingCondition(leia) && !session.conversationEnded) {
+    throw reflectiveError('Wait for LEIA to finish the conversation before ending the session', 409);
+  }
+}
+
 function applyProblemToolConfig(tools, leia) {
   if (!Array.isArray(tools) || tools.length === 0) return tools;
 
@@ -708,6 +722,10 @@ class InteractionService {
     const effectiveTools = applyProblemToolConfig(tools, leia);
     const runnerResponse = await RunnerService.sendMessage(session.id, message, { tools: effectiveTools, toolResults });
 
+    if (runnerResponse?.conversationEnded === true && hasStoppingCondition(leia)) {
+      session = await SessionService.markConversationEnded(session.id);
+    }
+
     // Runner returns either { message } or { toolCalls } (or a raw string
     // for older code paths). Only persist a Leia message when we got a
     // final text response back.
@@ -716,9 +734,9 @@ class InteractionService {
       // nudge here too so it isn't dropped for tool-using activities.
       if (pendingNudge) {
         await SessionService.clearPendingNudge(session.id, pendingNudge);
-        return { toolCalls: runnerResponse.toolCalls, nudge: pendingNudge };
+        return { toolCalls: runnerResponse.toolCalls, nudge: pendingNudge, conversationEnded: Boolean(session.conversationEnded) };
       }
-      return { toolCalls: runnerResponse.toolCalls };
+      return { toolCalls: runnerResponse.toolCalls, conversationEnded: Boolean(session.conversationEnded) };
     }
 
     const leiaMessage = typeof runnerResponse === 'string' ? runnerResponse : runnerResponse?.message;
@@ -736,10 +754,10 @@ class InteractionService {
     // in-flight observation isn't clobbered.
     if (pendingNudge) {
       await SessionService.clearPendingNudge(session.id, pendingNudge);
-      return { message: leiaMessage, nudge: pendingNudge };
+      return { message: leiaMessage, nudge: pendingNudge, conversationEnded: Boolean(session.conversationEnded) };
     }
 
-    return { message: leiaMessage };
+    return { message: leiaMessage, conversationEnded: Boolean(session.conversationEnded) };
   }
 
   async startConversation(sessionId) {
@@ -754,6 +772,9 @@ class InteractionService {
     if (existing.length) return existing.find((message) => message.isLeia) || null;
     const response = await RunnerService.sendMessage(session.id, 'Begin the conversation with your opening message.');
     const text = typeof response === 'string' ? response : response?.message;
+    if (response?.conversationEnded === true && hasStoppingCondition(leia)) {
+      session = await SessionService.markConversationEnded(session.id);
+    }
     if (!text) return null;
     const message = await MessageService.create(text, true, session.id);
     session = await SessionService.addMessage(session.id, message.id);
@@ -775,6 +796,7 @@ class InteractionService {
       throw error;
     }
 
+    await requireConversationEnded(session);
     session = await SessionService.saveResultAndFinish(session.id, result);
 
     // Final supervisor pass (covers the onFinish cadence and the last turns).
@@ -807,6 +829,7 @@ class InteractionService {
       error.statusCode = 403;
       throw error;
     }
+    await requireConversationEnded(session);
     session = await SessionService.finish(session.id);
 
     // Final supervisor pass (covers the onFinish cadence and the last turns).

@@ -94,6 +94,10 @@ class SessionService {
     return session;
   }
 
+  async markConversationEnded(id) {
+    return await SessionRepository.update(id, { conversationEnded: true });
+  }
+
   async saveResult(id, result) {
     return await SessionRepository.update(id, { result });
   }
