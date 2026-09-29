@@ -42,9 +42,18 @@ function hasStoppingCondition(leia) {
     leia?.leia?.spec?.behaviour?.spec?.conversationDynamics?.stoppingCondition?.enabled === true;
 }
 
+async function findSessionLeia(session) {
+  const stageEntry = session.stageEntries?.find((entry) => String(entry.id) === String(session.leia));
+  if (stageEntry) return stageEntry;
+  const storedLeia = await ReplicationService.findLeia(session.replication, session.leia);
+  return storedLeia && session.leiaSnapshot
+    ? { ...storedLeia, leia: session.leiaSnapshot }
+    : storedLeia;
+}
+
 async function requireConversationEnded(session) {
   if (['static', 'multi'].includes(session.interactionMode)) return;
-  const leia = await ReplicationService.findLeia(session.replication, session.leia);
+  const leia = await findSessionLeia(session);
   if (hasStoppingCondition(leia) && !session.conversationEnded) {
     throw reflectiveError('Wait for LEIA to finish the conversation before ending the session', 409);
   }
@@ -653,12 +662,16 @@ class InteractionService {
     }
     if (session.finishedAt) throw reflectiveError('Session already finished', 403);
 
-    const leia = await ReplicationService.findLeia(session.replication, session.leia);
+    const leia = await findSessionLeia(session);
 
     if (!leia) {
       const error = new Error('Leia not found');
       error.statusCode = 404;
       throw error;
+    }
+
+    if (session.conversationEnded && hasStoppingCondition(leia) && !options.toolResults?.length) {
+      throw reflectiveError('The LEIA conversation has ended; finish this stage to continue', 409);
     }
 
     if (leia.configuration?.mode == 'transcription') {
@@ -794,7 +807,7 @@ class InteractionService {
     if (session.finishedAt || ['multi', 'static'].includes(session.interactionMode)) return null;
     if (!session.isTest && session.dataUsage?.config?.dataUsageConsentRequired &&
       !['accepted', 'declined', 'not_required'].includes(session.dataUsage.consentStatus)) return null;
-    const leia = await ReplicationService.findLeia(session.replication, session.leia);
+    const leia = await findSessionLeia(session);
     if (!leia?.leia?.spec?.behaviour?.spec?.conversationDynamics?.speaksFirst?.enabled || leia.configuration?.mode === 'transcription') return null;
     const existing = await MessageService.findBySession(session.id);
     if (existing.length) return existing.find((message) => message.isLeia) || null;

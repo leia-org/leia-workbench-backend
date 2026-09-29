@@ -42,6 +42,7 @@ import MessageService from '../src/services/v1/MessageService.js';
 import RunnerService from '../src/services/v1/RunnerService.js';
 import SpectatorService from '../src/services/v1/SpectatorService.js';
 import UserService from '../src/services/v1/UserService.js';
+import runtime from '../src/utils/reflectiveRuntime.cjs';
 
 let replication, previous;
 beforeEach(() => {
@@ -65,6 +66,41 @@ beforeEach(() => {
 });
 
 describe('Previous conversation context', () => {
+  test('keeps the stopping condition on a second LEIAStage and gates finishing until its completion', async () => {
+    const stages = [
+      { id: 'first', type: 'LEIAStage', version: 1, title: 'First', config: { leiaId: 'normal' } },
+      { id: 'review', type: 'LEIAStage', version: 1, title: 'Review', config: { leiaId: 'next' } },
+    ];
+    replication.experiment.stages = stages;
+    previous.stageId = 'first';
+    previous.stageSnapshot = stages[0];
+    previous.activityRunId = 'run';
+    SessionService.create.mockImplementation(async (user, rep, leia, isTest, options) => ({
+      id: 'review-session', user, replication: rep, leia, isTest, ...options,
+    }));
+    expect(await InteractionService.startReflectiveSession('previous')).toBe('review-session');
+    const runnerInput = RunnerService.initializeRunner.mock.calls[0][1];
+    const instructions = runtime.buildReflectiveInstructions(runtime.instantiateLeia(runnerInput.leia));
+    expect(instructions).toContain('Stop after two answers');
+    expect(instructions).toContain('Student question');
+    const successor = await SessionService.create.mock.results[0].value;
+    SessionService.findById.mockResolvedValue(successor);
+    SessionService.finish.mockResolvedValue({ ...successor, finishedAt: new Date() });
+    // Completion must follow the same frozen inputs sent to the runner, not a later pool edit.
+    ReplicationService.findLeia.mockResolvedValue({ ...replication.experiment.leias[1],
+      leia: { spec: { behaviour: { spec: {} } } },
+    });
+    await expect(InteractionService.finishSession('review-session')).rejects.toMatchObject({ statusCode: 409 });
+    await expect(InteractionService.saveResultAndFinishSession('review-session', 'answer')).rejects.toMatchObject({ statusCode: 409 });
+    RunnerService.sendMessage.mockResolvedValue({ message: 'Goodbye.', conversationEnded: true });
+    MessageService.create.mockResolvedValue({ id: 'last-message' });
+    SessionService.markConversationEnded.mockResolvedValue({ ...successor, conversationEnded: true });
+    SessionService.addMessage = vi.fn().mockResolvedValue({ ...successor, conversationEnded: true });
+    expect(await InteractionService.sendSessionMessage('review-session', 'Second answer')).toMatchObject({
+      message: 'Goodbye.', conversationEnded: true,
+    });
+    expect(SessionService.markConversationEnded).toHaveBeenCalledWith('review-session');
+  });
   test('enriches in order and can use a conversation without a submitted solution', async () => {
     expect(await buildReflectiveContext({ session: previous, messages: [{ isLeia: false, text: 'Hello' }] }))
       .toEqual({ previousSolution: '', previousConversation: [{ role: 'user', content: 'Hello' }] });
@@ -173,6 +209,20 @@ describe('Previous conversation context', () => {
       message: 'Goodbye.', conversationEnded: true,
     });
     expect(SessionService.markConversationEnded).toHaveBeenCalledWith('previous');
+  });
+
+  test('stops new participant turns after completion while allowing a pending widget continuation', async () => {
+    previous.finishedAt = null;
+    previous.conversationEnded = true;
+    ReplicationService.findLeia.mockResolvedValue(replication.experiment.leias[1]);
+    await expect(InteractionService.sendSessionMessage('previous', 'One more question')).rejects.toMatchObject({ statusCode: 409 });
+    expect(RunnerService.sendMessage).not.toHaveBeenCalled();
+    expect(MessageService.create).not.toHaveBeenCalled();
+    RunnerService.sendMessage.mockResolvedValue({ message: 'Goodbye.' });
+    MessageService.create.mockResolvedValue({ id: 'final' });
+    SessionService.addMessage = vi.fn().mockResolvedValue(previous);
+    expect(await InteractionService.sendSessionMessage('previous', undefined, { toolResults: [{ callId: 'pending', output: 'saved' }] }))
+      .toMatchObject({ message: 'Goodbye.', conversationEnded: true });
   });
 
   test('forwards completion through the HTTP response used by the chat', async () => {
