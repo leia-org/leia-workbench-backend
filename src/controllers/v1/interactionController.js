@@ -22,9 +22,9 @@ export const startSession = async (req, res, next) => {
 
 export const startTestSession = async (req, res, next) => {
   try {
-    const { replicationId, leiaId, multiLeia } = await startTestSessionValidator.validateAsync(req.body);
+    const { replicationId, leiaId, multiLeia, stageFlow } = await startTestSessionValidator.validateAsync(req.body);
     await ReplicationService.checkAccess(replicationId, req.user.isAdmin, req.user.shareToken);
-    const sessionId = await InteractionService.startTestSession(replicationId, leiaId, multiLeia);
+    const sessionId = await InteractionService.startTestSession(replicationId, leiaId, multiLeia, stageFlow);
     res.status(201).json({ sessionId });
   } catch (error) {
     next(error);
@@ -45,7 +45,7 @@ export const getSessionData = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
     const data = await InteractionService.getSessionData(sessionId);
-    res.json(data);
+    res.json({ ...data, nextStageAvailable: data.reflectiveAvailable });
   } catch (error) {
     next(error);
   }
@@ -145,7 +145,7 @@ export const saveResultAndFinishSession = async (req, res, next) => {
     const value = await saveResultAndFinishSessionValidator.validateAsync(req.body);
     const { sessionId } = req.params;
     const session = await InteractionService.saveResultAndFinishSession(sessionId, value.result);
-    res.json(session);
+    res.json({ ...session, nextStageAvailable: session.reflectiveAvailable });
   } catch (error) {
     next(error);
   }
@@ -155,7 +155,7 @@ export const finishSession = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
     const session = await InteractionService.finishSession(sessionId);
-    res.json(session);
+    res.json({ ...session, nextStageAvailable: session.reflectiveAvailable });
   } catch (error) {
     next(error);
   }

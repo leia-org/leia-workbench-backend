@@ -19,6 +19,13 @@ beforeEach(() => {
 });
 
 describe('MultiLEIA interaction contract', () => {
+  test('allows a stage-flow test without an individual LEIA', async () => {
+    const value = await startTestSessionValidator.validateAsync({
+      replicationId: '507f1f77bcf86cd799439011', stageFlow: true,
+    });
+    expect(value.stageFlow).toBe(true);
+    expect(value.leiaId).toBeUndefined();
+  });
   test('allows testing the complete graph without an individual leiaId', async () => {
     const value = await startTestSessionValidator.validateAsync({
       replicationId: '507f1f77bcf86cd799439011',

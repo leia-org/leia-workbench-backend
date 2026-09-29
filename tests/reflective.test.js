@@ -2,6 +2,24 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { buildReflectiveContext, getReflectiveSuccessor, validateReflectiveChain } from '../src/utils/reflective.js';
 import { initializeExperiment } from '../src/utils/entity.js';
 
+test('static stages expose only participant content and complete without a runner', async () => {
+  const stage = { id: 'intro', type: 'StaticContentStage', version: 1, title: 'Read', config: { content: '# Welcome' } };
+  const session = { id: 'static', replication: 'replication', stageId: 'intro', stageSnapshot: stage,
+    interactionMode: 'static', stageEntries: [{ secret: true }], previousStage: { private: true }, user: 'student' };
+  const experiment = { stages: [stage, { ...stage, id: 'next' }], leias: [] };
+  SessionService.findById.mockResolvedValue(session);
+  SessionService.finish.mockResolvedValue({ ...session, finishedAt: new Date() });
+  ReplicationService.findById.mockResolvedValue({ id: 'replication', experiment, toJSON: () => ({ id: 'replication', experiment }) });
+  const data = await InteractionService.getSessionData('static');
+  expect(data.stage).toEqual({ id: 'intro', type: 'StaticContentStage', title: 'Read', content: '# Welcome' });
+  expect(data.replication.experiment).toBeUndefined();
+  expect(data.session.stageEntries).toBeUndefined();
+  expect(data.session.previousStage).toBeUndefined();
+  const finished = await InteractionService.finishSession('static');
+  expect(finished.reflectiveAvailable).toBe(true);
+  expect(RunnerService.deleteCache).not.toHaveBeenCalled();
+});
+
 vi.mock('../src/services/v1/ReplicationService.js', () => ({ default: { findById: vi.fn(), findByCode: vi.fn(), findLeia: vi.fn() } }));
 vi.mock('../src/services/v1/SessionService.js', () => ({ default: {
   findById: vi.fn(), findByPreviousSession: vi.fn(), create: vi.fn(), updateIsRunnerInitialized: vi.fn(),

@@ -1,6 +1,14 @@
 type: object
 additionalProperties: true
 properties:
+  nextStageAvailable:
+    type: boolean
+    description: Whether a completed execution can advance to its next stage.
+  stageId:
+    type: string
+  activityRunId:
+    type: string
+    description: Groups stages within one participant attempt.
   previousSession:
     type: string
     description: Reference to the preceding session when this LEIA uses previous conversation context.
@@ -41,7 +49,7 @@ properties:
       type: string
   interactionMode:
     type: string
-    enum: [single, multi]
+    enum: [single, multi, static]
   multiLeiaState:
     type: object
     additionalProperties: true

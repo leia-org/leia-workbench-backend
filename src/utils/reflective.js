@@ -1,6 +1,9 @@
+import { nextStage } from './stages.js';
 import reflectiveRuntime from './reflectiveRuntime.cjs';
 
-const contextReference = /{{\s*reflectiveContext\.(?:previousConversation|previousSolution)\s*}}/;
+import { validateStages } from './stages.js';
+
+const contextReference = /{{\s*(?:reflectiveContext|previousStage)\.[\w]+\s*}}/;
 
 export const needsPreviousConversation = (entry) => {
   const spec = { ...entry?.leia?.spec?.behaviour?.spec };
@@ -16,6 +19,7 @@ export function reflectiveError(message, statusCode = 400) {
 }
 
 export function validateReflectiveChain(experiment) {
+  if (Array.isArray(experiment?.stages)) return validateStages(experiment);
   const entries = experiment?.leias || [];
   entries.forEach((entry, index) => {
     if (!needsPreviousConversation(entry)) return;
@@ -32,6 +36,7 @@ export function validateReflectiveChain(experiment) {
 }
 
 export function getReflectiveSuccessor(replication, session) {
+  if (session.stageId) return nextStage(replication, session);
   const entries = replication?.experiment?.leias || [];
   const index = entries.findIndex((entry) => String(entry.id) === String(session.leia));
   return index >= 0 && needsPreviousConversation(entries[index + 1])

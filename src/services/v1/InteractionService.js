@@ -1,3 +1,4 @@
+import StageExecutionService, { nextStage, stageOrchestration } from './StageExecutionService.js';
 import ReplicationService from './ReplicationService.js';
 import SessionService from './SessionService.js';
 import UserService from './UserService.js';
@@ -28,6 +29,10 @@ function stripSupervisorFields(session) {
   delete data.supervisorFlags;
   delete data.supervisorState;
   delete data.leiaSnapshot;
+  delete data.stageState;
+  delete data.stageEntries;
+  delete data.previousStage;
+  delete data.stageSnapshot;
   return data;
 }
 
@@ -38,6 +43,7 @@ function hasStoppingCondition(leia) {
 }
 
 async function requireConversationEnded(session) {
+  if (['static', 'multi'].includes(session.interactionMode)) return;
   const leia = await ReplicationService.findLeia(session.replication, session.leia);
   if (hasStoppingCondition(leia) && !session.conversationEnded) {
     throw reflectiveError('Wait for LEIA to finish the conversation before ending the session', 409);
@@ -91,6 +97,7 @@ function isMultiLeiaEnabled(replication) {
 }
 
 function getMultiLeiaEntries(replication, session = null) {
+  if (session?.stageEntries) return session.stageEntries;
   const selectedIds = Array.isArray(session?.leias)
     ? new Set(session.leias.map((id) => String(id)))
     : null;
@@ -121,7 +128,7 @@ function getProblemLeia(replication) {
 
 function buildMultiLeiaPayload(replication, session) {
   if (session?.interactionMode !== 'multi') return null;
-  const orchestration = replication?.experiment?.orchestration || {};
+  const orchestration = session.stageId ? stageOrchestration(session) : replication?.experiment?.orchestration || {};
   const actors = getMultiLeiaEntries(replication, session).map((entry, index) => {
     const leia = entry.leia || {};
     const persona = leia.spec?.persona || {};
@@ -162,6 +169,10 @@ class InteractionService {
       throw reflectiveError('Finish the previous LEIA before continuing');
     }
     const replication = await ReplicationService.findById(previous.replication);
+    if (previous.stageId) {
+      if (!previous.isTest && !replication.isActive) throw reflectiveError('Replication is not active', 403);
+      return StageExecutionService.start(replication, previous.user, previous.isTest, previous);
+    }
     const successor = getReflectiveSuccessor(replication, previous);
     if (!successor) throw reflectiveError('No LEIA using previous conversation context follows this session');
     if (!previous.isTest && !replication.isActive) throw reflectiveError('Replication is not active', 403);
@@ -248,6 +259,7 @@ class InteractionService {
         throw error;
       } else {
         logger.info(`Creating new session for user ${userEmail} and replication ${replicationCode}`);
+        if (Array.isArray(replication.experiment.stages)) return StageExecutionService.start(replication, user.id);
         if (isMultiLeiaEnabled(replication)) {
           const entries = getMultiLeiaEntries(replication);
           const problemLeia = getProblemLeia(replication);
@@ -264,6 +276,10 @@ class InteractionService {
     }
 
     logger.info(`Session found for user ${userEmail} and replication ${replicationCode}`);
+    if (session.stageId) {
+      await StageExecutionService.initialize(session, replication);
+      return session.id;
+    }
     if (!session.isRunnerInitialized) {
       logger.info(`Runner for session ${session.id} is not initialized, initializing now`);
       const leia = replication.experiment.leias.find((leia) => session.leia.equals(leia.id));
@@ -296,13 +312,15 @@ class InteractionService {
     return session.id;
   }
 
-  async startTestSession(replicationId, leiaId, multiLeia = false) {
+  async startTestSession(replicationId, leiaId, multiLeia = false, stageFlow = false) {
     const replication = await ReplicationService.findById(replicationId);
     if (!replication) {
       const error = new Error('Replication not found');
       error.statusCode = 404;
       throw error;
     }
+    if (Array.isArray(replication.experiment.stages)) return StageExecutionService.start(replication, null, true);
+    if (stageFlow) throw reflectiveError('Convert this activity to stages before testing its stage sequence');
     if (multiLeia) {
       if (!isMultiLeiaEnabled(replication)) {
         const error = new Error('MultiLEIA is not enabled for this replication');
@@ -389,7 +407,16 @@ class InteractionService {
       throw error;
     }
 
-    const leia = replication.experiment?.leias?.find((leia) => session.leia.equals(leia.id));
+    if (session.interactionMode === 'static') {
+      const publicReplication = typeof replication.toJSON === 'function' ? replication.toJSON() : { ...replication };
+      delete publicReplication.experiment;
+      return { session: stripSupervisorFields(session), messages: [], replication: publicReplication,
+        stage: { id: session.stageId, type: 'StaticContentStage', title: session.stageSnapshot.title, content: session.stageSnapshot.config.content },
+        reflectiveAvailable: Boolean(session.finishedAt && nextStage(replication, session)) };
+    }
+    const leia = session.stageEntries?.length
+      ? structuredClone(session.stageEntries.find((entry) => String(entry.id) === String(session.leia)))
+      : replication.experiment?.leias?.find((leia) => session.leia.equals(leia.id));
 
     if (!leia) {
       const error = new Error('Leia not found');
@@ -400,7 +427,8 @@ class InteractionService {
     const multiLeia = buildMultiLeiaPayload(replication, session);
     const reflectiveAvailable = Boolean(session.finishedAt && getReflectiveSuccessor(replication, session));
 
-    delete replication.experiment;
+    const publicReplication = typeof replication.toJSON === 'function' ? replication.toJSON() : { ...replication };
+    delete publicReplication.experiment;
 
     if (!session.finishedAt) {
       delete leia.leia.spec.problem.spec.solution;
@@ -437,6 +465,7 @@ class InteractionService {
       ? problemWidgets
       : (Array.isArray(runnerLukeConfig?.widgets) ? runnerLukeConfig.widgets : []);
 
+    if (leia.leia?.spec) { delete leia.leia.spec.previousStage; delete leia.leia.spec.reflectiveContext; }
     delete leia.runnerConfiguration;
     delete leia.sessionCount;
 
@@ -476,7 +505,7 @@ class InteractionService {
       session: sessionData,
       messages,
       leia,
-      replication,
+      replication: publicReplication,
       reflectiveAvailable,
       ...(multiLeia ? { multiLeia } : {}),
     };
@@ -762,7 +791,7 @@ class InteractionService {
   async startConversation(sessionId) {
     let session = await SessionService.findById(sessionId);
     if (!session) throw reflectiveError('Session not found', 404);
-    if (session.finishedAt || session.interactionMode === 'multi') return null;
+    if (session.finishedAt || ['multi', 'static'].includes(session.interactionMode)) return null;
     if (!session.isTest && session.dataUsage?.config?.dataUsageConsentRequired &&
       !['accepted', 'declined', 'not_required'].includes(session.dataUsage.consentStatus)) return null;
     const leia = await ReplicationService.findLeia(session.replication, session.leia);
@@ -798,6 +827,9 @@ class InteractionService {
     await requireConversationEnded(session);
     session = await SessionService.saveResultAndFinish(session.id, result);
 
+    if (session.interactionMode === 'static') return { ...stripSupervisorFields(session),
+      reflectiveAvailable: Boolean(nextStage(await ReplicationService.findById(session.replication), session)) };
+
     // Final supervisor pass (covers the onFinish cadence and the last turns).
     const finishedLeia = await ReplicationService.findLeia(session.replication, session.leia);
     if (finishedLeia) SupervisorService.observeAsync(session.id, finishedLeia, { force: true });
@@ -830,6 +862,9 @@ class InteractionService {
     }
     await requireConversationEnded(session);
     session = await SessionService.finish(session.id);
+
+    if (session.interactionMode === 'static') return { ...stripSupervisorFields(session),
+      reflectiveAvailable: Boolean(nextStage(await ReplicationService.findById(session.replication), session)) };
 
     // Final supervisor pass (covers the onFinish cadence and the last turns).
     const finishedLeia = await ReplicationService.findLeia(session.replication, session.leia);

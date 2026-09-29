@@ -145,7 +145,8 @@ class ReplicationService {
     }
     if (!replication.isActive) {
       validateReflectiveChain(replication.experiment);
-      if (replication.experiment?.orchestration?.mode === 'multi') {
+      if (replication.experiment.stages?.length === 0) throw Object.assign(new Error('Activity requires at least one stage'), { statusCode: 400 });
+      if (!replication.experiment?.stages && replication.experiment?.orchestration?.mode === 'multi') {
         const leias = replication.experiment?.leias || [];
         if (leias.length < 2) {
           const error = new Error('MultiLEIA requires at least two LEIAs');
@@ -171,7 +172,9 @@ class ReplicationService {
   }
   _getLeiasWithInvalidRunnerConfiguration(replication) {
     const invalidLeias = [];
+    const usedIds = replication.experiment.stages ? new Set(replication.experiment.stages.flatMap((stage) => stage.config.leiaIds || (stage.config.leiaId ? [stage.config.leiaId] : []))) : null;
     for (const leia of replication.experiment.leias) {
+      if (usedIds && !usedIds.has(String(leia.id))) continue;
       const config = leia.runnerConfiguration || {};
       const missingFields = [];
       if (!config.modelName) missingFields.push('modelName');
@@ -280,7 +283,9 @@ class ReplicationService {
 
   async getConversations(id) {
     const sessions = await SessionRepository.findByReplicationAndPopulateMessages(id);
-    return sessions;
+    return sessions.filter((session) => session.interactionMode !== 'static').map((session) => ({
+      ...session.toJSON(), stageTitle: session.stageSnapshot?.title,
+    }));
   }
 
   async getConversationsCSV(id) {

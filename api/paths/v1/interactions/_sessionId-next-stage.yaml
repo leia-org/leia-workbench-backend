@@ -1,0 +1,26 @@
+post:
+  tags: [Interactions v1]
+  summary: Continue to the next activity stage
+  description: Resolves declared artifacts from the immediately preceding completed stage server-side. Retries return the same continuation.
+  operationId: startNextStage
+  security: []
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-fA-F0-9]{24}$'
+  responses:
+    '201':
+      description: New or existing continuation session ID.
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/interaction/sessionIdResponse.yaml'
+    '400':
+      description: The preceding session is unfinished or no stage follows it.
+    '403':
+      description: Replication is inactive.
+    '404':
+      description: Previous session does not exist.

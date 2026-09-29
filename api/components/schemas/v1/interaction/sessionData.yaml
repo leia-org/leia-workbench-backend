@@ -1,5 +1,8 @@
 type: object
 properties:
+  nextStageAvailable:
+    type: boolean
+    description: Whether a completed execution can advance to its next stage.
   reflectiveAvailable:
     type: boolean
     description: The next LEIA can be started with the finished session's conversation context.
@@ -9,6 +12,18 @@ properties:
     type: array
     items:
       $ref: './message.yaml'
+  stage:
+    type: object
+    description: Participant-safe content payload for static stages.
+    properties:
+      id:
+        type: string
+      type:
+        type: string
+      title:
+        type: string
+      content:
+        type: string
   leia:
     $ref: '../manager/leia.yaml'
   replication:

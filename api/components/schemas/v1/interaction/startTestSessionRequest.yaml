@@ -7,7 +7,11 @@ properties:
   leiaId:
     $ref: '../../mongoId.yaml'
     nullable: true
-    description: Required for a single-LEIA test and omitted for a MultiLEIA test.
+    description: Required for a legacy single-LEIA test; omitted when multiLeia or stageFlow is true.
+  stageFlow:
+    type: boolean
+    default: false
+    description: Starts the complete stage sequence from its first stage.
   multiLeia:
     type: boolean
     default: false

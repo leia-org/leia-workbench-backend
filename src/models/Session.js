@@ -2,6 +2,12 @@ import { Schema, model } from 'mongoose';
 
 const sessionSchema = new Schema(
   {
+    activityRunId: { type: String, immutable: true },
+    stageState: { type: Schema.Types.Mixed },
+    stageId: { type: String, immutable: true },
+    stageSnapshot: { type: Schema.Types.Mixed, immutable: true },
+    stageEntries: { type: [Schema.Types.Mixed], default: undefined, immutable: true },
+    previousStage: { type: Schema.Types.Mixed, immutable: true },
     previousSession: { type: Schema.Types.ObjectId, ref: 'Session', immutable: true },
     leiaSnapshot: { type: Schema.Types.Mixed, immutable: true },
     startedAt: {
@@ -38,7 +44,7 @@ const sessionSchema = new Schema(
     },
     leia: {
       type: Schema.Types.ObjectId,
-      required: true,
+      required() { return this.interactionMode !== 'static'; },
     },
     leias: {
       type: [Schema.Types.ObjectId],
@@ -46,7 +52,7 @@ const sessionSchema = new Schema(
     },
     interactionMode: {
       type: String,
-      enum: ['single', 'multi'],
+      enum: ['single', 'multi', 'static'],
       default: 'single',
     },
     multiLeiaState: {
@@ -88,6 +94,10 @@ const sessionSchema = new Schema(
         delete ret._id;
         delete ret.__v;
         delete ret.leiaSnapshot;
+        delete ret.stageState;
+        delete ret.stageEntries;
+        delete ret.previousStage;
+        delete ret.stageSnapshot;
         delete ret.lukeOpeningStartedAt;
       },
     },

@@ -60,6 +60,8 @@ class SessionService {
 
   async create(userId, replicationId, leiaId, isTest = false, options = {}) {
     const sessionData = {
+      ...(options.stageId ? { stageId: options.stageId, activityRunId: options.activityRunId,
+        stageState: options.stageState, stageSnapshot: options.stageSnapshot, stageEntries: options.stageEntries, previousStage: options.previousStage } : {}),
       user: userId,
       replication: replicationId,
       leia: leiaId,

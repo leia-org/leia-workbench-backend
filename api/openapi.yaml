@@ -93,6 +93,8 @@ paths:
     $ref: './paths/v1/interactions/_sessionId-result.yaml'
   /v1/interactions/{sessionId}/finish:
     $ref: './paths/v1/interactions/_sessionId-finish.yaml'
+  /v1/interactions/{sessionId}/next-stage:
+    $ref: './paths/v1/interactions/_sessionId-next-stage.yaml'
   /v1/interactions/{sessionId}/reflective:
     $ref: './paths/v1/interactions/_sessionId-reflective.yaml'
   /v1/interactions/{sessionId}/opening:
