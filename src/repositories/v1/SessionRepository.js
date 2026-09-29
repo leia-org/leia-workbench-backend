@@ -102,6 +102,26 @@ class SessionRepository {
     return await Session.findByIdAndUpdate(id, { $push: { messages: messageId } }, { new: true });
   }
 
+  async claimLukeOpening(id) {
+    return await Session.findOneAndUpdate(
+      {
+        _id: id,
+        finishedAt: null,
+        'messages.0': { $exists: false },
+        lukeOpeningStartedAt: { $exists: false },
+      },
+      { $set: { lukeOpeningStartedAt: new Date() } },
+      { new: true }
+    );
+  }
+
+  async releaseLukeOpening(id, startedAt) {
+    return await Session.findOneAndUpdate(
+      { _id: id, lukeOpeningStartedAt: startedAt, 'messages.0': { $exists: false } },
+      { $unset: { lukeOpeningStartedAt: 1 } }
+    );
+  }
+
   // Append supervisor flags (if any) and advance the observation state in one write.
   async appendSupervisorObservation(id, flags, supervisorState) {
     const update = { $set: { supervisorState } };

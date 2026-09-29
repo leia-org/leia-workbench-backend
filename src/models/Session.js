@@ -15,6 +15,7 @@ const sessionSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    lukeOpeningStartedAt: { type: Date },
     result: {
       type: String,
     },
@@ -87,6 +88,7 @@ const sessionSchema = new Schema(
         delete ret._id;
         delete ret.__v;
         delete ret.leiaSnapshot;
+        delete ret.lukeOpeningStartedAt;
       },
     },
   }

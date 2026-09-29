@@ -12,6 +12,7 @@ const FINISH_CONVERSATION_INSTRUCTION = 'When the stopping instructions are sati
 
 class LukeService {
   initialize(httpServer) {
+    const openingTimers = new WeakMap();
     const providers = [];
 
     if (process.env.OPENAI_API_KEY) {
@@ -99,10 +100,58 @@ class LukeService {
       config: {
         transcription: { input: true, output: true },
       },
+      onConnect: (session) => {
+        // The client initially selects a default provider and then its configured
+        // provider/voice. Wait for that selection to settle before speaking.
+        clearTimeout(openingTimers.get(session));
+        const connection = session.providerConnection;
+        const timer = setTimeout(() => {
+          openingTimers.delete(session);
+          if (session.providerConnection !== connection) return;
+          this.startOpening(session).catch((err) => {
+            logger.error(`Failed to start Luke conversation: ${err.message}`);
+          });
+        }, 300);
+        openingTimers.set(session, timer);
+      },
+      onDisconnect: (session) => {
+        clearTimeout(openingTimers.get(session));
+        openingTimers.delete(session);
+      },
     });
 
     logger.info('Luke WebSocket server initialized on path /luke');
     this.lukeServer = lukeServer;
+  }
+
+  async startOpening(lukeSession) {
+    const { session, leia, sessionId } = lukeSession.userSession || {};
+    const connection = lukeSession.providerConnection;
+    if (!session || !leia || !sessionId || !connection) return;
+    const behaviour = session.leiaSnapshot?.spec?.behaviour?.spec
+      || leia.leia?.spec?.behaviour?.spec;
+    if (leia.runnerConfiguration?.audioMode !== 'luke'
+      || leia.configuration?.mode === 'transcription'
+      || !behaviour?.conversationDynamics?.speaksFirst?.enabled
+      || session.interactionMode === 'multi'
+      || (session.dataUsage?.config?.dataUsageConsentRequired
+        && !['accepted', 'declined', 'not_required'].includes(session.dataUsage.consentStatus))) return;
+
+    const claimed = await SessionRepository.claimLukeOpening(sessionId);
+    if (!claimed) return;
+    if (lukeSession.providerConnection !== connection) {
+      await SessionRepository.releaseLukeOpening(sessionId, claimed.lukeOpeningStartedAt);
+      return;
+    }
+    try {
+      connection.send({
+        type: 'text',
+        content: 'Begin the conversation with your opening message.',
+      });
+    } catch (err) {
+      await SessionRepository.releaseLukeOpening(sessionId, claimed.lukeOpeningStartedAt);
+      throw err;
+    }
   }
 
   async createLukeToken(sessionId) {
