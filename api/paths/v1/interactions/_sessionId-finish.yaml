@@ -11,6 +11,8 @@ post:
       schema:
         type: string
   responses:
+    '403':
+      description: Session is finished or LEIA has not fulfilled the stopping condition
     '200':
       description: Session data updated successfully
       content:

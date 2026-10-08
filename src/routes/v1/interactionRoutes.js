@@ -10,6 +10,7 @@ import {
   getSolution,
   finishSession,
   saveDraft,
+  getConversationDynamics,
 } from '../../controllers/v1/interactionController.js';
 import { authContext } from '../../middlewares/auth.js';
 
@@ -26,6 +27,7 @@ router.post('/:sessionId/draft', saveDraft);
 
 // GET
 router.get('/:sessionId', getSessionData);
+router.get('/:sessionId/conversation-dynamics', getConversationDynamics);
 router.get('/:sessionId/solution', getSolution);
 router.get('/:sessionId/evaluation', getEvaluation);
 export default router;

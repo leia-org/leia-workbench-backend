@@ -1,6 +1,8 @@
 type: object
 additionalProperties: true
 properties:
+  conversationDynamics:
+    $ref: './conversationDynamicsState.yaml'
   id:
     type: string
   startedAt:

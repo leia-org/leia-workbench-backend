@@ -1,3 +1,4 @@
+import ConversationDynamicsService, { publicDynamicsState } from './ConversationDynamicsService.js';
 import ReplicationService from './ReplicationService.js';
 import SessionService from './SessionService.js';
 import UserService from './UserService.js';
@@ -25,6 +26,7 @@ function stripSupervisorFields(session) {
   delete data.__v;
   delete data.supervisorFlags;
   delete data.supervisorState;
+  delete data.conversationDynamicsState;
   return data;
 }
 
@@ -217,6 +219,10 @@ class InteractionService {
       logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
     }
 
+    if (session.interactionMode !== 'multi') {
+      const activeLeia = replication.experiment.leias.find((entry) => session.leia.equals(entry.id));
+      await ConversationDynamicsService.openText(session.id, activeLeia);
+    }
     return session.id;
   }
 
@@ -281,9 +287,11 @@ class InteractionService {
     // Initialize runner for the session
     await RunnerService.initializeRunner(session.id, leia, replication.language);
 
+
     // Update the runner status
     session = await SessionService.updateIsRunnerInitialized(session.id, true);
     logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
+    await ConversationDynamicsService.openText(session.id, leia);
 
     return session.id;
   }
@@ -381,6 +389,8 @@ class InteractionService {
     // Supervisor data is instructor-only: strip it (and the supervisor config)
     // from the payload the student receives.
     const sessionData = stripSupervisorFields(session);
+    sessionData.conversationDynamics = publicDynamicsState(session, leia);
+    delete leia.leia.spec.behaviour.spec.conversationDynamics;
     if (leia.leia?.spec) delete leia.leia.spec.supervisorConfig;
 
     return {
@@ -541,6 +551,13 @@ class InteractionService {
       throw error;
     }
 
+    const dynamicsState = publicDynamicsState(session, leia);
+    if (dynamicsState.leiaSpeaksFirst.enabled && !dynamicsState.leiaSpeaksFirst.completed) {
+      const error = new Error('Wait for LEIA to start the conversation');
+      error.statusCode = 409;
+      throw error;
+    }
+
     if (leia.configuration?.mode == 'transcription') {
       const error = new Error('Cannot send messages in transcription mode');
       error.statusCode = 403;
@@ -651,6 +668,7 @@ class InteractionService {
       // A full exchange completed: let the background supervisor observe it
       // (fire-and-forget; respects cadence and is a no-op when disabled).
       SupervisorService.observeAsync(session.id, leia);
+      await ConversationDynamicsService.observeSafely(session.id, leia);
     }
 
     // Deliver (and clear) any nudge the supervisor queued previously. The clear
@@ -678,6 +696,8 @@ class InteractionService {
       throw error;
     }
 
+    const dynamicsLeia = await ReplicationService.findLeia(session.replication, session.leia);
+    await ConversationDynamicsService.assertCanFinish(session, dynamicsLeia);
     session = await SessionService.saveResultAndFinish(session.id, result);
 
     // Final supervisor pass (covers the onFinish cadence and the last turns).
@@ -709,6 +729,8 @@ class InteractionService {
       error.statusCode = 403;
       throw error;
     }
+    const dynamicsLeia = await ReplicationService.findLeia(session.replication, session.leia);
+    await ConversationDynamicsService.assertCanFinish(session, dynamicsLeia);
     session = await SessionService.finish(session.id);
 
     // Final supervisor pass (covers the onFinish cadence and the last turns).

@@ -1,0 +1,19 @@
+get:
+  tags: [Interactions v1]
+  summary: Read the server-owned conversation dynamics state
+  operationId: getConversationDynamics
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    '200':
+      description: Public dynamics state (no instructor criteria)
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/interaction/conversationDynamicsState.yaml'
+    '404':
+      description: Session or LEIA not found

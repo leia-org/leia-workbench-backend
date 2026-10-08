@@ -2,6 +2,7 @@ import { Schema, model } from 'mongoose';
 
 const sessionSchema = new Schema(
   {
+    conversationDynamicsState: { type: Schema.Types.Mixed, default: undefined },
     startedAt: {
       type: Date,
       default: Date.now,

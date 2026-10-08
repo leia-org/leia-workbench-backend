@@ -91,6 +91,8 @@ paths:
     $ref: './paths/v1/interactions/_sessionId-messages-stream.yaml'
   /v1/interactions/{sessionId}/result:
     $ref: './paths/v1/interactions/_sessionId-result.yaml'
+  /v1/interactions/{sessionId}/conversation-dynamics:
+    $ref: './paths/v1/interactions/_sessionId-conversation-dynamics.yaml'
   /v1/interactions/{sessionId}/finish:
     $ref: './paths/v1/interactions/_sessionId-finish.yaml'
   /v1/interactions/{sessionId}/evaluation:
