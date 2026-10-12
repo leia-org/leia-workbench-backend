@@ -3,11 +3,12 @@ import ManagerService from '../../services/v1/ManagerService.js';
 export const getAllExperiments = async (req, res, next) => {
   try {
     const role = req.auth?.payload?.role;
+    const lastActivityId = req.query.lastActivityId;
     if (role === 'admin') {
-      const experiments = await ManagerService.findAllExperiments();
+      const experiments = await ManagerService.findAllExperiments(lastActivityId);
       res.status(200).json(experiments);
     } else {
-      const experiments = await ManagerService.findAllMyExperiments(req.headers.authorization);
+      const experiments = await ManagerService.findAllMyExperiments(req.headers.authorization, lastActivityId);
       res.status(200).json(experiments);
     }
   } catch (error) {

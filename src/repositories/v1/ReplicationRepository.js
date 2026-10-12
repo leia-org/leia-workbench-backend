@@ -4,13 +4,29 @@ import Replication from '../../models/Replication.js';
 class ReplicationRepository {
   // READ METHODS
 
-  async findAll() {
-    return await Replication.find();
+  async findAll(lastReplicationId) {
+    const query = {};
+    if (lastReplicationId) {
+      query._id = { $gt: new mongoose.Types.ObjectId(`${lastReplicationId}`) };
+    }
+    const limit = 10;
+    const results = await Replication.find(query).sort({ _id: 1 }).limit(limit + 1);
+    const replications = results.slice(0, limit);
+    const nextCursor = replications.length === limit ? replications[replications.length - 1].id : null;
+    return { replications, nextCursor };
   }
-  async findAllByUser(userId) {
-    return await Replication.find({
-       $or: [{ 'experiment.user.id': userId }, { 'experiment.user._id': userId }, { 'experiment.user': userId }],
-     });
+  async findAllByUser(userId, lastReplicationId) {
+    const query = {
+      $or: [{ 'experiment.user.id': userId }, { 'experiment.user._id': userId }, { 'experiment.user': userId }],
+    };
+    if (lastReplicationId) {
+      query._id = { $gt: new mongoose.Types.ObjectId(`${lastReplicationId}`) };
+    }
+    const limit = 10
+    const results = await Replication.find(query).sort({ _id: 1 }).limit(limit+1);
+    const replications = results.slice(0, limit);
+    const nextCursor = replications.length === limit ? replications[replications.length - 1].id : null;
+    return {replications, nextCursor};
   }
   async findById(id) {
     return await Replication.findById(id);

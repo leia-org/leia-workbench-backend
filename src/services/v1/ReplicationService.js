@@ -45,11 +45,11 @@ function validateMultiLeiaProcesses(experiment) {
 class ReplicationService {
   // READ METHODS
 
-  async findAll() {
-    return await ReplicationRepository.findAll();
+  async findAll(lastReplicationId) {
+    return await ReplicationRepository.findAll(lastReplicationId);
   }
-  async findAllByUser(userId) {
-    return await ReplicationRepository.findAllByUser(userId);
+  async findAllByUser(userId, lastReplicationId) {
+    return await ReplicationRepository.findAllByUser(userId, lastReplicationId);
   }
   async findById(id) {
     return await ReplicationRepository.findById(id);
