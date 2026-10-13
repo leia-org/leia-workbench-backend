@@ -1,5 +1,7 @@
 type: object
 properties:
+  conversationDynamics:
+    $ref: './conversationDynamicsState.yaml'
   message:
     type: string
     description: Final LEIA text response.

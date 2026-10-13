@@ -1,0 +1,19 @@
+type: object
+required: [canFinish, leiaSpeaksFirst, stoppingCondition]
+properties:
+  canFinish:
+    type: boolean
+  leiaSpeaksFirst:
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      completed:
+        type: boolean
+  stoppingCondition:
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      satisfied:
+        type: boolean

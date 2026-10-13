@@ -1,3 +1,4 @@
+import ConversationDynamicsService from '../../services/v1/ConversationDynamicsService.js';
 import InteractionService from '../../services/v1/InteractionService.js';
 import ReplicationService from '../../services/v1/ReplicationService.js';
 import {
@@ -8,6 +9,11 @@ import {
   startTestSessionValidator,
   saveDraftValidator,
 } from '../../validators/v1/interactionValidator.js';
+
+export const getConversationDynamics = async (req, res, next) => {
+  try { res.json(await ConversationDynamicsService.getState(req.params.sessionId)); }
+  catch (error) { next(error); }
+};
 
 export const startSession = async (req, res, next) => {
   try {
@@ -63,7 +69,8 @@ export const sendSessionMessage = async (req, res, next) => {
       res.json({ toolCalls: result.toolCalls, ...(nudge ? { nudge } : {}) });
     } else {
       const message = typeof result === 'string' ? result : result?.message;
-      res.json({ message, ...(nudge ? { nudge } : {}) });
+      const conversationDynamics = await ConversationDynamicsService.getState(sessionId);
+      res.json({ message, conversationDynamics, ...(nudge ? { nudge } : {}) });
     }
   } catch (error) {
     next(error);
@@ -164,8 +171,8 @@ export const getEvaluation = async (req, res, next) => {
 export const getSolution = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
-    const res = await InteractionService.getSolutionAndFormat(sessionId);
-    res.json(res);
+    const solution = await InteractionService.getSolutionAndFormat(sessionId);
+    res.json(solution);
   } catch (error) {
     next(error);
   }

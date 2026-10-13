@@ -41,6 +41,13 @@ async function consumeSseStream(stream, onEvent) {
 }
 
 class RunnerService {
+  async evaluateStoppingCondition(condition, transcript, behaviour, runnerConfiguration) {
+    const { data } = await axios.post(`${process.env.RUNNER_URL}/api/v1/conversation-dynamics/evaluate`,
+      { condition, transcript, behaviour, runnerConfiguration },
+      { headers: { Authorization: 'Bearer ' + process.env.RUNNER_KEY }, timeout: 60000 });
+    return data;
+  }
+
   async initializeRunner(sessionId, leia, language) {
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/leias`,
