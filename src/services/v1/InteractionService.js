@@ -690,19 +690,18 @@ class InteractionService {
       throw error;
     }
 
-    if (session.finishedAt) {
+    if (session.finishedAt && session.result !== result) {
       const error = new Error('Session already finished');
       error.statusCode = 403;
       throw error;
     }
 
-    const dynamicsLeia = await ReplicationService.findLeia(session.replication, session.leia);
-    await ConversationDynamicsService.assertCanFinish(session, dynamicsLeia);
-    session = await SessionService.saveResultAndFinish(session.id, result);
-
-    // Final supervisor pass (covers the onFinish cadence and the last turns).
-    const finishedLeia = await ReplicationService.findLeia(session.replication, session.leia);
-    if (finishedLeia) SupervisorService.observeAsync(session.id, finishedLeia, { force: true });
+    if (!session.finishedAt) {
+      const dynamicsLeia = await ReplicationService.findLeia(session.replication, session.leia);
+      await ConversationDynamicsService.assertCanFinish(session, dynamicsLeia);
+      session = await SessionService.saveResultAndFinish(session.id, result);
+      if (dynamicsLeia) SupervisorService.observeAsync(session.id, dynamicsLeia, { force: true });
+    }
 
     // Generate spectator link with 1 year expiration
     const oneYearInSeconds = 365 * 24 * 60 * 60; // 31,536,000 seconds
@@ -777,7 +776,7 @@ class InteractionService {
       throw error;
     }
 
-    if (!session.evaluation || !session.score) {
+    if (!session.evaluation || session.score == null) {
       if (!session.finishedAt) {
         const error = new Error('Session is not finished yet');
         error.statusCode = 403;

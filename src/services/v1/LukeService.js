@@ -13,7 +13,12 @@ class LukeService {
     const providers = [];
 
     if (process.env.OPENAI_API_KEY) {
-      providers.push(openai({ apiKey: process.env.OPENAI_API_KEY }));
+      const provider = openai({ apiKey: process.env.OPENAI_API_KEY });
+      // Luke 0.2 ships a TTS voice list. Advertise the Realtime voices
+      // accepted by our activity editor so selectProvider preserves them.
+      provider.voices = ['alloy', 'ash', 'ballad', 'cedar', 'coral', 'echo', 'marin', 'sage', 'shimmer', 'verse']
+        .map((id) => ({ id, name: id }));
+      providers.push(provider);
     }
     if (process.env.GEMINI_API_KEY) {
       providers.push(gemini({
@@ -35,7 +40,19 @@ class LukeService {
       ...provider,
       connect: async (config) => {
         const connection = await provider.connect(config);
-        connectionSettings.set(connection, { provider: provider.name, voice: config.voice });
+        const state = { provider: provider.name, voice: config.voice, audioReady: false, open: null };
+        const send = connection.send.bind(connection);
+        connection.send = (message) => {
+          // Microphone frames are sent only after the client's AudioContext
+          // and playback chain exist. Opening onConnect can lose all audio
+          // while the browser is still waiting for microphone permission.
+          if (message.type === 'audio' && !state.audioReady) {
+            state.audioReady = true;
+            state.open?.();
+          }
+          return send(message);
+        };
+        connectionSettings.set(connection, state);
         return connection;
       },
     }));
@@ -49,11 +66,15 @@ class LukeService {
         const connection = liveSession.providerConnection;
         const actual = connectionSettings.get(connection);
         const desired = userSession.leia.runnerConfiguration?.lukeConfig || {};
-        if (actual?.provider !== (desired.provider || 'gemini') || actual?.voice !== (desired.voice || 'Puck')) return;
-        ConversationDynamicsService.open(userSession.sessionId, userSession.leia, async (instruction) => {
+        const desiredProvider = desired.provider || 'gemini';
+        const available = providers.find((provider) => provider.name === desiredProvider);
+        const desiredVoice = available?.voices.find((voice) => voice.id === desired.voice)?.id || available?.voices[0]?.id;
+        if (actual?.provider !== desiredProvider || actual?.voice !== desiredVoice) return;
+        actual.open = () => ConversationDynamicsService.open(userSession.sessionId, userSession.leia, async (instruction) => {
           if (liveSession.providerConnection !== connection) throw new Error('Luke provider changed before opening');
           connection.send({ type: 'text', content: instruction });
         }, true, liveSession.id).catch((error) => logger.error(`Luke opening failed: ${error.message}`));
+        if (actual.audioReady) actual.open();
       },
       onDisconnect: (liveSession) => {
         const sessionId = liveSession.userSession?.sessionId;

@@ -171,8 +171,8 @@ export const getEvaluation = async (req, res, next) => {
 export const getSolution = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
-    const res = await InteractionService.getSolutionAndFormat(sessionId);
-    res.json(res);
+    const solution = await InteractionService.getSolutionAndFormat(sessionId);
+    res.json(solution);
   } catch (error) {
     next(error);
   }
