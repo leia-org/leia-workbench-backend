@@ -1,5 +1,6 @@
 import ConversationDynamicsService, { dynamicsInstructions } from './ConversationDynamicsService.js';
-import { createLukeServer, openai, gemini } from '@leia-org/luke-server';
+import { createLukeServer, gemini } from '@leia-org/luke-server';
+import { openai } from '../../providers/lukeOpenAI.js';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ReplicationService from './ReplicationService.js';
 import MessageService from './MessageService.js';
@@ -13,12 +14,7 @@ class LukeService {
     const providers = [];
 
     if (process.env.OPENAI_API_KEY) {
-      const provider = openai({ apiKey: process.env.OPENAI_API_KEY });
-      // Luke 0.2 ships a TTS voice list. Advertise the Realtime voices
-      // accepted by our activity editor so selectProvider preserves them.
-      provider.voices = ['alloy', 'ash', 'ballad', 'cedar', 'coral', 'echo', 'marin', 'sage', 'shimmer', 'verse']
-        .map((id) => ({ id, name: id }));
-      providers.push(provider);
+      providers.push(openai({ apiKey: process.env.OPENAI_API_KEY }));
     }
     if (process.env.GEMINI_API_KEY) {
       providers.push(gemini({

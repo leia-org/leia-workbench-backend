@@ -3,8 +3,11 @@ const { createServer, provider, dynamics } = vi.hoisted(() => ({
   createServer: vi.fn(), provider: { id: 'gemini', name: 'gemini', voices: [{ id: 'Puck' }, { id: 'Kore' }], connect: vi.fn() },
   dynamics: { open: vi.fn(), releaseOpening: vi.fn(), completeOpening: vi.fn(), observeSafely: vi.fn() },
 }));
-vi.mock('@leia-org/luke-server', () => ({ createLukeServer: createServer, gemini: () => provider,
-  openai: () => ({ ...provider, id: 'openai', name: 'openai' }) }));
+vi.mock('@leia-org/luke-server', () => ({ createLukeServer: createServer, gemini: () => provider }));
+vi.mock('../src/providers/lukeOpenAI.js', () => ({ openai: () => ({
+  ...provider, id: 'openai', name: 'openai',
+  voices: ['alloy', 'ash', 'marin', 'cedar'].map((id) => ({ id, name: id })),
+}) }));
 vi.mock('../src/services/v1/ConversationDynamicsService.js', () => ({ default: dynamics, dynamicsInstructions: () => '' }));
 vi.mock('../src/repositories/v1/SessionRepository.js', () => ({ default: {} }));
 vi.mock('../src/services/v1/ReplicationService.js', () => ({ default: {} }));

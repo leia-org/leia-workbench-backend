@@ -39,6 +39,7 @@
     "swagger-parser": "^10.0.3",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.17.0",
+    "ws": "^8.18.0",
     "yamljs": "^0.3.0"
   },
   "devDependencies": {
