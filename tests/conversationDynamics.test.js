@@ -10,6 +10,7 @@ import MessageService from '../src/services/v1/MessageService.js';
 import SessionService from '../src/services/v1/SessionService.js';
 import RunnerService from '../src/services/v1/RunnerService.js';
 import Dynamics, { publicDynamicsState } from '../src/services/v1/ConversationDynamicsService.js';
+import { buildOpeningPrompt } from '../src/utils/openingPrompt.js';
 const leia = (dynamics = {}, audioMode) => ({ leia: { spec: { behaviour: { spec: { conversationDynamics: dynamics } } } }, runnerConfiguration: { audioMode } });
 const both = leia({ leiaSpeaksFirst: { enabled: true, config: { firstMessage: 'Introduce yourself' } },
   stoppingCondition: { enabled: true, config: { condition: 'The student refuses to cooperate' } } });
@@ -39,7 +40,7 @@ describe('shared chat / Luke dynamics lifecycle', () => {
     RunnerService.sendMessage.mockResolvedValue({ message: 'Hello!' });
     MessageService.create.mockResolvedValue({ id: 'opening' });
     await Dynamics.openText('session', both);
-    expect(RunnerService.sendMessage).toHaveBeenCalledWith('session', expect.stringContaining('Introduce yourself'), { opening: true });
+    expect(RunnerService.sendMessage).toHaveBeenCalledWith('session', buildOpeningPrompt('Introduce yourself'), { opening: true });
     expect(MessageService.create).toHaveBeenCalledWith('Hello!', true, 'session');
     expect(SessionService.addMessage).toHaveBeenCalledWith('session', 'opening');
     expect(Session.updateOne).toHaveBeenCalledWith({ _id: 'session' }, { $set: { 'conversationDynamicsState.leiaSpeaksFirst.completed': true } });
@@ -63,7 +64,7 @@ describe('shared chat / Luke dynamics lifecycle', () => {
     Session.findOneAndUpdate.mockResolvedValue({});
     const send = vi.fn();
     await Dynamics.open('session', both, send, true);
-    expect(send).toHaveBeenCalledWith(expect.stringContaining('Introduce yourself'));
+    expect(send).toHaveBeenCalledWith(buildOpeningPrompt('Introduce yourself'));
     expect(Session.updateOne).not.toHaveBeenCalled();
     await Dynamics.completeOpening('session');
     expect(Session.updateOne).toHaveBeenCalled();

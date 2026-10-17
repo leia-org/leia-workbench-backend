@@ -4,6 +4,7 @@ import MessageService from './MessageService.js';
 import SessionService from './SessionService.js';
 import RunnerService from './RunnerService.js';
 import logger from '../../utils/logger.js';
+import { buildOpeningPrompt } from '../../utils/openingPrompt.js';
 
 export function getDynamics(leia) {
   return leia?.leia?.spec?.behaviour?.spec?.conversationDynamics || {};
@@ -110,7 +111,7 @@ class ConversationDynamicsService {
     }, { $set: { 'conversationDynamicsState.leiaSpeaksFirst.claimedAt': new Date(), 'conversationDynamicsState.leiaSpeaksFirst.claimedBy': owner } }, { new: true });
     if (!claim) return;
     try {
-      await send(`Start the conversation now. This is an internal startup instruction, not a student message. Your first message must follow these instructor instructions: ${first.config.firstMessage}`);
+      await send(buildOpeningPrompt(first.config.firstMessage));
       if (!awaitDelivery) await this.completeOpening(sessionId);
     } catch (error) {
       await Session.updateOne({ _id: sessionId }, { $unset: { 'conversationDynamicsState.leiaSpeaksFirst.claimedAt': 1 } });

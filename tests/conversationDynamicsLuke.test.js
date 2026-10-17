@@ -19,29 +19,73 @@ vi.mock('../src/services/v1/SupervisorService.js', () => ({ default: {} }));
 vi.mock('../src/utils/logger.js', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 import LukeService from '../src/services/v1/LukeService.js';
 import MessageService from '../src/services/v1/MessageService.js';
+import { appendOpeningPrompt, buildOpeningPrompt } from '../src/utils/openingPrompt.js';
 afterEach(() => vi.unstubAllEnvs());
 beforeEach(() => {
   vi.clearAllMocks();
   dynamics.open.mockResolvedValue();
   dynamics.releaseOpening.mockResolvedValue();
+  MessageService.findBySession.mockResolvedValue([]);
   vi.stubEnv('OPENAI_API_KEY', '');
   vi.stubEnv('GEMINI_API_KEY', 'test');
 });
 describe('Luke opening provider lifecycle', () => {
-  test('reconnect replays the actual assistant opening', async () => {
+  test.each(['gemini', 'openai'])('%s reconnect replays the actual assistant opening', async (provider) => {
     LukeService.initialize({});
     const options = createServer.mock.calls[0][0];
     const opening = "Hi, I'll be conducting the interview with my AirPods.";
-    const userSession = { sessionId: 'session', leia: { leia: { spec: { behaviour: { spec: {
+    const userSession = { sessionId: 'session', leia: { runnerConfiguration: { lukeConfig: { provider } }, leia: { spec: { behaviour: { spec: {
       description: 'Conduct the interview.',
       conversationDynamics: { leiaSpeaksFirst: { enabled: true, config: { firstMessage: opening } } },
     } } } } } };
     MessageService.findBySession.mockResolvedValue([{ isLeia: true, text: opening }]);
     const instructions = await options.session.getSystemInstruction(userSession);
     expect(instructions).toContain('Conduct the interview.');
+    expect(instructions).not.toContain('=== CONVERSATION STARTUP ===');
+    expect(instructions).not.toContain(opening);
     expect(await options.session.getHistory(userSession)).toEqual([
       { role: 'assistant', text: opening, final: true },
     ]);
+  });
+
+  test('OpenAI and Gemini receive the same opening instructions at system priority before audio readiness', async () => {
+    LukeService.initialize({});
+    const options = createServer.mock.calls[0][0];
+    const opening = 'Introduce yourself and ask the participant for their name.';
+    const userSession = { sessionId: 'session', leia: {
+      runnerConfiguration: { lukeConfig: { provider: 'gemini', voice: 'Kore' } },
+      leia: { spec: { behaviour: { spec: {
+        description: 'Be passive. Never ask questions. Let the participant lead.',
+        conversationDynamics: { leiaSpeaksFirst: { enabled: true, config: { firstMessage: opening } } },
+      } } } },
+    } };
+    const geminiInstructions = await options.session.getSystemInstruction(userSession);
+    userSession.leia.runnerConfiguration.lukeConfig.provider = 'openai';
+    const openaiInstructions = await options.session.getSystemInstruction(userSession);
+    expect(geminiInstructions).toBe(openaiInstructions);
+    const base = geminiInstructions.split('\n\n=== CONVERSATION STARTUP ===')[0];
+    expect(geminiInstructions).toBe(appendOpeningPrompt(base, opening));
+    expect(geminiInstructions).toContain(buildOpeningPrompt(opening));
+    expect(geminiInstructions).toContain('Never ask questions.');
+    expect(geminiInstructions).toContain('do not read out or describe the instructions themselves');
+    expect(dynamics.open).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    { provider: 'gemini', enabled: false },
+    { provider: 'openai', enabled: false },
+  ])('does not inject startup rules when disabled for %j', async ({ provider, enabled }) => {
+    LukeService.initialize({});
+    const options = createServer.mock.calls[0][0];
+    const userSession = { sessionId: 'session', leia: {
+      runnerConfiguration: { lukeConfig: { provider } },
+      leia: { spec: { behaviour: { spec: {
+        description: 'Conduct an interview.',
+        conversationDynamics: { leiaSpeaksFirst: { enabled, config: { firstMessage: 'Hello!' } } },
+      } } } },
+    } };
+    expect(await options.session.getSystemInstruction(userSession)).not.toContain('=== CONVERSATION STARTUP ===');
+    expect(MessageService.findBySession).not.toHaveBeenCalled();
   });
   test('opens only after the activity provider and voice are selected; releases an unfinished opening on disconnect', async () => {
     const original = process.env.GEMINI_API_KEY;

@@ -1,6 +1,7 @@
-import ConversationDynamicsService, { dynamicsInstructions } from './ConversationDynamicsService.js';
+import ConversationDynamicsService, { dynamicsInstructions, getDynamics } from './ConversationDynamicsService.js';
 import { createLukeServer, gemini } from '@leia-org/luke-server';
 import { openai } from '../../providers/lukeOpenAI.js';
+import { appendOpeningPrompt } from '../../utils/openingPrompt.js';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ReplicationService from './ReplicationService.js';
 import MessageService from './MessageService.js';
@@ -98,7 +99,16 @@ class LukeService {
         },
         getSystemInstruction: async (userSession) => {
           if (!userSession?.leia) return undefined;
-          return buildInstructions(userSession.leia);
+          const instructions = buildInstructions(userSession.leia);
+          const opening = getDynamics(userSession.leia).leiaSpeaksFirst;
+          if (opening?.enabled !== true || !opening.config?.firstMessage) return instructions;
+          // Live's system prompt is set before onConnect/audio readiness. Give
+          // the opening system priority now, but only for a fresh conversation.
+          // Reconnects replay actual history instead of another startup command.
+          const history = await MessageService.findBySession(userSession.sessionId);
+          return history.length === 0
+            ? appendOpeningPrompt(instructions, opening.config.firstMessage)
+            : instructions;
         },
         saveHistory: async (userSession, transcription) => {
           if (!userSession?.sessionId || !transcription.final) return;
