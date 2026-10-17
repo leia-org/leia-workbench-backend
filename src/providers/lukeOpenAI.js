@@ -21,7 +21,42 @@ async function connect(apiKey, model, config) {
   const calls = new Map();
   let responseActive = false;
   let disconnected = false;
-  let transcript = '';
+  const transcripts = new Map();
+  const transcriptQueue = [];
+
+  // Input ASR completes independently of generation (and even out of order
+  // across turns). Reserve positions on committed/output_item.added instead.
+  // Luke has no item IDs on its wire, so both partials and finals must be
+  // delivered in conversation order. Audio and turn lifecycle stay immediate.
+  const reserveTranscript = (id, role, responseId) => {
+    if (!transcripts.has(id)) {
+      const item = { role, responseId, text: '', final: false, dirty: false };
+      transcripts.set(id, item);
+      transcriptQueue.push(item);
+    }
+    return transcripts.get(id);
+  };
+  const flushTranscripts = () => {
+    while (transcriptQueue.length) {
+      const item = transcriptQueue[0];
+      if (item.dirty && item.text.trim()) {
+        handlers.transcription?.({ role: item.role, text: item.text, final: item.final });
+      }
+      item.dirty = false;
+      if (!item.final) break;
+      transcriptQueue.shift();
+      // Keep a tombstone to ignore duplicate lifecycle/completion events.
+      item.text = '';
+    }
+  };
+  const updateTranscript = (id, role, text, final, delta = false) => {
+    const item = reserveTranscript(id, role);
+    if (item.final) return;
+    item.text = delta ? item.text + text : text;
+    item.final = final;
+    item.dirty = true;
+    flushTranscripts();
+  };
 
   const send = (event) => {
     if (ws.readyState !== WebSocket.OPEN) throw new Error('OpenAI Realtime connection is not open');
@@ -88,33 +123,49 @@ async function connect(apiKey, model, config) {
         switch (event.type) {
           case 'response.created':
             responseActive = true;
-            transcript = '';
             break;
           case 'response.output_audio.delta':
             handlers.audio?.(new Uint8Array(Buffer.from(event.delta, 'base64')));
             break;
           case 'response.output_audio_transcript.delta':
-            transcript += event.delta;
-            handlers.transcription?.({ role: 'assistant', text: transcript, final: false });
+            updateTranscript(event.item_id, 'assistant', event.delta, false, true);
             break;
           case 'response.output_audio_transcript.done':
-            handlers.transcription?.({ role: 'assistant', text: event.transcript, final: true });
-            transcript = '';
+            updateTranscript(event.item_id, 'assistant', event.transcript, true);
             break;
           case 'conversation.item.input_audio_transcription.completed':
-            handlers.transcription?.({ role: 'user', text: event.transcript, final: true });
+            updateTranscript(event.item_id, 'user', event.transcript, true);
+            break;
+          case 'conversation.item.input_audio_transcription.failed':
+            updateTranscript(event.item_id, 'user', '', true);
+            handlers.error?.(new Error(event.error?.message || 'OpenAI Realtime input transcription failed'));
+            break;
+          case 'input_audio_buffer.committed':
+            if (config.transcription?.input) reserveTranscript(event.item_id, 'user');
             break;
           case 'input_audio_buffer.speech_started':
             handlers.interrupted?.();
             break;
           case 'response.done':
             responseActive = false;
+            // Cancelled/failed responses can leave an unfinished caption (or
+            // an empty message). Finalize only this response, never pending ASR.
+            for (const item of transcriptQueue) {
+              if (item.role === 'assistant' && item.responseId === event.response?.id && !item.final) {
+                item.final = true;
+                item.dirty = true;
+              }
+            }
+            flushTranscripts();
             if (event.response?.status === 'failed') {
               handlers.error?.(new Error(event.response.status_details?.error?.message || 'OpenAI Realtime response failed'));
             } else handlers.turnComplete?.();
             break;
           case 'response.output_item.added':
             if (event.item?.type === 'function_call') calls.set(event.item.call_id, { name: event.item.name, arguments: '' });
+            else if (event.item?.type === 'message' && event.item.role === 'assistant') {
+              reserveTranscript(event.item.id, 'assistant', event.response_id);
+            }
             break;
           case 'response.function_call_arguments.delta': {
             const call = calls.get(event.call_id);

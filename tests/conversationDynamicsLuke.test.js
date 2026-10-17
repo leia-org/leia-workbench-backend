@@ -13,12 +13,14 @@ vi.mock('../src/services/v1/ConversationDynamicsService.js', async (importOrigin
 }));
 vi.mock('../src/repositories/v1/SessionRepository.js', () => ({ default: {} }));
 vi.mock('../src/services/v1/ReplicationService.js', () => ({ default: {} }));
-vi.mock('../src/services/v1/MessageService.js', () => ({ default: { findBySession: vi.fn() } }));
-vi.mock('../src/services/v1/SessionService.js', () => ({ default: {} }));
-vi.mock('../src/services/v1/SupervisorService.js', () => ({ default: {} }));
+vi.mock('../src/services/v1/MessageService.js', () => ({ default: { findBySession: vi.fn(), create: vi.fn() } }));
+vi.mock('../src/services/v1/SessionService.js', () => ({ default: { addMessage: vi.fn() } }));
+vi.mock('../src/services/v1/SupervisorService.js', () => ({ default: { observeAsync: vi.fn() } }));
 vi.mock('../src/utils/logger.js', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 import LukeService from '../src/services/v1/LukeService.js';
 import MessageService from '../src/services/v1/MessageService.js';
+import SessionService from '../src/services/v1/SessionService.js';
+import SupervisorService from '../src/services/v1/SupervisorService.js';
 import { appendOpeningPrompt, buildOpeningPrompt } from '../src/utils/openingPrompt.js';
 afterEach(() => vi.unstubAllEnvs());
 beforeEach(() => {
@@ -28,6 +30,71 @@ beforeEach(() => {
   MessageService.findBySession.mockResolvedValue([]);
   vi.stubEnv('OPENAI_API_KEY', '');
   vi.stubEnv('GEMINI_API_KEY', 'test');
+});
+
+describe('Luke transcript persistence', () => {
+  test('serializes concurrent saves and waits for pending history before reconnecting', async () => {
+    LukeService.initialize({});
+    const { saveHistory, getHistory } = createServer.mock.calls[0][0].session;
+    const userSession = { sessionId: 'session', leia: {} };
+    let releaseUser;
+    const saved = [];
+    MessageService.create.mockImplementationOnce(() => new Promise((resolve) => {
+      releaseUser = () => { saved.push({ id: 'user', isLeia: false, text: 'Pregunta' }); resolve(saved[0]); };
+    })).mockImplementationOnce(async () => {
+      const message = { id: 'assistant', isLeia: true, text: 'Respuesta' };
+      saved.push(message);
+      return message;
+    });
+    MessageService.findBySession.mockImplementation(async () => [...saved]);
+    const userWrite = saveHistory(userSession, { role: 'user', text: 'Pregunta', final: true });
+    // A reconnect may create a different userSession object for the same ID.
+    const assistantWrite = saveHistory({ ...userSession }, { role: 'assistant', text: 'Respuesta', final: true });
+    const history = getHistory({ ...userSession });
+    await Promise.resolve();
+    expect(MessageService.create).toHaveBeenCalledTimes(1);
+    expect(MessageService.findBySession).not.toHaveBeenCalled();
+    expect(SupervisorService.observeAsync).not.toHaveBeenCalled();
+    releaseUser();
+    await Promise.all([userWrite, assistantWrite]);
+    expect(await history).toEqual([
+      { role: 'user', text: 'Pregunta', final: true },
+      { role: 'assistant', text: 'Respuesta', final: true },
+    ]);
+    expect(SessionService.addMessage.mock.calls).toEqual([['session', 'user'], ['session', 'assistant']]);
+    expect(SupervisorService.observeAsync).toHaveBeenCalledOnce();
+  });
+
+  test('a failed save does not block following messages', async () => {
+    LukeService.initialize({});
+    const { saveHistory } = createServer.mock.calls[0][0].session;
+    MessageService.create.mockRejectedValueOnce(new Error('Write failed')).mockResolvedValueOnce({ id: 'reply' });
+    const userSession = { sessionId: 'session', leia: {} };
+    await Promise.all([
+      saveHistory(userSession, { role: 'user', text: 'Pregunta', final: true }),
+      saveHistory(userSession, { role: 'assistant', text: 'Respuesta', final: true }),
+    ]);
+    expect(SessionService.addMessage).toHaveBeenCalledExactlyOnceWith('session', 'reply');
+  });
+
+  test('slow observations and writes in another session do not block new messages', async () => {
+    LukeService.initialize({});
+    const { saveHistory } = createServer.mock.calls[0][0].session;
+    let releaseObservation, releaseOther;
+    dynamics.observeSafely.mockImplementationOnce(() => new Promise((resolve) => { releaseObservation = resolve; }));
+    MessageService.create.mockResolvedValue({ id: 'message' });
+    const assistantWrite = saveHistory({ sessionId: 'session', leia: {} }, { role: 'assistant', text: 'Respuesta', final: true });
+    await vi.waitFor(() => expect(releaseObservation).toBeTypeOf('function'));
+    MessageService.create.mockImplementationOnce(() => new Promise((resolve) => { releaseOther = resolve; }));
+    const otherWrite = saveHistory({ sessionId: 'other' }, { role: 'user', text: 'Otra sesión', final: true });
+    await Promise.resolve();
+    await saveHistory({ sessionId: 'session' }, { role: 'user', text: 'Siguiente pregunta', final: true });
+    expect(SessionService.addMessage).toHaveBeenCalledTimes(2);
+    releaseObservation();
+    releaseOther({ id: 'other-message' });
+    await Promise.all([assistantWrite, otherWrite]);
+    expect(SessionService.addMessage).toHaveBeenCalledTimes(3);
+  });
 });
 describe('Luke opening provider lifecycle', () => {
   test.each(['gemini', 'openai'])('%s reconnect replays the actual assistant opening', async (provider) => {
