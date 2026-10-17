@@ -133,7 +133,7 @@ class ConversationDynamicsService {
   async openText(sessionId, leia) {
     if (leia.runnerConfiguration?.audioMode) return;
     await this.open(sessionId, leia, async (instruction) => {
-      const response = await RunnerService.sendMessage(sessionId, instruction);
+      const response = await RunnerService.sendMessage(sessionId, instruction, { opening: true });
       const text = typeof response === 'string' ? response : response?.message;
       if (!text) throw new Error('LEIA did not return an opening message');
       const message = await MessageService.create(text, true, sessionId);

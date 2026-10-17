@@ -8,14 +8,17 @@ vi.mock('../src/providers/lukeOpenAI.js', () => ({ openai: () => ({
   ...provider, id: 'openai', name: 'openai',
   voices: ['alloy', 'ash', 'marin', 'cedar'].map((id) => ({ id, name: id })),
 }) }));
-vi.mock('../src/services/v1/ConversationDynamicsService.js', () => ({ default: dynamics, dynamicsInstructions: () => '' }));
+vi.mock('../src/services/v1/ConversationDynamicsService.js', async (importOriginal) => ({
+  ...await importOriginal(), default: dynamics,
+}));
 vi.mock('../src/repositories/v1/SessionRepository.js', () => ({ default: {} }));
 vi.mock('../src/services/v1/ReplicationService.js', () => ({ default: {} }));
-vi.mock('../src/services/v1/MessageService.js', () => ({ default: {} }));
+vi.mock('../src/services/v1/MessageService.js', () => ({ default: { findBySession: vi.fn() } }));
 vi.mock('../src/services/v1/SessionService.js', () => ({ default: {} }));
 vi.mock('../src/services/v1/SupervisorService.js', () => ({ default: {} }));
 vi.mock('../src/utils/logger.js', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 import LukeService from '../src/services/v1/LukeService.js';
+import MessageService from '../src/services/v1/MessageService.js';
 afterEach(() => vi.unstubAllEnvs());
 beforeEach(() => {
   vi.clearAllMocks();
@@ -25,6 +28,21 @@ beforeEach(() => {
   vi.stubEnv('GEMINI_API_KEY', 'test');
 });
 describe('Luke opening provider lifecycle', () => {
+  test('reconnect replays the actual assistant opening', async () => {
+    LukeService.initialize({});
+    const options = createServer.mock.calls[0][0];
+    const opening = "Hi, I'll be conducting the interview with my AirPods.";
+    const userSession = { sessionId: 'session', leia: { leia: { spec: { behaviour: { spec: {
+      description: 'Conduct the interview.',
+      conversationDynamics: { leiaSpeaksFirst: { enabled: true, config: { firstMessage: opening } } },
+    } } } } } };
+    MessageService.findBySession.mockResolvedValue([{ isLeia: true, text: opening }]);
+    const instructions = await options.session.getSystemInstruction(userSession);
+    expect(instructions).toContain('Conduct the interview.');
+    expect(await options.session.getHistory(userSession)).toEqual([
+      { role: 'assistant', text: opening, final: true },
+    ]);
+  });
   test('opens only after the activity provider and voice are selected; releases an unfinished opening on disconnect', async () => {
     const original = process.env.GEMINI_API_KEY;
     process.env.GEMINI_API_KEY = 'test';

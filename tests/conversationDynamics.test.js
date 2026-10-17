@@ -16,6 +16,15 @@ const both = leia({ leiaSpeaksFirst: { enabled: true, config: { firstMessage: 'I
 
 beforeEach(() => { vi.clearAllMocks(); MessageService.findBySession.mockResolvedValue([]); Session.updateOne.mockResolvedValue({}); });
 describe('shared chat / Luke dynamics lifecycle', () => {
+  test.each([
+    {},
+    { leiaSpeaksFirst: { enabled: false, config: { firstMessage: 'Unused opening' } } },
+  ])('does not generate or persist an opening when speaks first is absent or disabled: %j', async (config) => {
+    await Dynamics.openText('session', leia(config));
+    expect(RunnerService.sendMessage).not.toHaveBeenCalled();
+    expect(Session.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(MessageService.create).not.toHaveBeenCalled();
+  });
   test('legacy and disabled dynamics allow manual finish', async () => {
     expect(publicDynamicsState({}, leia()).canFinish).toBe(true);
     await expect(Dynamics.assertCanFinish({}, leia({ stoppingCondition: { enabled: false } }))).resolves.toBeUndefined();
@@ -30,6 +39,7 @@ describe('shared chat / Luke dynamics lifecycle', () => {
     RunnerService.sendMessage.mockResolvedValue({ message: 'Hello!' });
     MessageService.create.mockResolvedValue({ id: 'opening' });
     await Dynamics.openText('session', both);
+    expect(RunnerService.sendMessage).toHaveBeenCalledWith('session', expect.stringContaining('Introduce yourself'), { opening: true });
     expect(MessageService.create).toHaveBeenCalledWith('Hello!', true, 'session');
     expect(SessionService.addMessage).toHaveBeenCalledWith('session', 'opening');
     expect(Session.updateOne).toHaveBeenCalledWith({ _id: 'session' }, { $set: { 'conversationDynamicsState.leiaSpeaksFirst.completed': true } });
