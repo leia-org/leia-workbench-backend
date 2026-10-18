@@ -1,4 +1,5 @@
 import { Server } from 'socket.io';
+import { createFrontendOriginHandler } from '../utils/frontendOrigins.js';
 import logger from '../utils/logger.js';
 import SpectatorService from '../services/v1/SpectatorService.js';
 import ReplicationService from '../services/v1/ReplicationService.js';
@@ -9,7 +10,7 @@ let io = null;
 export function initializeSocket(httpServer) {
   io = new Server(httpServer, {
     cors: {
-      origin: process.env.FRONTEND_URL,
+      origin: createFrontendOriginHandler((process.env.FRONTEND_URL || '').split(',')),
       methods: ['GET', 'POST'],
       credentials: true,
     },
