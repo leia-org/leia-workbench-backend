@@ -8,6 +8,7 @@ import {
   getEvaluation,
   startTestSession,
   getSolution,
+  getScenarioFiles,
   finishSession,
   saveDraft,
   getConversationDynamics,
@@ -29,5 +30,6 @@ router.post('/:sessionId/draft', saveDraft);
 router.get('/:sessionId', getSessionData);
 router.get('/:sessionId/conversation-dynamics', getConversationDynamics);
 router.get('/:sessionId/solution', getSolution);
+router.get('/:sessionId/scenario-files', getScenarioFiles);
 router.get('/:sessionId/evaluation', getEvaluation);
 export default router;

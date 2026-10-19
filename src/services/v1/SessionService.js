@@ -62,6 +62,11 @@ class SessionService {
       leia: leiaId,
       isTest,
       interactionMode: options.interactionMode || 'single',
+      // Balanced the same way as leia selection (least-count, not random).
+      // Computed unconditionally, regardless of whether this leia's problem
+      // actually uses a repo-based scenario source — cheap, and lets the
+      // frontend widget decide whether the field is relevant.
+      scenarioNumber: await ReplicationService.getAndIncrementNextScenario(replicationId, leiaId),
     };
     if (Array.isArray(options.leias) && options.leias.length > 0) {
       sessionData.leias = options.leias;
