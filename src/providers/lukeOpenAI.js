@@ -148,8 +148,8 @@ async function connect(apiKey, model, config) {
             break;
           case 'response.done':
             responseActive = false;
-            // Cancelled/failed responses can leave an unfinished caption (or
-            // an empty message). Finalize only this response, never pending ASR.
+            // A cancelled/failed response may not send a final transcript event.
+            // Complete its assistant entries, even if empty, without finalizing pending user ASR.
             for (const item of transcriptQueue) {
               if (item.role === 'assistant' && item.responseId === event.response?.id && !item.final) {
                 item.final = true;
