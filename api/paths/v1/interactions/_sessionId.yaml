@@ -16,14 +16,4 @@ get:
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              session:
-                type: object
-                description: The session data
-              messages:
-                type: object
-                description: The messages in the session
-              leia:
-                type: object
-                description: The Leia data with or without the solution depending on the session state
+            $ref: '../../../components/schemas/v1/interaction/sessionData.yaml'

@@ -1,0 +1,19 @@
+get:
+  tags:
+    - Replications v1
+  summary: Download conversations for a Replication as CSV
+  operationId: downloadReplicationConversationsCSV
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the replication
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+  responses:
+    '200':
+      description: CSV export of replication conversations
+      content:
+        text/csv:
+          schema:
+            type: string

@@ -18,7 +18,15 @@ properties:
     type: integer
     description: Duration of the replication in seconds
   experiment:
-    type: object
+    $ref: '../manager/experiment.yaml'
+  form:
+    type: string
+    nullable: true
+  isShared:
+    type: boolean
+  shareToken:
+    type: string
+    nullable: true
   createdAt:
     type: string
     format: date-time

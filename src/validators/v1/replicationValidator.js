@@ -30,6 +30,10 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
     then: Joi.boolean().optional().default(false),
     otherwise: Joi.valid(null).optional().default(null),
   }),
+  infographic: Joi.object({
+    showToStudent: Joi.boolean().optional().default(false),
+    allowDownload: Joi.any().strip(),
+  }).optional(),
   lukeConfig: Joi.object({
     // provider/voice are only meaningful when audioMode === 'luke'. The
     // same lukeConfig bucket is reused by text mode (which only needs
@@ -74,14 +78,6 @@ export const updateReplicationLeiaRunnerConfigurationValidator = Joi.object({
 
 export const updateReplicationFormValidator = Joi.object({
   form: Joi.string().required(),
-});
-
-export const updateReplicationDataUsageValidator = Joi.object({
-  dataUsageConfig: Joi.object({
-    dataUsageConsentRequired: Joi.boolean().required(),
-    dataUsageConsentMessage: Joi.string().trim().min(1).required(),
-    conversationAutomatedRemoval: Joi.boolean().required(),
-  }).required(),
 });
 
 export const updateSessionScoreValidator = Joi.object({

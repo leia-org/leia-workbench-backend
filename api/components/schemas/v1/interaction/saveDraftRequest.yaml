@@ -1,0 +1,6 @@
+type: object
+required:
+  - draft
+properties:
+  draft:
+    type: string

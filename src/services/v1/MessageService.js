@@ -17,31 +17,32 @@ class MessageService {
     return await MessageRepository.findBySession(sessionId);
   }
 
-  shouldSkipConversationPersistence(session) {
-    return Boolean(
-      session &&
-      !session.isTest &&
-      session.dataUsage?.consentStatus === 'declined' &&
-      session.dataUsage?.config?.dataUsageConsentRequired &&
-      session.dataUsage?.config?.conversationAutomatedRemoval
-    );
-  }
-
   // WRITE METHODS
 
-  async create(text, isLeia, sessionId) {
-    const session = await SessionRepository.findById(sessionId);
-    if (this.shouldSkipConversationPersistence(session)) return null;
-
+  async create(text, isLeia, sessionId, metadata = {}) {
     const messageData = {
       text,
       isLeia,
       session: sessionId,
     };
+    for (const key of [
+      'senderType',
+      'senderId',
+      'senderName',
+      'recipientIds',
+      'addressedToId',
+      'addressedToName',
+      'sequence',
+      'turnId',
+      'timestamp',
+    ]) {
+      if (metadata[key] !== undefined) messageData[key] = metadata[key];
+    }
     const message = await MessageRepository.create(messageData);
 
     // Emit WebSocket event to spectators and dashboard
     try {
+      const session = await SessionRepository.findById(sessionId);
       if (session) {
         // Emit to session room (spectators)
         emitToSession(sessionId, 'message:new', message);
@@ -58,10 +59,6 @@ class MessageService {
     }
 
     return message;
-  }
-
-  async deleteBySession(sessionId) {
-    return await MessageRepository.deleteBySession(sessionId);
   }
 }
 

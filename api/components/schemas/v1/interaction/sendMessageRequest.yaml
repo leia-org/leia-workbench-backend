@@ -1,0 +1,18 @@
+type: object
+description: Provide either `message` for a user turn or `toolResults` to continue after tool calls.
+properties:
+  message:
+    type: string
+  tools:
+    type: array
+    items:
+      $ref: './tool.yaml'
+  toolResults:
+    type: array
+    items:
+      $ref: './toolResult.yaml'
+anyOf:
+  - required:
+      - message
+  - required:
+      - toolResults

@@ -1,0 +1,20 @@
+type: object
+properties:
+  message:
+    type: string
+    description: Human-readable error message.
+  error:
+    type: string
+    description: Optional error detail.
+  invalidLeias:
+    type: array
+    description: LEIAs with invalid configuration fields, when validation depends on an experiment.
+    items:
+      type: object
+      properties:
+        leiaId:
+          type: string
+        missingFields:
+          type: array
+          items:
+            type: string

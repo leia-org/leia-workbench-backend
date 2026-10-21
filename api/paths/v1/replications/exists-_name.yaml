@@ -1,0 +1,19 @@
+get:
+  tags:
+    - Replications v1
+  summary: Check whether a Replication name exists
+  operationId: replicationNameExists
+  parameters:
+    - name: name
+      in: path
+      required: true
+      description: Replication name to check
+      schema:
+        type: string
+  responses:
+    '200':
+      description: Name availability response
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/replication/nameExistsResponse.yaml'

@@ -1,0 +1,20 @@
+type: object
+description: LEIA definition embedded in an experiment.
+properties:
+  id:
+    type: string
+  leia:
+    type: object
+  configuration:
+    type: object
+    properties:
+      askSolution:
+        type: boolean
+      evaluateSolution:
+        type: boolean
+      mode:
+        type: string
+  runnerConfiguration:
+    $ref: '../replication/runnerConfiguration.yaml'
+  sessionCount:
+    type: integer

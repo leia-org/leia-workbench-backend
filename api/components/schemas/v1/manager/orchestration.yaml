@@ -1,0 +1,17 @@
+type: object
+properties:
+  mode:
+    type: string
+    enum: [single, multi]
+  maxInternalTurns:
+    type: integer
+    minimum: 2
+    maximum: 5
+  openingLeiaId:
+    type: string
+    nullable: true
+  problemLeiaId:
+    type: string
+    nullable: true
+  sharedTask:
+    type: string

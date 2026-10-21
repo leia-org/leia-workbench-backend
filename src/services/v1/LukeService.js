@@ -1,4 +1,6 @@
-import { createLukeServer, openai, gemini } from '@leia-org/luke-server';
+import ConversationDynamicsService, { dynamicsInstructions } from './ConversationDynamicsService.js';
+import { createLukeServer, gemini } from '@leia-org/luke-server';
+import { openai } from '../../providers/lukeOpenAI.js';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ReplicationService from './ReplicationService.js';
 import MessageService from './MessageService.js';
@@ -26,10 +28,55 @@ class LukeService {
       return;
     }
 
+    // Remember the actual provider/voice selected for each live connection.
+    // Luke initially connects its default provider before the UI applies the
+    // activity's configuration; only the final configured connection opens.
+    const connectionSettings = new WeakMap();
+    const trackedProviders = providers.map((provider) => ({
+      ...provider,
+      connect: async (config) => {
+        const connection = await provider.connect(config);
+        const state = { provider: provider.name, voice: config.voice, audioReady: false, open: null };
+        const send = connection.send.bind(connection);
+        connection.send = (message) => {
+          // Microphone frames are sent only after the client's AudioContext
+          // and playback chain exist. Opening onConnect can lose all audio
+          // while the browser is still waiting for microphone permission.
+          if (message.type === 'audio' && !state.audioReady) {
+            state.audioReady = true;
+            state.open?.();
+          }
+          return send(message);
+        };
+        connectionSettings.set(connection, state);
+        return connection;
+      },
+    }));
     const lukeServer = createLukeServer({
       server: httpServer,
       path: '/luke',
-      providers,
+      providers: trackedProviders,
+      onConnect: (liveSession) => {
+        const userSession = liveSession.userSession;
+        if (!userSession?.sessionId || !liveSession.providerConnection) return;
+        const connection = liveSession.providerConnection;
+        const actual = connectionSettings.get(connection);
+        const desired = userSession.leia.runnerConfiguration?.lukeConfig || {};
+        const desiredProvider = desired.provider || 'gemini';
+        const available = providers.find((provider) => provider.name === desiredProvider);
+        const desiredVoice = available?.voices.find((voice) => voice.id === desired.voice)?.id || available?.voices[0]?.id;
+        if (actual?.provider !== desiredProvider || actual?.voice !== desiredVoice) return;
+        actual.open = () => ConversationDynamicsService.open(userSession.sessionId, userSession.leia, async (instruction) => {
+          if (liveSession.providerConnection !== connection) throw new Error('Luke provider changed before opening');
+          connection.send({ type: 'text', content: instruction });
+        }, true, liveSession.id).catch((error) => logger.error(`Luke opening failed: ${error.message}`));
+        if (actual.audioReady) actual.open();
+      },
+      onDisconnect: (liveSession) => {
+        const sessionId = liveSession.userSession?.sessionId;
+        if (sessionId) ConversationDynamicsService.releaseOpening(sessionId, liveSession.id)
+          .catch((error) => logger.error(`Luke opening cleanup failed: ${error.message}`));
+      },
       auth: {
         jwt: {
           secret: process.env.JWT_SECRET || 'secret',
@@ -42,7 +89,7 @@ class LukeService {
       session: {
         create: async (user) => {
           const session = await SessionRepository.findById(user.sessionId);
-          if (!session) return null;
+          if (!session || session.finishedAt) return null;
 
           const leia = await ReplicationService.findLeia(session.replication, session.leia);
           if (!leia) return null;
@@ -58,12 +105,13 @@ class LukeService {
           try {
             const isLeia = transcription.role === 'assistant';
             const message = await MessageService.create(transcription.text, isLeia, userSession.sessionId);
-            if (!message) return;
             await SessionService.addMessage(userSession.sessionId, message.id);
             // Observe luke (audio) exchanges too. Trigger on the LEIA turn; the
             // supervisor applies its own transcript-window + cadence logic.
             if (isLeia && userSession.leia) {
+              await ConversationDynamicsService.completeOpening(userSession.sessionId);
               SupervisorService.observeAsync(userSession.sessionId, userSession.leia);
+              await ConversationDynamicsService.observeSafely(userSession.sessionId, userSession.leia);
             }
           } catch (err) {
             logger.error(`Failed to save luke transcription: ${err.message}`);
@@ -98,15 +146,6 @@ class LukeService {
     if (!session) {
       const error = new Error('Session not found');
       error.statusCode = 404;
-      throw error;
-    }
-    if (
-      !session.isTest &&
-      session.dataUsage?.config?.dataUsageConsentRequired &&
-      !['accepted', 'declined', 'not_required'].includes(session.dataUsage?.consentStatus)
-    ) {
-      const error = new Error('Data usage consent decision is required before starting this activity');
-      error.statusCode = 403;
       throw error;
     }
 
@@ -145,7 +184,7 @@ function buildInstructions(leia) {
   const problemSpec = leia.leia?.spec?.problem?.spec || {};
   const behaviourSpec = leia.leia?.spec?.behaviour?.spec || {};
 
-  const instructionParts = [];
+  const instructionParts = [dynamicsInstructions(leia)];
 
   instructionParts.push('LANGUAGE REQUIREMENT:');
   instructionParts.push('- Detect the language the user speaks and respond in the same language.');
@@ -197,7 +236,7 @@ function buildInstructions(leia) {
   }
 
   Object.keys(behaviourSpec).forEach((key) => {
-    if (!['description', 'role', 'character', 'process'].includes(key) && behaviourSpec[key]) {
+    if (!['description', 'role', 'character', 'process', 'conversationDynamics'].includes(key) && behaviourSpec[key]) {
       if (typeof behaviourSpec[key] === 'object') {
         instructionParts.push(`${key}: ${JSON.stringify(behaviourSpec[key])}`);
       } else {

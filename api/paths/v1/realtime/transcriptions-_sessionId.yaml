@@ -1,0 +1,25 @@
+post:
+  tags:
+    - Realtime v1
+  summary: Save an audio transcription as a session message
+  operationId: saveAudioTranscription
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      description: Workbench session identifier
+      schema:
+        type: string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../../components/schemas/v1/realtime/transcriptionRequest.yaml'
+  responses:
+    '201':
+      description: Transcription saved successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/realtime/transcriptionResponse.yaml'

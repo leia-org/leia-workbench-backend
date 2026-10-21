@@ -11,16 +11,9 @@ get:
       schema:
         type: string
   responses:
-    '201':
+    '200':
       description: Evaluation retrieved successfully
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              evaluation:
-                type: string
-                description: The evaluation performed on the result of the session
-              score:
-                type: number
-                description: The score of the evaluation
+            $ref: '../../../components/schemas/v1/interaction/evaluationResponse.yaml'

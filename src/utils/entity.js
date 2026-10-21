@@ -32,13 +32,24 @@ export async function generateUniqueCode(model, prefix, maxAttempts = 5) {
  * @param {object} experiment
  * @returns experiment
  */
-export function initializeExperiment(experiment) {
+export function initializeExperiment(
+  experiment,
+  defaultApiKey = null,
+  apiKeyRequesterId = null,
+  providerDriver = 'default'
+) {
   for (const leia of experiment.leias) {
+    leia.configuration.mode = 'standard';
     leia.runnerConfiguration = {
-      provider: 'default',
-      modelName: 'default',
+      provider: providerDriver,
+      modelName: defaultApiKey?.model || 'default',
+      apiKeyId: defaultApiKey?.id || defaultApiKey?._id || null,
+      apiKeyRequesterId: defaultApiKey ? apiKeyRequesterId : null,
       audioMode: null,
       hideAudioTranscription: null,
+      infographic: {
+        showToStudent: false,
+      },
     };
     leia.sessionCount = 0;
     leia.configuration.askSolution = true;

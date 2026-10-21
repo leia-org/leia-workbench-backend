@@ -1,0 +1,13 @@
+type: object
+additionalProperties: true
+properties:
+  token:
+    type: string
+  expiresAt:
+    type: string
+    format: date-time
+  sessionId:
+    type: string
+  config:
+    type: object
+    additionalProperties: true

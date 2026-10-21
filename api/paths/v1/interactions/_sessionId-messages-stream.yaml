@@ -1,0 +1,28 @@
+post:
+  tags:
+    - Interactions v1
+  summary: Stream a MultiLEIA group-chat turn as each agent responds
+  operationId: streamSessionMessage
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [message]
+          properties:
+            message:
+              type: string
+  responses:
+    '200':
+      description: Server-sent events named ready, route, message, complete and error.
+      content:
+        text/event-stream:
+          schema:
+            type: string

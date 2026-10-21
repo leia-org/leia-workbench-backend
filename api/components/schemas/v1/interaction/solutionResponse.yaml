@@ -1,0 +1,8 @@
+type: object
+properties:
+  solution:
+    nullable: true
+    description: Solution content from the LEIA problem definition.
+  solutionFormat:
+    type: string
+    nullable: true

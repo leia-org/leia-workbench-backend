@@ -8,22 +8,11 @@ post:
     content:
       application/json:
         schema:
-          type: object
-          properties:
-            replicationId:
-              type: string
-              description: The ID of the replication
-            leiaId:
-              type: string
-              description: The ID of the Leia
+          $ref: '../../../components/schemas/v1/interaction/startTestSessionRequest.yaml'
   responses:
     '201':
       description: Replication created successfully
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              sessionId:
-                type: string
-                description: The ID of the session that was created
+            $ref: '../../../components/schemas/v1/interaction/sessionIdResponse.yaml'
