@@ -1,13 +1,16 @@
 import mongoose from 'mongoose';
 import Replication from '../../models/Replication.js';
-
+import { regexQuery } from '../../utils/search.js';
 class ReplicationRepository {
   // READ METHODS
 
-  async findAll(lastReplicationId) {
+  async findAll(lastReplicationId, text) {
     const query = {};
     if (lastReplicationId) {
       query._id = { $gt: new mongoose.Types.ObjectId(`${lastReplicationId}`) };
+    }
+    if (text) {
+      Object.assign(query, regexQuery(text, 'name'));
     }
     const limit = 10;
     const results = await Replication.find(query).sort({ _id: 1 }).limit(limit + 1);
@@ -15,12 +18,15 @@ class ReplicationRepository {
     const nextCursor = replications.length === limit ? replications[replications.length - 1].id : null;
     return { replications, nextCursor };
   }
-  async findAllByUser(userId, lastReplicationId) {
+  async findAllByUser(userId, lastReplicationId, text) {
     const query = {
       $or: [{ 'experiment.user.id': userId }, { 'experiment.user._id': userId }, { 'experiment.user': userId }],
     };
     if (lastReplicationId) {
       query._id = { $gt: new mongoose.Types.ObjectId(`${lastReplicationId}`) };
+    }
+    if (text) {
+      Object.assign(query, regexQuery(text, 'name'));
     }
     const limit = 10
     const results = await Replication.find(query).sort({ _id: 1 }).limit(limit+1);
