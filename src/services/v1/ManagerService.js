@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 class ManagerService {
-  async findAllMyExperiments(authorization, lastActivityId) {
+  async findAllMyExperiments(authorization, lastActivityId, text) {
     const response = await axios.get(`${process.env.MANAGER_URL}/api/v1/experiments/user/me`, {
       headers: {
         'x-api-key': process.env.MANAGER_KEY,
@@ -9,17 +9,19 @@ class ManagerService {
       },
       params: {
         lastActivityId: lastActivityId || undefined,
+        text: text || undefined,
       },
     });
     return response.data;
   }
-  async findAllExperiments(lastActivityId) {
+  async findAllExperiments(lastActivityId, text) {
     const response = await axios.get(`${process.env.MANAGER_URL}/api/v1/experiments`, {
       headers: {
         'x-api-key': process.env.MANAGER_KEY,
       },
       params: {
         lastActivityId: lastActivityId || undefined,
+        text: text || undefined,
       },
     });
     return response.data;
