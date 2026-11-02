@@ -10,6 +10,20 @@ import {
   updateSessionScoreValidator,
 } from '../../validators/v1/replicationValidator.js';
 
+const getReplicationOwnerId = (replication) =>
+  replication?.experiment?.user?._id ??
+  replication?.experiment?.user?.id ??
+  replication?.experiment?.user ??
+  null;
+
+const canManageReplicationModel = (req) => {
+  if (req.user?.isAdmin === true) return true;
+
+  const ownerId = getReplicationOwnerId(req.replication);
+  return Boolean(
+    req.user?.id && ownerId && ownerId.toString() === req.user.id.toString()
+  );
+};
 
 export const createReplication = async (req, res, next) => {
   try {
@@ -164,6 +178,26 @@ export const updateReplicationLeiaRunnerConfiguration = async (req, res, next) =
     const value = await updateReplicationLeiaRunnerConfigurationValidator.validateAsync(req.body, {
       abortEarly: false,
     });
+
+    if (!canManageReplicationModel(req)) {
+      const storedLeia = req.replication?.experiment?.leias?.find(
+        (leia) => String(leia.id) === String(leiaId)
+      );
+      const storedConfiguration = storedLeia?.runnerConfiguration ?? {};
+      const changesModel = value.modelName !== storedConfiguration.modelName;
+      const changesApiKey =
+        value.apiKeyId !== undefined &&
+        value.apiKeyId !== storedConfiguration.apiKeyId;
+
+      if (changesModel || changesApiKey) {
+        const error = new Error(
+          'Unauthorized: only the owner can change the model or API key of this replication'
+        );
+        error.statusCode = 403;
+        throw error;
+      }
+    }
+
     let provider, providerDriver;
     try {
       ({ provider, providerDriver } = await ReplicationService.getProviderAndProviderModuleForReplication(value.modelName));
