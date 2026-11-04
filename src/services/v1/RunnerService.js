@@ -104,6 +104,7 @@ class RunnerService {
 
   async sendMessage(sessionId, message, options = {}) {
     const body = {};
+    if (options.opening === true) body.opening = true;
     if (typeof message === 'string' && message.length > 0) body.message = message;
     if (Array.isArray(options.tools) && options.tools.length > 0) body.tools = options.tools;
     if (Array.isArray(options.toolResults) && options.toolResults.length > 0) body.toolResults = options.toolResults;

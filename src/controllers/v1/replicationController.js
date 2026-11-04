@@ -36,15 +36,16 @@ export const getReplicationById = async (req, res, next) => {
   }
 };
 
-export const getAllReplications = async (req, res, next) => {
+export const getAllReplicationsByQuery = async (req, res, next) => {
   try {
     const lastReplicationId = req.query.lastReplicationId;
+    const text = req.query.text;
     if (req.auth.payload.role === 'admin') {
-      const replications = await ReplicationService.findAll(lastReplicationId);
+      const replications = await ReplicationService.findAll(lastReplicationId, text);
       res.json(replications);
     }
     else {
-    const replications = await ReplicationService.findAllByUser(req.auth?.payload?.id, lastReplicationId);
+    const replications = await ReplicationService.findAllByUser(req.auth?.payload?.id, lastReplicationId, text);
     res.json(replications);
     }
   } catch (err) {

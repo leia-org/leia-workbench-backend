@@ -1,6 +1,7 @@
-import ConversationDynamicsService, { dynamicsInstructions } from './ConversationDynamicsService.js';
+import ConversationDynamicsService, { dynamicsInstructions, getDynamics } from './ConversationDynamicsService.js';
 import { createLukeServer, gemini } from '@leia-org/luke-server';
 import { openai } from '../../providers/lukeOpenAI.js';
+import { appendOpeningPrompt } from '../../utils/openingPrompt.js';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ReplicationService from './ReplicationService.js';
 import MessageService from './MessageService.js';
@@ -32,6 +33,10 @@ class LukeService {
     // Luke initially connects its default provider before the UI applies the
     // activity's configuration; only the final configured connection opens.
     const connectionSettings = new WeakMap();
+    // Luke invokes saveHistory without awaiting it. Serialize each session's
+    // writes so database timestamps, socket events and observers see the same
+    // order as the provider, including after a reconnect/provider switch.
+    const historyWrites = new Map();
     const trackedProviders = providers.map((provider) => ({
       ...provider,
       connect: async (config) => {
@@ -98,28 +103,50 @@ class LukeService {
         },
         getSystemInstruction: async (userSession) => {
           if (!userSession?.leia) return undefined;
-          return buildInstructions(userSession.leia);
+          const instructions = buildInstructions(userSession.leia);
+          const opening = getDynamics(userSession.leia).leiaSpeaksFirst;
+          if (opening?.enabled !== true || !opening.config?.firstMessage) return instructions;
+          // Live's system prompt is set before onConnect/audio readiness. Give
+          // the opening system priority now, but only for a fresh conversation.
+          // Reconnects replay actual history instead of another startup command.
+          const history = await MessageService.findBySession(userSession.sessionId);
+          return history.length === 0
+            ? appendOpeningPrompt(instructions, opening.config.firstMessage)
+            : instructions;
         },
         saveHistory: async (userSession, transcription) => {
           if (!userSession?.sessionId || !transcription.final) return;
+          const sessionId = String(userSession.sessionId);
+          const write = (historyWrites.get(sessionId) || Promise.resolve()).then(async () => {
+            try {
+              const isLeia = transcription.role === 'assistant';
+              const message = await MessageService.create(transcription.text, isLeia, userSession.sessionId);
+              await SessionService.addMessage(userSession.sessionId, message.id);
+              return isLeia;
+            } catch (err) {
+              logger.error(`Failed to save luke transcription: ${err.message}`);
+            }
+          });
+          historyWrites.set(sessionId, write);
           try {
-            const isLeia = transcription.role === 'assistant';
-            const message = await MessageService.create(transcription.text, isLeia, userSession.sessionId);
-            await SessionService.addMessage(userSession.sessionId, message.id);
-            // Observe luke (audio) exchanges too. Trigger on the LEIA turn; the
-            // supervisor applies its own transcript-window + cadence logic.
+            const isLeia = await write;
+            // Observations see the preceding user write, but their model calls
+            // must not hold up persistence of subsequent conversation turns.
             if (isLeia && userSession.leia) {
               await ConversationDynamicsService.completeOpening(userSession.sessionId);
               SupervisorService.observeAsync(userSession.sessionId, userSession.leia);
               await ConversationDynamicsService.observeSafely(userSession.sessionId, userSession.leia);
             }
           } catch (err) {
-            logger.error(`Failed to save luke transcription: ${err.message}`);
+            logger.error(`Failed to observe luke transcription: ${err.message}`);
+          } finally {
+            if (historyWrites.get(sessionId) === write) historyWrites.delete(sessionId);
           }
         },
         getHistory: async (userSession) => {
           if (!userSession?.sessionId) return [];
           try {
+            await historyWrites.get(String(userSession.sessionId));
             const messages = await MessageService.findBySession(userSession.sessionId);
             return messages.map((msg) => ({
               role: msg.isLeia ? 'assistant' : 'user',

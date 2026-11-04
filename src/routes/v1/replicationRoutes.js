@@ -2,7 +2,7 @@ import express from 'express';
 import {
   createReplication,
   getReplicationById,
-  getAllReplications,
+  getAllReplicationsByQuery,
   updateReplicationName,
   regenerateReplicationCode,
   toggleReplicationIsActive,
@@ -45,7 +45,7 @@ router.patch('/:id/form', authContext, updateReplicationForm);
 router.patch('/:id/leia/:leiaId/runner-configuration', authContext, updateReplicationLeiaRunnerConfiguration);
 router.patch('/:id/sessions/:sessionId/score', authContext, updateSessionScore);
 // GET
-router.get('/', requireAdvanced, getAllReplications);
+router.get('/', requireAdvanced, getAllReplicationsByQuery);
 router.get('/:id/conversations', authContext, getReplicationConversations);
 router.get('/:id/conversations/csv', authContext, downloadReplicationConversationsCSV);
 router.get('/:id', authContext, getReplicationById);

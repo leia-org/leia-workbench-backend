@@ -37,9 +37,12 @@ export default function errorHandler(err, req, res, next) {
     errorResponse = { message: `Invalid ${err.path}: ${err.value}` };
   } else if (err.isAxiosError) {
     statusCode = err.response?.status || 500;
+    const data = err.response?.data;
+    const message = [data?.message, data?.error?.message, data?.error, data, err.message]
+      .find((value) => typeof value === 'string' && value.trim()) || 'Request failed';
     errorResponse = {
-      message: 'External API error: ' + err.response?.data?.message,
-      details: err.response?.data,
+      message: 'External API error: ' + message,
+      details: data,
     };
   } else {
     statusCode = err.statusCode || 500;
