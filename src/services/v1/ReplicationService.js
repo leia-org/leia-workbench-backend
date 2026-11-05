@@ -211,6 +211,10 @@ class ReplicationService {
     return await ReplicationRepository.getAndIncrementNextLeia(id);
   }
 
+  async getAndIncrementNextScenario(id, leiaId) {
+    return await ReplicationRepository.getAndIncrementNextScenario(id, leiaId);
+  }
+
   async updateForm(id, form) {
     return await ReplicationRepository.update(id, { form });
   }
