@@ -1,3 +1,4 @@
+import { ownsReplication } from '../utils/replicationOwnership.js';
 import { verifyToken } from '../utils/jwt.js';
 import logger from '../utils/logger.js';
 import ReplicationService from '../services/v1/ReplicationService.js';
@@ -117,13 +118,7 @@ export async function authContext(req, res, next) {
         return next(error);
       }
 
-      const replicationOwner =
-        replication.experiment?.user?._id ??
-        replication.experiment?.user?.id ??
-        replication.experiment?.user;
-
-      const isOwner =
-        replicationOwner?.toString() === req.user.id?.toString();
+      const isOwner = ownsReplication(replication, req.user);
 
       const canAccessReplication =
         req.user.isAdmin === true || isOwner;

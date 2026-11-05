@@ -110,6 +110,7 @@ class ReplicationService {
       providerDriver
     );
     replicationData.experiment = initializedExperiment;
+    replicationData.user = apiKeyRequesterId;
     return await ReplicationRepository.create(replicationData);
   }
 

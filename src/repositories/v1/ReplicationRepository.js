@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { replicationOwnershipQuery } from '../../utils/replicationOwnership.js';
 import Replication from '../../models/Replication.js';
 import { regexQuery } from '../../utils/search.js';
 class ReplicationRepository {
@@ -19,9 +20,7 @@ class ReplicationRepository {
     return { replications, nextCursor };
   }
   async findAllByUser(userId, lastReplicationId, text) {
-    const query = {
-      $or: [{ 'experiment.user.id': userId }, { 'experiment.user._id': userId }, { 'experiment.user': userId }],
-    };
+    const query = replicationOwnershipQuery(userId);
     if (lastReplicationId) {
       query._id = { $gt: new mongoose.Types.ObjectId(`${lastReplicationId}`) };
     }

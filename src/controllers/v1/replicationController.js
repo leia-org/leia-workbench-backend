@@ -1,3 +1,4 @@
+import { ownsReplication as isReplicationOwner } from '../../utils/replicationOwnership.js';
 import ReplicationService from '../../services/v1/ReplicationService.js';
 import SessionService from '../../services/v1/SessionService.js';
 import {
@@ -82,7 +83,7 @@ export const regenerateReplicationShareToken = async (req, res, next) => {
       error.statusCode = 404;
       throw error;
     }
-    const ownsReplication = req.auth.payload.role === 'admin' || replication.experiment.user.id === req.auth.payload.id;
+    const ownsReplication = req.auth.payload.role === 'admin' || isReplicationOwner(replication, req.auth.payload);
     if (!ownsReplication) {
       const error = new Error('Unauthorized: You do not have permission to regenerate the share token for this replication');
       error.statusCode = 403;
@@ -112,7 +113,7 @@ export const toggleReplicationIsShared = async (req, res, next) => {
       error.statusCode = 404;
       throw error;
     }
-    const ownsReplication = req.auth.payload.role === 'admin' || replication.experiment.user.id === req.auth.payload.id;
+    const ownsReplication = req.auth.payload.role === 'admin' || isReplicationOwner(replication, req.auth.payload);
     if (!ownsReplication) {
       const error = new Error('Unauthorized: You do not have permission to toggle the shared status for this replication');
       error.statusCode = 403;
