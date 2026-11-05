@@ -71,7 +71,7 @@ describe('create — configuración inicial de las LEIAs', () => {
       'user1',
       'openai-responses'
     );
-    expect(ReplicationRepository.create).toHaveBeenCalled();
+    expect(ReplicationRepository.create).toHaveBeenCalledWith(expect.objectContaining({ user: 'user1' }));
   });
 
   test('resuelve un modelo válido para una clave por defecto heredada', async () => {
@@ -111,7 +111,7 @@ describe('create — configuración inicial de las LEIAs', () => {
       'user1',
       'openai-responses'
     );
-    expect(ReplicationRepository.create).toHaveBeenCalled();
+    expect(ReplicationRepository.create).toHaveBeenCalledWith(expect.objectContaining({ user: 'user1' }));
   });
 });
 
