@@ -1,14 +1,34 @@
 get:
   tags:
     - Manager v1
-  summary: Retrieve all Experiments
+  summary: Retrieve own activities and activities published by other users
   operationId: getAllExperiments
+  parameters:
+    - in: query
+      name: ownedOnly
+      schema:
+        type: boolean
+        default: false
+    - in: query
+      name: text
+      schema:
+        type: string
+    - in: query
+      name: lastActivityId
+      schema:
+        type: string
   responses:
     '200':
-      description: Successful response with Experiments
+      description: Accessible activities, excluding foreign private activities for every role
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: '../../../components/schemas/v1/manager/experiment.yaml'
+            type: object
+            properties:
+              experiments:
+                type: array
+                items:
+                  $ref: '../../../components/schemas/v1/manager/experiment.yaml'
+              nextCursor:
+                type: string
+                nullable: true
