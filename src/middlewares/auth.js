@@ -98,7 +98,14 @@ export async function authContext(req, res, next) {
           return next(error);
         }
 
-        const decoded = verifyToken(parts[1]);
+        let decoded;
+        try {
+          decoded = verifyToken(parts[1]);
+        } catch {
+          const error = new Error('Invalid or expired token');
+          error.statusCode = 401;
+          return next(error);
+        }
 
         req.user = {
           ...decoded,
