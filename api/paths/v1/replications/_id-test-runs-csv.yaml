@@ -1,0 +1,24 @@
+get:
+  tags:
+    - Replications v1
+  summary: Download the test runs of a Replication as CSV
+  description: >
+    One row per test run. Columns: Session ID, User, Run ID, Run Number,
+    Timestamp, Trigger, Language, Function, Status, Passed, Failed, Total,
+    Duration Ms, Error, Failed Tests, Results JSON, Reported To LEIA At,
+    Code Truncated, Code. Test sessions are excluded.
+  operationId: downloadReplicationTestRunsCSV
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the replication
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+  responses:
+    '200':
+      description: CSV export of the replication's test runs
+      content:
+        text/csv:
+          schema:
+            type: string

@@ -1,0 +1,19 @@
+type: object
+required:
+  - ok
+properties:
+  name:
+    type: string
+  ok:
+    type: boolean
+  error:
+    type: string
+    nullable: true
+  expected:
+    type: string
+    nullable: true
+    description: Expected value, already serialised by the client.
+  actual:
+    type: string
+    nullable: true
+    description: Returned value, already serialised by the client.

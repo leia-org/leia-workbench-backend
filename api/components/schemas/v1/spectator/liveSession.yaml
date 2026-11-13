@@ -20,6 +20,14 @@ properties:
     type: boolean
   messageCount:
     type: integer
+  testRunCount:
+    type: integer
+    description: Test runs of the code editor recorded so far.
+  testRuns:
+    type: array
+    description: The most recent test runs, without code snapshots.
+    items:
+      $ref: '../interaction/testRun.yaml'
   lastMessage:
     nullable: true
     type: object
