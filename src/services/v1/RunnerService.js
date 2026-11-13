@@ -108,6 +108,18 @@ class RunnerService {
     if (typeof message === 'string' && message.length > 0) body.message = message;
     if (Array.isArray(options.tools) && options.tools.length > 0) body.tools = options.tools;
     if (Array.isArray(options.toolResults) && options.toolResults.length > 0) body.toolResults = options.toolResults;
+    // Hidden developer context for this turn (e.g. test runs the student
+    // started). Only meaningful next to a user message; the runner answers
+    // `contextApplied: true` when it used it.
+    if (
+      typeof options.context === 'string' &&
+      options.context.length > 0 &&
+      body.message &&
+      !body.opening &&
+      !body.toolResults
+    ) {
+      body.context = options.context;
+    }
 
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/leias/${sessionId}/messages`,

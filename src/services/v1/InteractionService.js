@@ -6,6 +6,7 @@ import MessageService from './MessageService.js';
 import RunnerService from './RunnerService.js';
 import SpectatorService from './SpectatorService.js';
 import SupervisorService from './SupervisorService.js';
+import TestRunService, { hasCodeEditorWidget } from './TestRunService.js';
 import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
 import { randomUUID } from 'crypto';
@@ -645,7 +646,36 @@ class InteractionService {
     // the tool schemas the client sends. No-op when the problem declares no
     // widgets/tools, so plain text activities are unaffected.
     const effectiveTools = applyProblemToolConfig(tools, leia);
-    const runnerResponse = await RunnerService.sendMessage(session.id, message, { tools: effectiveTools, toolResults });
+
+    // Test runs the student started on their own since their last message are
+    // passed to the LEIA as hidden context on this turn. It goes to the runner
+    // in a separate field, so the persisted message stays what the student
+    // wrote. Only on the first turn of a user message, never on continuations.
+    let testRunNote = null;
+    if (!isToolContinuation && typeof message === 'string' && message.length > 0 && hasCodeEditorWidget(leia)) {
+      try {
+        testRunNote = await TestRunService.pendingNote(session.id);
+      } catch (error) {
+        logger.warn(`Could not load pending test runs for session ${session.id}: ${error.message}`);
+      }
+    }
+
+    const runnerResponse = await RunnerService.sendMessage(session.id, message, {
+      tools: effectiveTools,
+      toolResults,
+      context: testRunNote?.context,
+    });
+
+    // Stamp the runs only when the runner confirms it used the context. A
+    // failed call or a runner that does not know the field leaves them pending
+    // for the next message, so the note is never lost.
+    if (testRunNote && runnerResponse?.contextApplied === true) {
+      try {
+        await TestRunService.markReported(session.id, testRunNote.upTo);
+      } catch (error) {
+        logger.warn(`Could not mark test runs as reported for session ${session.id}: ${error.message}`);
+      }
+    }
 
     // Runner returns either { message } or { toolCalls } (or a raw string
     // for older code paths). Only persist a Leia message when we got a

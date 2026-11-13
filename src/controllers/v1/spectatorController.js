@@ -3,6 +3,7 @@ import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import SessionService from '../../services/v1/SessionService.js';
 import ReplicationService from '../../services/v1/ReplicationService.js';
 import InteractionService from '../../services/v1/InteractionService.js';
+import TestRunService from '../../services/v1/TestRunService.js';
 
 export const generateSpectateToken = async (req, res, next) => {
   try {
@@ -53,11 +54,15 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
     }
     await ReplicationService.checkAccess(replicationId, req.user.isAdmin, req.user.shareToken);
     let sessions = await SessionRepository.findByReplicationAndPopulateMessages(replicationId);
+    // Test runs recorded so far, so the dashboard keeps them across a refresh
+    // (live ones arrive afterwards as session:testRun events).
+    const testRunsBySession = await TestRunService.liveSummariesBySession(replicationId);
 
     // Format sessions for dashboard
     const formattedSessions = sessions.map((session) => {
       const messages = session.messages || [];
       const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+      const testRuns = testRunsBySession.get(String(session.id));
 
       return {
         id: session.id,
@@ -67,6 +72,8 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
         finishedAt: session.finishedAt,
         isActive: !session.finishedAt,
         messageCount: messages.length,
+        testRunCount: testRuns?.testRunCount || 0,
+        testRuns: testRuns?.testRuns || [],
         lastMessage: lastMessage
           ? {
             text: lastMessage.text,

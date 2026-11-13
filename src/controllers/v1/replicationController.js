@@ -1,6 +1,7 @@
 import { ownsReplication as isReplicationOwner } from '../../utils/replicationOwnership.js';
 import ReplicationService from '../../services/v1/ReplicationService.js';
 import SessionService from '../../services/v1/SessionService.js';
+import TestRunService from '../../services/v1/TestRunService.js';
 import {
   createReplicationValidator,
   updateReplicationNameValidator,
@@ -238,7 +239,34 @@ export const toggleEvaluateSolution = async (req, res, next) => {
 export const getReplicationConversations = async (req, res, next) => {
   try {
     const conversations = await ReplicationService.getConversations(req.params.id);
-    res.json(conversations);
+    // Each session also carries its test runs, without the code snapshots
+    // (those are loaded on demand, see getSessionTestRuns).
+    res.json(await TestRunService.attachSummaries(req.params.id, conversations));
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Full test runs of one session, including the code at each run.
+export const getSessionTestRuns = async (req, res, next) => {
+  try {
+    const { id, sessionId } = req.params;
+    const testRuns = await TestRunService.findForSession(id, sessionId);
+    res.json({ testRuns });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const downloadReplicationTestRunsCSV = async (req, res, next) => {
+  try {
+    const replication = req.replication;
+    const csv = await TestRunService.getReplicationCSV(req.params.id);
+    const filename = `${replication.name.replace(/\s+/g, '_')}_test_runs.csv`;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
   } catch (err) {
     next(err);
   }

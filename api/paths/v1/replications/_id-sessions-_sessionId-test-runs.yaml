@@ -1,0 +1,30 @@
+get:
+  tags:
+    - Replications v1
+  summary: Retrieve the test runs of a session, including the code snapshots
+  operationId: getSessionTestRuns
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the replication
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+    - name: sessionId
+      in: path
+      required: true
+      description: Unique identifier for the session (must belong to the replication)
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+  responses:
+    '200':
+      description: Test runs of the session in chronological order
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              testRuns:
+                type: array
+                items:
+                  $ref: '../../../components/schemas/v1/interaction/testRun.yaml'

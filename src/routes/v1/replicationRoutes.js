@@ -16,6 +16,8 @@ import {
   toggleEvaluateSolution,
   getReplicationConversations,
   downloadReplicationConversationsCSV,
+  getSessionTestRuns,
+  downloadReplicationTestRunsCSV,
   updateSessionScore,
   regenerateReplicationShareToken,
   toggleReplicationIsShared,
@@ -48,6 +50,8 @@ router.patch('/:id/sessions/:sessionId/score', authContext, updateSessionScore);
 router.get('/', requireAdvanced, getAllReplicationsByQuery);
 router.get('/:id/conversations', authContext, getReplicationConversations);
 router.get('/:id/conversations/csv', authContext, downloadReplicationConversationsCSV);
+router.get('/:id/test-runs/csv', authContext, downloadReplicationTestRunsCSV);
+router.get('/:id/sessions/:sessionId/test-runs', authContext, getSessionTestRuns);
 router.get('/:id', authContext, getReplicationById);
 router.get('/exists/:name', requireAdvanced, replicationNameExists);
 // DELETE

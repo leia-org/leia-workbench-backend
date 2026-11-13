@@ -1,0 +1,58 @@
+type: object
+description: >
+  One execution of the code editor's test suite. Tests run in the student's
+  browser, so results are client-reported; `createdAt`, the counters and
+  `status` are set by the server. List payloads omit `code`.
+properties:
+  id:
+    type: string
+  session:
+    type: string
+  replication:
+    type: string
+  trigger:
+    type: string
+    enum: [student, leia]
+    description: Who started the run (the "Run tests" button or the LEIA's tool).
+  language:
+    type: string
+    enum: [javascript, python]
+  fnName:
+    type: string
+  code:
+    type: string
+    description: Editor content when the run started. Only in detail payloads.
+  codeTruncated:
+    type: boolean
+  status:
+    type: string
+    enum: [passed, failed, error]
+  passed:
+    type: integer
+  failed:
+    type: integer
+  total:
+    type: integer
+  results:
+    type: array
+    items:
+      $ref: './testRunResult.yaml'
+  error:
+    type: string
+    nullable: true
+    description: Suite-level failure (syntax error, timeout).
+  durationMs:
+    type: number
+  clientRunAt:
+    type: string
+    format: date-time
+  clientRunId:
+    type: string
+  reportedToLeiaAt:
+    type: string
+    format: date-time
+    nullable: true
+    description: When a student-triggered run was passed to the LEIA as context.
+  createdAt:
+    type: string
+    format: date-time

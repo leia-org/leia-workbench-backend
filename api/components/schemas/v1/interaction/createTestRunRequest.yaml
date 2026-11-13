@@ -1,0 +1,43 @@
+type: object
+description: >
+  A test run reported by the code editor widget. Either `results` or `error`
+  must be present. Counters and status are derived by the server.
+required:
+  - trigger
+  - language
+  - code
+properties:
+  clientRunId:
+    type: string
+    maxLength: 100
+    description: Client-generated id; a repeated id is not stored twice.
+  trigger:
+    type: string
+    enum: [student, leia]
+  language:
+    type: string
+    enum: [javascript, python]
+  fnName:
+    type: string
+    maxLength: 200
+  code:
+    type: string
+    maxLength: 60000
+  codeTruncated:
+    type: boolean
+    default: false
+  results:
+    type: array
+    maxItems: 200
+    items:
+      $ref: './testRunResult.yaml'
+  error:
+    type: string
+    nullable: true
+    maxLength: 2000
+  durationMs:
+    type: number
+    minimum: 0
+  clientRunAt:
+    type: string
+    format: date-time
