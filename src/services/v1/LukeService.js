@@ -3,6 +3,7 @@ import { createLukeServer, gemini } from '@leia-org/luke-server';
 import { openai } from '../../providers/lukeOpenAI.js';
 import { appendOpeningPrompt } from '../../utils/openingPrompt.js';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
+import { resolveStageLeias } from './ActivityStageService.js';
 import ReplicationService from './ReplicationService.js';
 import MessageService from './MessageService.js';
 import SessionService from './SessionService.js';
@@ -103,7 +104,8 @@ class LukeService {
         },
         getSystemInstruction: async (userSession) => {
           if (!userSession?.leia) return undefined;
-          const instructions = buildInstructions(userSession.leia);
+          const [leia] = await resolveStageLeias(userSession.session, [userSession.leia]);
+          const instructions = buildInstructions(leia);
           const opening = getDynamics(userSession.leia).leiaSpeaksFirst;
           if (opening?.enabled !== true || !opening.config?.firstMessage) return instructions;
           // Live's system prompt is set before onConnect/audio readiness. Give

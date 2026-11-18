@@ -5,6 +5,7 @@ import SessionService from './SessionService.js';
 import RunnerService from './RunnerService.js';
 import logger from '../../utils/logger.js';
 import { buildOpeningPrompt } from '../../utils/openingPrompt.js';
+import { resolveStageLeias } from './ActivityStageService.js';
 
 export function getDynamics(leia) {
   return leia?.leia?.spec?.behaviour?.spec?.conversationDynamics || {};
@@ -75,9 +76,10 @@ class ConversationDynamicsService {
     const latest = messages.at(-1);
     if (!latest?.isLeia || !messages.some((message) => !message.isLeia)) return;
     if (String(session.conversationDynamicsState?.stoppingCondition?.lastMessageId) === String(latest.id)) return;
-    const decision = await RunnerService.evaluateStoppingCondition(stopping.config.condition,
+      const [resolved] = await resolveStageLeias(session, [leia]);
+      const decision = await RunnerService.evaluateStoppingCondition(stopping.config.condition,
       messages.map((message) => ({ role: message.isLeia ? 'leia' : 'student', text: message.text })),
-      leia.leia?.spec?.behaviour?.spec?.description, leia.runnerConfiguration);
+        resolved.leia?.spec?.behaviour?.spec?.description, leia.runnerConfiguration);
     // A fulfilled condition is monotonic, including across concurrent turns.
     await Session.updateOne({ _id: sessionId, 'conversationDynamicsState.stoppingCondition.satisfied': { $ne: true } },
       { $set: { 'conversationDynamicsState.stoppingCondition': {

@@ -1,6 +1,7 @@
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ReplicationService from './ReplicationService.js';
 import { emitToSession, emitToReplication } from '../../socket/index.js';
+import { activityError } from '../../utils/activityStages.js';
 
 class SessionService {
   // READ METHODS
@@ -74,7 +75,23 @@ class SessionService {
 
   async finish(id) {
     const session = await SessionRepository.update(id, { finishedAt: new Date() });
+    this.emitFinished(id, session);
+    return session;
+  }
 
+  async finishStage(id, result) {
+    const changes = { finishedAt: new Date(), ...(result !== undefined ? { result } : {}) };
+    const session = await SessionRepository.finishStage(id, changes);
+    if (session) {
+      this.emitFinished(id, session);
+      return session;
+    }
+    const existing = await this.findById(id);
+    if (existing?.finishedAt && (result === undefined || existing.result === result)) return existing;
+    throw activityError('Stage already finished', 409);
+  }
+
+  emitFinished(id, session) {
     // Emit WebSocket event
     try {
       emitToSession(id, 'session:finished', { sessionId: id, finishedAt: session.finishedAt });
@@ -86,7 +103,6 @@ class SessionService {
       console.error('Failed to emit session finished via WebSocket:', error);
     }
 
-    return session;
   }
 
   async saveResult(id, result) {

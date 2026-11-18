@@ -2,6 +2,7 @@ import ReplicationRepository from '../../repositories/v1/ReplicationRepository.j
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
+import { activityError, activityFlows } from '../../utils/activityStages.js';
 import axios from 'axios';
 
 function normalizeProcess(process) {
@@ -143,8 +144,9 @@ class ReplicationService {
       throw error;
     }
     if (!replication.isActive) {
-      if (replication.experiment?.orchestration?.mode === 'multi') {
-        const leias = replication.experiment?.leias || [];
+      for (const flow of activityFlows(replication.experiment)) {
+        if (flow.orchestration?.mode !== 'multi') continue;
+        const leias = flow.leias || [];
         if (leias.length < 2) {
           const error = new Error('MultiLEIA requires at least two LEIAs');
           error.statusCode = 400;
@@ -155,7 +157,7 @@ class ReplicationService {
           error.statusCode = 400;
           throw error;
         }
-        validateMultiLeiaProcesses(replication.experiment);
+        validateMultiLeiaProcesses(flow);
       }
       const invalidLeias = this._getLeiasWithInvalidRunnerConfiguration(replication);
       if (invalidLeias.length > 0) {
@@ -205,11 +207,24 @@ class ReplicationService {
   }
 
   async updateLeiaRunnerConfiguration(id, leiaId, runnerConfiguration) {
+    if (runnerConfiguration.audioMode) {
+      const replication = await ReplicationRepository.findById(id);
+      const experiment = replication?.experiment;
+      const entry = experiment?.leias.find((leia) => String(leia.id) === String(leiaId));
+      const stage = experiment?.stages?.find(({ id: stageId }) => stageId === entry?.stageId);
+      if (stage?.orchestration?.mode === 'multi') {
+        throw activityError('MultiLEIA stages support text mode only');
+      }
+    }
     return await ReplicationRepository.updateLeiaRunnerConfiguration(id, leiaId, runnerConfiguration);
   }
 
   async getAndIncrementNextLeia(id) {
     return await ReplicationRepository.getAndIncrementNextLeia(id);
+  }
+
+  async recordStageAssignment(replicationId, leiaId) {
+    return await ReplicationRepository.incrementLeiaSessionCount(replicationId, leiaId);
   }
 
   async updateForm(id, form) {

@@ -1,6 +1,9 @@
 type: object
 description: LEIA definition embedded in an experiment.
 properties:
+  stageId:
+    type: string
+    format: uuid
   id:
     type: string
   leia:
