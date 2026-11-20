@@ -57,6 +57,42 @@ export function getSolutionRequirementForLeia(experiment, leia) {
   return dependents?.length ? dependents : null;
 }
 
+export function getStagesRequiringConversation(experiment) {
+  const requiredByStageId = new Map();
+  const stages = experiment?.stages;
+  if (!Array.isArray(stages) || !stages.length) return requiredByStageId;
+  const positions = new Map(stages.map(({ id }, index) => [id, index]));
+
+  for (const [index, stage] of stages.entries()) {
+    const entries = (experiment.leias || []).filter((entry) => entry.stageId === stage.id);
+    const referenced = getStageReferencedOutputs(entries);
+    if (!referenced.has('conversation')) continue;
+    const sourceStageId = getStageOutputSource(stage, 'conversation');
+    if (!sourceStageId || !(positions.get(sourceStageId) < index)) continue;
+    const dependents = requiredByStageId.get(sourceStageId) || [];
+    dependents.push(index + 1);
+    requiredByStageId.set(sourceStageId, dependents);
+  }
+
+  return requiredByStageId;
+}
+
+export function getConversationRequirementForLeia(experiment, leia) {
+  if (!experiment?.stages || !leia?.stageId) return null;
+  const dependents = getStagesRequiringConversation(experiment).get(leia.stageId);
+  return dependents?.length ? dependents : null;
+}
+
+export function getStageProblemLeia(experiment, stage) {
+  if (!stage) return null;
+  const entries = (experiment?.leias || []).filter((entry) => entry.stageId === stage.id);
+  const problemLeiaId =
+    stage.orchestration?.problemLeiaId ||
+    stage.orchestration?.openingLeiaId ||
+    entries[0]?.id;
+  return entries.find((entry) => String(entry.id) === String(problemLeiaId)) || entries[0] || null;
+}
+
 export function stageExperiment(experiment, stage) {
   return {
     leias: experiment.leias.filter((entry) => entry.stageId === stage.id),
@@ -109,6 +145,13 @@ export function activityFlows(experiment) {
       if (sourceEntries.some((entry) => entry.configuration?.mode === 'transcription')) {
         throw activityError(
           `Stage ${sourceIndex + 1} cannot use transcription mode because stage ${number} uses its conversation`
+        );
+      }
+    }
+    for (const entry of flow.leias) {
+      if (entry.configuration?.mode === 'transcription' && getStageReferencedOutputs([entry]).size > 0) {
+        throw activityError(
+          `Stage ${number} cannot use transcription mode because it uses outputs from an earlier stage`
         );
       }
     }

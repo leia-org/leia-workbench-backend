@@ -6,6 +6,7 @@ import {
   activityError,
   activityFlows,
   getSolutionRequirementForLeia,
+  getStageProblemLeia,
   getStagesRequiringSolution,
 } from '../../utils/activityStages.js';
 import axios from 'axios';
@@ -167,8 +168,12 @@ class ReplicationService {
       const stagesRequiringSolution = getStagesRequiringSolution(replication.experiment);
       for (const [sourceStageId, dependentStages] of stagesRequiringSolution.entries()) {
         const stageIndex = replication.experiment.stages.findIndex(({ id: stageId }) => stageId === sourceStageId);
+        const sourceStage = replication.experiment.stages[stageIndex];
         const stageLeias = replication.experiment.leias.filter((entry) => entry.stageId === sourceStageId);
-        if (stageLeias.some((entry) => entry.configuration?.askSolution === false)) {
+        const targetLeias = sourceStage?.orchestration?.mode === 'multi'
+          ? [getStageProblemLeia(replication.experiment, sourceStage)].filter(Boolean)
+          : stageLeias;
+        if (targetLeias.some((entry) => entry.configuration?.askSolution === false)) {
           const stageList = dependentStages.map((n) => `Stage ${n}`).join(', ');
           throw activityError(
             `Stage ${stageIndex + 1} requires "Ask for student solution" to be enabled because ${stageList} uses its submitted solution`
@@ -264,6 +269,14 @@ class ReplicationService {
       throw error;
     }
 
+    const stage = replication.experiment?.stages?.find(({ id: stageId }) => stageId === leia.stageId);
+    if (stage?.orchestration?.mode === 'multi') {
+      const problemLeia = getStageProblemLeia(replication.experiment, stage);
+      if (problemLeia && String(problemLeia.id) !== String(leia.id)) {
+        throw activityError('Configure solution settings on the shared problem LEIA for MultiLEIA stages');
+      }
+    }
+
     const askSolutionStatus = !leia.configuration.askSolution;
     const evaluatedSolutionStatus = leia.configuration.evaluateSolution;
 
@@ -293,15 +306,35 @@ class ReplicationService {
   }
 
   async toggleEvaluateSolution(id, leiaId) {
-    const leia = await ReplicationRepository.findLeia(id, leiaId);
+    const replication = await ReplicationRepository.findById(id);
+    const leia = replication?.experiment?.leias?.find((entry) => String(entry.id) === String(leiaId));
     if (!leia) {
       const error = new Error('Leia not found');
       error.status = 404;
+      error.statusCode = 404;
       throw error;
+    }
+
+    const stage = replication.experiment?.stages?.find(({ id: stageId }) => stageId === leia.stageId);
+    if (stage?.orchestration?.mode === 'multi') {
+      const problemLeia = getStageProblemLeia(replication.experiment, stage);
+      if (problemLeia && String(problemLeia.id) !== String(leia.id)) {
+        throw activityError('Configure solution settings on the shared problem LEIA for MultiLEIA stages');
+      }
     }
 
     const askSolutionStatus = leia.configuration.askSolution;
     const evaluateSolutionStatus = !leia.configuration.evaluateSolution;
+
+    if (evaluateSolutionStatus) {
+      const hasReferenceSolution = Boolean(
+        typeof leia.leia?.spec?.problem?.spec?.solution === 'string' &&
+        leia.leia.spec.problem.spec.solution.trim()
+      );
+      if (!hasReferenceSolution) {
+        throw activityError('Automatic evaluation requires a reference solution in the problem definition');
+      }
+    }
 
     let updatedReplication;
 

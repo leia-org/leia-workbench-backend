@@ -39,7 +39,8 @@ export function initializeExperiment(
   providerDriver = 'default'
 ) {
   for (const leia of experiment.leias) {
-    leia.configuration.mode = 'standard';
+    leia.configuration = leia.configuration || {};
+    leia.configuration.mode = leia.configuration.mode || 'standard';
     leia.runnerConfiguration = {
       provider: providerDriver,
       modelName: defaultApiKey?.model || 'default',
@@ -53,7 +54,11 @@ export function initializeExperiment(
     };
     leia.sessionCount = 0;
     leia.configuration.askSolution = true;
-    leia.configuration.evaluateSolution = true;
+    const hasReferenceSolution = Boolean(
+      typeof leia.leia?.spec?.problem?.spec?.solution === 'string' &&
+      leia.leia.spec.problem.spec.solution.trim()
+    );
+    leia.configuration.evaluateSolution = hasReferenceSolution;
   }
   return experiment;
 }

@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
 import Replication from '../../src/models/Replication.js';
+import ActivityRun from '../../src/models/ActivityRun.js';
 import Session from '../../src/models/Session.js';
 import Message from '../../src/models/Message.js';
 import User from '../../src/models/User.js';
@@ -36,7 +37,7 @@ const request = (path, method = 'GET', body, authorization = bearer) => fetch(`$
 beforeAll(async () => {
   vi.stubEnv('JWT_SECRET', 'integration-signing-secret'); vi.stubEnv('JWT_ISSUER', ''); vi.stubEnv('JWT_AUDIENCE', '');
   vi.stubEnv('RUNNER_KEY', 'integration-runner');
-  await connectMongo(); await Replication.init(); await Session.init(); await User.init();
+  await connectMongo(); await Replication.init(); await ActivityRun.init(); await Session.init(); await User.init();
   const peer = express(); peer.use(express.json());
   peer.use((req, _res, next) => { forwarded.push({ path: req.path, body: req.body, authorization: req.headers.authorization }); next(); });
   peer.get('/api/v1/experiments/:id', (req, res) => res.json(
@@ -100,7 +101,10 @@ test('stage transitions are sequential and retryable and only the selected stage
   expect((await post(interview, 'next-stage')).status).toBe(409);
   expect((await post(interview, 'messages', { message: 'Interview facts' })).status).toBe(200);
   const submitted = await post(interview, 'result', { result: 'Interview answer' });
-  expect((await submitted.json()).stage).toMatchObject({ number: 1, total: 3, hasNext: true });
+  const submittedData = await submitted.json();
+  expect(submittedData.stage).toMatchObject({ number: 1, total: 3, hasNext: true });
+  expect(submittedData.runId).toBeTruthy();
+  expect((await request(`/interactions/${interview}/solution`, 'GET', undefined, null)).status).toBe(403);
 
   const reviews = await Promise.all([start(), post(interview, 'next-stage')]);
   const reviewIds = await Promise.all(reviews.map(async (response) => (await response.json()).sessionId));
@@ -111,6 +115,8 @@ test('stage transitions are sequential and retryable and only the selected stage
   expect((await post(review, 'messages', { message: 'Review facts' })).status).toBe(200);
   expect((await post(review, 'finish')).status).toBe(200);
 
+  // Deactivating the replication mid-run still allows the in-progress participant to finish remaining stages.
+  expect((await request(`/replications/${replication.id}/toggle-active`, 'PATCH')).status).toBe(200);
   const { sessionId: debrief } = await (await post(review, 'next-stage')).json();
   const initialization = forwarded.find(({ path, body }) => path === '/api/v1/multi-leias' && body.sessionId === debrief);
   expect(initialization.body.actors).toHaveLength(2);
@@ -122,10 +128,15 @@ test('stage transitions are sequential and retryable and only the selected stage
   }
   const session = await (await request(`/interactions/${debrief}`, 'GET', undefined, null)).json();
   expect(session.session.stage).toEqual({ number: 3, total: 3, hasNext: false });
+  expect(session.session.runId).toBe(submittedData.runId);
   expect(session.session.previousStageSession).toBeUndefined();
   expect(session.leia.leia.spec.behaviour.spec.description).toBeUndefined();
   expect(session.replication.experiment).toBeUndefined();
+  expect((await ActivityRun.findById(submittedData.runId)).finishedAt).toBeUndefined();
   expect((await post(debrief, 'finish')).status).toBe(200);
+  expect((await ActivityRun.findById(submittedData.runId)).finishedAt).toBeInstanceOf(Date);
+  // Re-activate to verify non-repeatable run is rejected with 403.
+  expect((await request(`/replications/${replication.id}/toggle-active`, 'PATCH')).status).toBe(200);
   expect((await start()).status).toBe(403);
 });
 afterAll(async () => { await http?.close(); await peers?.close(); await closeMongo(); vi.unstubAllEnvs(); });

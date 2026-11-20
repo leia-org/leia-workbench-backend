@@ -52,12 +52,13 @@ class ConversationDynamicsService {
     return publicDynamicsState(session, leia);
   }
 
-  async assertCanFinish(session, leia) {
+  async assertCanFinish(session, leia, options = {}) {
     if (!leia) {
       const error = new Error('Leia not found');
       error.statusCode = 404;
       throw error;
     }
+    if (options.timerExpired === true) return;
     if (!publicDynamicsState(session, leia).canFinish) {
       const error = new Error('LEIA has not yet decided to end the conversation');
       error.statusCode = 403;

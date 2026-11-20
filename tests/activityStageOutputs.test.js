@@ -1,8 +1,10 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import { resolveStageLeias } from '../src/services/v1/ActivityStageService.js';
+import ActivityRunRepository from '../src/repositories/v1/ActivityRunRepository.js';
 import SessionRepository from '../src/repositories/v1/SessionRepository.js';
 import MessageService from '../src/services/v1/MessageService.js';
 
+vi.mock('../src/repositories/v1/ActivityRunRepository.js', () => ({ default: { findById: vi.fn() } }));
 vi.mock('../src/repositories/v1/SessionRepository.js', () => ({ default: { findById: vi.fn() } }));
 vi.mock('../src/services/v1/MessageService.js', () => ({ default: { findBySession: vi.fn() } }));
 
@@ -65,4 +67,38 @@ test('refuses a source session belonging to a different participant', async () =
   const template = actor('{{previousStage.outputs.conversation}}');
   await expect(resolveStageLeias(stage, [template])).rejects.toMatchObject({ statusCode: 409 });
   expect(MessageService.findBySession).not.toHaveBeenCalled();
+});
+
+test('resolves source stages directly from ActivityRun without walking previousStageSession', async () => {
+  const runId = 'run-1';
+  const stageWithRun = {
+    ...stage,
+    run: runId,
+    previousStageSession: undefined,
+    sourceStageIds: { conversation: 'second', submitedSolution: 'first' },
+  };
+  ActivityRunRepository.findById.mockResolvedValue({
+    id: runId,
+    user: 'student',
+    replication: 'replication',
+    isTest: false,
+    stages: [
+      { stageId: 'first', stageIndex: 0, session: first.id },
+      { stageId: 'second', stageIndex: 1, session: second.id },
+    ],
+  });
+  SessionRepository.findById.mockImplementation(async (id) =>
+    id === first.id
+      ? { ...first, run: runId, result: 'Run stage 1 solution' }
+      : { ...second, run: runId }
+  );
+  MessageService.findBySession.mockResolvedValue([
+    { text: 'Stage 2 chat', isLeia: false, timestamp: finishedAt },
+  ]);
+
+  const template = actor('{{previousStage.outputs.conversation}}\n{{previousStage.outputs.submitedSolution}}');
+  const [resolved] = await resolveStageLeias(stageWithRun, [template]);
+  expect(ActivityRunRepository.findById).toHaveBeenCalledWith(runId);
+  expect(description(resolved)).toContain('Stage 2 chat');
+  expect(description(resolved)).toContain('Run stage 1 solution');
 });

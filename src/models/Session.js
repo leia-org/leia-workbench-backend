@@ -10,7 +10,13 @@ const sessionSchema = new Schema(
     finishedAt: {
       type: Date,
     },
+    run: {
+      type: Schema.Types.ObjectId,
+      ref: 'ActivityRun',
+      index: true,
+    },
     stageId: String,
+    stageIndex: Number,
     sourceStageIds: {
       conversation: String,
       submitedSolution: String,

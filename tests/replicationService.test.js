@@ -432,4 +432,118 @@ describe('toggleAskSolution — bloqueo por dependencia de submitedSolution entr
 
     expect(ReplicationRepository.updateAskSolution).toHaveBeenCalledWith('rep1', 'l1', true);
   });
+
+  test('impide activar si la etapa consumidora usa modo transcription', async () => {
+    const replication = {
+      _id: 'rep1',
+      isActive: false,
+      experiment: {
+        stages: [
+          { id: 's1', orchestration: { mode: 'single' } },
+          { id: 's2', outputSources: { conversation: null, submitedSolution: 's1' }, orchestration: { mode: 'single' } },
+        ],
+        leias: [
+          {
+            id: 'l1',
+            stageId: 's1',
+            configuration: { mode: 'standard', askSolution: true, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: { spec: { behaviour: { spec: { description: 'Stage 1' } } } },
+          },
+          {
+            id: 'l2',
+            stageId: 's2',
+            configuration: { mode: 'transcription', askSolution: true, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: {
+              spec: {
+                behaviour: { spec: { description: 'Review {{previousStage.outputs.submitedSolution}}' } },
+              },
+            },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(replication);
+
+    await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({ statusCode: 400 });
+    expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+  });
+
+  test('en etapas MultiLEIA exige editar askSolution en el problemLeia y valida solo problemLeia al activar', async () => {
+    const multiReplication = {
+      _id: 'rep1',
+      isActive: false,
+      experiment: {
+        stages: [
+          { id: 's1', orchestration: { mode: 'multi', problemLeiaId: 'l1', openingLeiaId: 'l1' } },
+          { id: 's2', outputSources: { conversation: null, submitedSolution: 's1' }, orchestration: { mode: 'single' } },
+        ],
+        leias: [
+          {
+            id: 'l1',
+            stageId: 's1',
+            configuration: { mode: 'standard', askSolution: true, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: {
+              spec: {
+                problem: { spec: { process: ['game'], solution: 'ref' } },
+                behaviour: { spec: { process: ['game'], description: 'Problem owner' } },
+              },
+            },
+          },
+          {
+            id: 'l2',
+            stageId: 's1',
+            configuration: { mode: 'standard', askSolution: false, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: {
+              spec: {
+                problem: { spec: { process: ['game'] } },
+                behaviour: { spec: { process: ['game'], description: 'Secondary actor' } },
+              },
+            },
+          },
+          {
+            id: 'l3',
+            stageId: 's2',
+            configuration: { mode: 'standard', askSolution: true, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: {
+              spec: {
+                behaviour: { spec: { description: 'Review {{previousStage.outputs.submitedSolution}}' } },
+              },
+            },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(multiReplication);
+    ReplicationRepository.toggleIsActive.mockResolvedValue({ ...multiReplication, isActive: true });
+
+    await expect(ReplicationService.toggleAskSolution('rep1', 'l2')).rejects.toMatchObject({ statusCode: 400 });
+    await expect(ReplicationService.toggleEvaluateSolution('rep1', 'l2')).rejects.toMatchObject({ statusCode: 400 });
+
+    // Even though secondary actor l2 has askSolution=false, problemLeia l1 has askSolution=true so activation succeeds.
+    await ReplicationService.toggleIsActive('rep1');
+    expect(ReplicationRepository.toggleIsActive).toHaveBeenCalledWith('rep1');
+  });
+
+  test('impide activar evaluateSolution si el problema no define solución de referencia', async () => {
+    const replication = {
+      _id: 'rep1',
+      experiment: {
+        leias: [
+          {
+            id: 'l1',
+            configuration: { askSolution: true, evaluateSolution: false },
+            leia: { spec: { problem: { spec: { description: 'Open problem' } } } },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(replication);
+
+    await expect(ReplicationService.toggleEvaluateSolution('rep1', 'l1')).rejects.toMatchObject({ statusCode: 400 });
+  });
 });

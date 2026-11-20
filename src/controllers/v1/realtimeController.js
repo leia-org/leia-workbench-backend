@@ -2,6 +2,9 @@ import RealtimeService from '../../services/v1/RealtimeService.js';
 import LukeService from '../../services/v1/LukeService.js';
 import MessageService from '../../services/v1/MessageService.js';
 import SessionService from '../../services/v1/SessionService.js';
+import ReplicationService from '../../services/v1/ReplicationService.js';
+import ConversationDynamicsService from '../../services/v1/ConversationDynamicsService.js';
+import SupervisorService from '../../services/v1/SupervisorService.js';
 
 /**
  * Create a Realtime API session
@@ -65,6 +68,15 @@ export const saveAudioTranscription = async (req, res, next) => {
     // Save transcription as a message
     const message = await MessageService.create(transcript, isLeia, sessionId);
     await SessionService.addMessage(sessionId, message.id);
+
+    if (isLeia) {
+      const leia = await ReplicationService.findLeia(session.replication, session.leia);
+      if (leia) {
+        await ConversationDynamicsService.completeOpening(sessionId);
+        SupervisorService.observeAsync(sessionId, leia);
+        await ConversationDynamicsService.observeSafely(sessionId, leia);
+      }
+    }
 
     res.status(201).json({
       message: 'Transcription saved successfully',
