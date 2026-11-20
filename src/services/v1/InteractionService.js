@@ -8,6 +8,7 @@ import MessageService from './MessageService.js';
 import RunnerService from './RunnerService.js';
 import SpectatorService from './SpectatorService.js';
 import SupervisorService from './SupervisorService.js';
+import { emitToReplication, emitToSession } from '../../socket/index.js';
 import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
 import { randomInt, randomUUID } from 'crypto';
@@ -211,6 +212,22 @@ class InteractionService {
     }
     if (created && !multi && !isTest) {
       await ReplicationService.recordStageAssignment(replication.id, leia.id);
+    }
+    if (created && !isTest) {
+      try {
+        const stagePayload = {
+          runId: run ? String(run.id) : null,
+          previousSessionId: previous ? String(previous.id) : null,
+          nextSessionId: String(session.id),
+          stageId: stage.id,
+          stageNumber: resolvedStageIndex >= 0 ? resolvedStageIndex + 1 : 1,
+          stageTotal: (replication.experiment.stages || []).length,
+        };
+        if (previous) emitToSession(String(previous.id), 'run:stageChanged', stagePayload);
+        emitToReplication(String(replication.id), 'run:stageChanged', stagePayload);
+      } catch (error) {
+        logger.error(`Failed to emit run:stageChanged for session ${session.id}: ${error.message}`);
+      }
     }
     return await this.openStageRunner(replication, session);
   }

@@ -352,33 +352,100 @@ class ReplicationService {
   }
 
   async getConversations(id) {
-    const sessions = await SessionRepository.findByReplicationAndPopulateMessages(id);
-    return sessions;
+    const [replication, sessions] = await Promise.all([
+      ReplicationRepository.findById(id),
+      SessionRepository.findByReplicationAndPopulateMessages(id),
+    ]);
+    const stages = replication?.experiment?.stages || [];
+    const stageIndexById = new Map(stages.map(({ id: stageId }, index) => [stageId, index]));
+    const stageTotal = stages.length || null;
+
+    return sessions.map((session) => {
+      const data = typeof session.toJSON === 'function' ? session.toJSON() : { ...session };
+      const resolvedStageIndex =
+        typeof data.stageIndex === 'number'
+          ? data.stageIndex
+          : data.stageId && stageIndexById.has(data.stageId)
+            ? stageIndexById.get(data.stageId)
+            : null;
+      return {
+        ...data,
+        runId: data.run ? String(data.run) : null,
+        stageNumber: resolvedStageIndex !== null ? resolvedStageIndex + 1 : null,
+        stageTotal,
+      };
+    });
   }
 
   async getConversationsCSV(id) {
-    const sessions = await SessionRepository.findByReplicationAndPopulateMessages(id);
+    const [replication, sessions] = await Promise.all([
+      ReplicationRepository.findById(id),
+      SessionRepository.findByReplicationAndPopulateMessages(id),
+    ]);
+    const stages = replication?.experiment?.stages || [];
+    const stageIndexById = new Map(stages.map(({ id: stageId }, index) => [stageId, index]));
+    const leiaNameById = new Map();
+    for (const entry of replication?.experiment?.leias || []) {
+      const name = entry?.leia?.metadata?.name || String(entry?.id || '');
+      if (entry?.id) leiaNameById.set(String(entry.id), name);
+      if (entry?.leia?.id) leiaNameById.set(String(entry.leia.id), name);
+    }
+    const escapeCsv = (value) => {
+      if (value === undefined || value === null || value === '') return '';
+      const str = String(value);
+      return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    };
 
-    let csv = 'Session ID,User,Started At,Finished At,Message,Is LEIA,Timestamp,Score,Evaluation\n';
+    const sortedSessions = [...sessions].sort((a, b) => {
+      const runA = a.run ? String(a.run) : String(a.id || '');
+      const runB = b.run ? String(b.run) : String(b.id || '');
+      if (runA !== runB) {
+        return new Date(a.startedAt || 0).getTime() - new Date(b.startedAt || 0).getTime();
+      }
+      const idxA =
+        typeof a.stageIndex === 'number'
+          ? a.stageIndex
+          : stageIndexById.get(a.stageId) ?? 0;
+      const idxB =
+        typeof b.stageIndex === 'number'
+          ? b.stageIndex
+          : stageIndexById.get(b.stageId) ?? 0;
+      return idxA - idxB;
+    });
 
-    for (const session of sessions) {
+    let csv = 'Session ID,Run ID,Stage,LEIA,User,Started At,Finished At,Message,Is LEIA,Timestamp,Score,Evaluation,Submitted Solution\n';
+
+    for (const session of sortedSessions) {
       const sessionId = session.id || '';
+      const runId = session.run ? String(session.run) : '';
+      const resolvedStageIndex =
+        typeof session.stageIndex === 'number'
+          ? session.stageIndex
+          : session.stageId && stageIndexById.has(session.stageId)
+            ? stageIndexById.get(session.stageId)
+            : null;
+      const stageLabel =
+        resolvedStageIndex !== null
+          ? `${resolvedStageIndex + 1}/${stages.length || resolvedStageIndex + 1}`
+          : '';
+      const leiaName = leiaNameById.get(String(session.leia || '')) || String(session.leia || '');
       const userId = session.user?.email || session.user?.id || 'Anonymous';
       const startedAt = session.startedAt ? new Date(session.startedAt).toISOString() : '';
       const finishedAt = session.finishedAt ? new Date(session.finishedAt).toISOString() : '';
-      const score = session.score || '';
-      const evaluation = session.evaluation ? `"${session.evaluation.replace(/"/g, '""')}"` : '';
+      const score = session.score ?? '';
+      const evaluation = escapeCsv(session.evaluation);
+      const submittedSolution = escapeCsv(session.result);
 
       if (session.messages && session.messages.length > 0) {
         for (const message of session.messages) {
-          const messageText = message.text ? `"${message.text.replace(/"/g, '""')}"` : '';
+          const messageText = escapeCsv(message.text);
           const isLeia = message.isLeia ? 'TRUE' : 'FALSE';
           const timestamp = message.timestamp ? new Date(message.timestamp).toISOString() : '';
 
-          csv += `${sessionId},${userId},${startedAt},${finishedAt},${messageText},${isLeia},${timestamp},${score},${evaluation}\n`;
+          csv += `${escapeCsv(sessionId)},${escapeCsv(runId)},${escapeCsv(stageLabel)},${escapeCsv(leiaName)},${escapeCsv(userId)},${startedAt},${finishedAt},${messageText},${isLeia},${timestamp},${score},${evaluation},${submittedSolution}\n`;
         }
       } else {
-        csv += `${sessionId},${userId},${startedAt},${finishedAt},"No messages",,,${score},${evaluation}\n`;
+        csv += `${escapeCsv(sessionId)},${escapeCsv(runId)},${escapeCsv(stageLabel)},${escapeCsv(leiaName)},${escapeCsv(userId)},${startedAt},${finishedAt},"No messages",,,${score},${evaluation},${submittedSolution}\n`;
       }
     }
 
