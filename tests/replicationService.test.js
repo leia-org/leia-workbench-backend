@@ -324,6 +324,45 @@ describe('toggleIsActive — bloqueo de activación incompleta', () => {
     await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({ statusCode: 400 });
     expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
   });
+
+  test('impide activar si un stage citado por conversation tiene una LEIA en modo transcription', async () => {
+    const replication = {
+      _id: 'rep1',
+      isActive: false,
+      experiment: {
+        stages: [
+          { id: 's1', orchestration: { mode: 'single' } },
+          { id: 's2', outputSources: { conversation: 's1', submitedSolution: null }, orchestration: { mode: 'single' } },
+        ],
+        leias: [
+          {
+            id: 'l1',
+            stageId: 's1',
+            configuration: { mode: 'transcription', askSolution: true, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: { spec: { behaviour: { spec: { description: 'Transcript' } } } },
+          },
+          {
+            id: 'l2',
+            stageId: 's2',
+            configuration: { mode: 'standard', askSolution: true, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: {
+              spec: {
+                behaviour: {
+                  spec: { description: 'Review {{previousStage.outputs.conversation}}' },
+                },
+              },
+            },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(replication);
+
+    await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({ statusCode: 400 });
+    expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+  });
 });
 
 describe('toggleAskSolution — bloqueo por dependencia de submitedSolution entre stages', () => {

@@ -102,6 +102,16 @@ export function activityFlows(experiment) {
         throw activityError(`Stage ${number} requires a valid earlier stage`);
       }
     }
+    const conversationSourceId = getStageOutputSource(stage, 'conversation');
+    if (referencedOutputs.has('conversation') && conversationSourceId) {
+      const sourceIndex = positions.get(conversationSourceId);
+      const sourceEntries = experiment.leias.filter((entry) => entry.stageId === conversationSourceId);
+      if (sourceEntries.some((entry) => entry.configuration?.mode === 'transcription')) {
+        throw activityError(
+          `Stage ${sourceIndex + 1} cannot use transcription mode because stage ${number} uses its conversation`
+        );
+      }
+    }
     return flow;
   });
 }
