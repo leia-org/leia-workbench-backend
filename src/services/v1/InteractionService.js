@@ -11,7 +11,13 @@ import mongoose from 'mongoose';
 import { randomInt, randomUUID } from 'crypto';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import { resolveStageLeias } from './ActivityStageService.js';
-import { activityError, activityFlows, stageExperiment, stageProgress } from '../../utils/activityStages.js';
+import {
+  activityError,
+  activityFlows,
+  getStageOutputSourcesMap,
+  stageExperiment,
+  stageProgress,
+} from '../../utils/activityStages.js';
 
 const stageInitializations = new Map();
 
@@ -33,7 +39,7 @@ function stripSupervisorFields(session) {
   delete data.supervisorState;
   delete data.conversationDynamicsState;
   delete data.previousStageSession;
-  delete data.sourceStageId;
+  delete data.sourceStageIds;
   delete data.stageRunKey;
   return data;
 }
@@ -160,6 +166,7 @@ class InteractionService {
     const scope = { experiment: flow };
     const multi = isMultiLeiaEnabled(scope);
     const leia = multi ? getProblemLeia(scope) : chooseStageLeia(flow.leias);
+    const sourceStageIds = getStageOutputSourcesMap(stage, flow.leias);
     const { session, created } = await SessionRepository.createStageOnce({
       user: userId,
       replication: replication.id,
@@ -168,7 +175,7 @@ class InteractionService {
       interactionMode: multi ? 'multi' : 'single',
       ...(multi ? { leias: flow.leias.map((entry) => entry.id) } : {}),
       stageId: stage.id,
-      sourceStageId: stage.previousStageId,
+      ...(Object.keys(sourceStageIds).length ? { sourceStageIds } : {}),
       previousStageSession: previous?.id,
       stageRunKey,
     });

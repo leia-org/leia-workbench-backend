@@ -11,7 +11,10 @@ const sessionSchema = new Schema(
       type: Date,
     },
     stageId: String,
-    sourceStageId: String,
+    sourceStageIds: {
+      conversation: String,
+      submitedSolution: String,
+    },
     previousStageSession: Schema.Types.ObjectId,
     stageRunKey: String,
     result: {

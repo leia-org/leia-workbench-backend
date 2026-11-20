@@ -59,7 +59,7 @@ test('stage transitions are sequential and retryable and only the selected stage
   const [first, second, last] = Array.from({ length: 3 }, () => ({
     id: randomUUID(), orchestration: { mode: 'single' },
   }));
-  last.previousStageId = first.id;
+  last.outputSources = { conversation: second.id, submitedSolution: first.id };
   last.orchestration = { mode: 'multi', maxInternalTurns: 2 };
   const leias = [first, second, last, last].map(({ id: stageId }, index) => {
     const entry = structuredClone(experiment.leias[0]);
@@ -67,7 +67,7 @@ test('stage transitions are sequential and retryable and only the selected stage
     entry.stageId = stageId;
     if (index >= 2) {
       entry.leia.spec.behaviour.spec.description =
-        'Interview: {{previousStage.outputs.conversation}}\nAnswer: {{previousStage.outputs.submitedSolution}}';
+        'Review: {{previousStage.outputs.conversation}}\nAnswer: {{previousStage.outputs.submitedSolution}}';
     }
     return entry;
   });
@@ -78,6 +78,9 @@ test('stage transitions are sequential and retryable and only the selected stage
   expect(created.status).toBe(201);
   const replication = await created.json();
   expect(replication.experiment.stages.map(({ id }) => id)).toEqual([first.id, second.id, last.id]);
+  // Stage 1 supplies submitedSolution so Ask for student solution cannot be disabled; Stage 2 only supplies conversation.
+  expect((await request(`/replications/${replication.id}/leia/${leias[0].id}/toggle-ask-solution`, 'PATCH')).status).toBe(400);
+  expect((await request(`/replications/${replication.id}/leia/${leias[1].id}/toggle-ask-solution`, 'PATCH')).status).toBe(200);
   const body = { replicationId: replication.id, staged: true };
   const unauthorized = jwt.sign({ id: new mongoose.Types.ObjectId().toString(), role: 'advanced' }, 'integration-signing-secret');
   expect((await request('/interactions/test', 'POST', body, unauthorized)).status).toBe(403);
@@ -113,9 +116,9 @@ test('stage transitions are sequential and retryable and only the selected stage
   expect(initialization.body.actors).toHaveLength(2);
   for (const actor of initialization.body.actors) {
     const description = actor.leia.spec.behaviour.spec.description;
-    expect(description).toContain('Interview facts');
+    expect(description).toContain('Review facts');
     expect(description).toContain('Interview answer');
-    expect(description).not.toContain('Review facts');
+    expect(description).not.toContain('Interview facts');
   }
   const session = await (await request(`/interactions/${debrief}`, 'GET', undefined, null)).json();
   expect(session.session.stage).toEqual({ number: 3, total: 3, hasNext: false });

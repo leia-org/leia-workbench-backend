@@ -1,8 +1,60 @@
 export const referencePattern = /{{\s*previousStage\.outputs\.(conversation|submitedSolution)\s*}}/g;
 const anyReference = /{{\s*previousStage\b[^{}]*}}/g;
+export const STAGE_OUTPUTS = ['conversation', 'submitedSolution'];
 
 export function activityError(message, statusCode = 400) {
   return Object.assign(new Error(message), { statusCode });
+}
+
+export function getStageOutputSource(stage, output) {
+  return stage?.outputSources?.[output] ?? null;
+}
+
+export function getStageReferencedOutputs(leias) {
+  const outputs = new Set();
+  for (const entry of leias || []) {
+    const description = entry?.leia?.spec?.behaviour?.spec?.description || '';
+    for (const match of description.matchAll(referencePattern)) {
+      outputs.add(match[1]);
+    }
+  }
+  return outputs;
+}
+
+export function getStageOutputSourcesMap(stage, leias) {
+  const referenced = getStageReferencedOutputs(leias);
+  const sources = {};
+  for (const output of referenced) {
+    const sourceId = getStageOutputSource(stage, output);
+    if (sourceId) sources[output] = sourceId;
+  }
+  return sources;
+}
+
+export function getStagesRequiringSolution(experiment) {
+  const requiredByStageId = new Map();
+  const stages = experiment?.stages;
+  if (!Array.isArray(stages) || !stages.length) return requiredByStageId;
+  const positions = new Map(stages.map(({ id }, index) => [id, index]));
+
+  for (const [index, stage] of stages.entries()) {
+    const entries = (experiment.leias || []).filter((entry) => entry.stageId === stage.id);
+    const referenced = getStageReferencedOutputs(entries);
+    if (!referenced.has('submitedSolution')) continue;
+    const sourceStageId = getStageOutputSource(stage, 'submitedSolution');
+    if (!sourceStageId || !(positions.get(sourceStageId) < index)) continue;
+    const dependents = requiredByStageId.get(sourceStageId) || [];
+    dependents.push(index + 1);
+    requiredByStageId.set(sourceStageId, dependents);
+  }
+
+  return requiredByStageId;
+}
+
+export function getSolutionRequirementForLeia(experiment, leia) {
+  if (!experiment?.stages || !leia?.stageId) return null;
+  const dependents = getStagesRequiringSolution(experiment).get(leia.stageId);
+  return dependents?.length ? dependents : null;
 }
 
 export function stageExperiment(experiment, stage) {
@@ -43,9 +95,12 @@ export function activityFlows(experiment) {
     if (references.length !== supportedReferences.length) {
       throw activityError(`Stage ${number} contains an unsupported previous stage output`);
     }
-    const hasReferences = references.length > 0;
-    if ((hasReferences || stage.previousStageId) && !(positions.get(stage.previousStageId) < index)) {
-      throw activityError(`Stage ${number} requires a valid earlier stage`);
+    const referencedOutputs = new Set(supportedReferences.map((match) => match[1]));
+    for (const output of STAGE_OUTPUTS) {
+      const sourceId = getStageOutputSource(stage, output);
+      if ((referencedOutputs.has(output) || sourceId) && !(positions.get(sourceId) < index)) {
+        throw activityError(`Stage ${number} requires a valid earlier stage`);
+      }
     }
     return flow;
   });

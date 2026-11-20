@@ -9,18 +9,36 @@ export async function resolveStageLeias(session, entries) {
     [...description(entry).matchAll(referencePattern)].map((match) => match[1])));
   if (!requested.size) return entries;
 
-  let source = session;
-  do {
-    if (!source.previousStageSession) throw activityError('The source stage is unavailable', 409);
-    source = await SessionRepository.findById(source.previousStageSession);
-    if (!source?.finishedAt || String(source.replication) !== String(session.replication) ||
-        String(source.user) !== String(session.user) || source.isTest !== session.isTest) {
+  const targetStageByOutput = new Map();
+  const neededStageIds = new Set();
+  for (const output of requested) {
+    const targetStageId = session.sourceStageIds?.[output];
+    if (!targetStageId) throw activityError('The source stage is unavailable', 409);
+    targetStageByOutput.set(output, targetStageId);
+    neededStageIds.add(targetStageId);
+  }
+
+  const sourcesByStageId = new Map();
+  const visitedSessions = new Set(session.id ? [String(session.id)] : []);
+  let cursor = session;
+  while (sourcesByStageId.size < neededStageIds.size) {
+    if (!cursor.previousStageSession) throw activityError('The source stage is unavailable', 409);
+    const previousId = String(cursor.previousStageSession);
+    if (visitedSessions.has(previousId)) throw activityError('The source stage is unavailable', 409);
+    visitedSessions.add(previousId);
+    cursor = await SessionRepository.findById(cursor.previousStageSession);
+    if (!cursor?.finishedAt || String(cursor.replication) !== String(session.replication) ||
+        String(cursor.user) !== String(session.user) || cursor.isTest !== session.isTest) {
       throw activityError('The source stage is unavailable', 409);
     }
-  } while (source.stageId !== session.sourceStageId);
+    if (neededStageIds.has(cursor.stageId) && !sourcesByStageId.has(cursor.stageId)) {
+      sourcesByStageId.set(cursor.stageId, cursor);
+    }
+  }
 
   const values = {};
   if (requested.has('conversation')) {
+    const source = sourcesByStageId.get(targetStageByOutput.get('conversation'));
     const messages = await MessageService.findBySession(source.id);
     values.conversation = messages.filter((message) => message.timestamp <= source.finishedAt).map((message) => ({
       role: message.senderType || (message.isLeia ? 'agent' : 'participant'),
@@ -28,7 +46,10 @@ export async function resolveStageLeias(session, entries) {
       text: message.text,
     }));
   }
-  if (requested.has('submitedSolution')) values.submitedSolution = source.result ?? null;
+  if (requested.has('submitedSolution')) {
+    const source = sourcesByStageId.get(targetStageByOutput.get('submitedSolution'));
+    values.submitedSolution = source.result ?? null;
+  }
 
   return entries.map((entry) => {
     const template = description(entry);

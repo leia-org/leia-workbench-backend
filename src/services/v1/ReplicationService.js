@@ -2,7 +2,12 @@ import ReplicationRepository from '../../repositories/v1/ReplicationRepository.j
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
-import { activityError, activityFlows } from '../../utils/activityStages.js';
+import {
+  activityError,
+  activityFlows,
+  getSolutionRequirementForLeia,
+  getStagesRequiringSolution,
+} from '../../utils/activityStages.js';
 import axios from 'axios';
 
 function normalizeProcess(process) {
@@ -159,6 +164,17 @@ class ReplicationService {
         }
         validateMultiLeiaProcesses(flow);
       }
+      const stagesRequiringSolution = getStagesRequiringSolution(replication.experiment);
+      for (const [sourceStageId, dependentStages] of stagesRequiringSolution.entries()) {
+        const stageIndex = replication.experiment.stages.findIndex(({ id: stageId }) => stageId === sourceStageId);
+        const stageLeias = replication.experiment.leias.filter((entry) => entry.stageId === sourceStageId);
+        if (stageLeias.some((entry) => entry.configuration?.askSolution === false)) {
+          const stageList = dependentStages.map((n) => `Stage ${n}`).join(', ');
+          throw activityError(
+            `Stage ${stageIndex + 1} requires "Ask for student solution" to be enabled because ${stageList} uses its submitted solution`
+          );
+        }
+      }
       const invalidLeias = this._getLeiasWithInvalidRunnerConfiguration(replication);
       if (invalidLeias.length > 0) {
         const error = new Error('Some Leias have invalid runner configurations');
@@ -240,15 +256,26 @@ class ReplicationService {
   }
 
   async toggleAskSolution(id, leiaId) {
-    const leia = await ReplicationRepository.findLeia(id, leiaId);
+    const replication = await ReplicationRepository.findById(id);
+    const leia = replication?.experiment?.leias?.find((entry) => String(entry.id) === String(leiaId));
     if (!leia) {
       const error = new Error('Leia not found');
-      error.status = 404;
+      error.statusCode = 404;
       throw error;
     }
 
     const askSolutionStatus = !leia.configuration.askSolution;
     const evaluatedSolutionStatus = leia.configuration.evaluateSolution;
+
+    if (!askSolutionStatus) {
+      const dependentStages = getSolutionRequirementForLeia(replication.experiment, leia);
+      if (dependentStages) {
+        const stageList = dependentStages.map((n) => `Stage ${n}`).join(', ');
+        throw activityError(
+          `Ask for student solution cannot be disabled because ${stageList} uses this stage's submitted solution`
+        );
+      }
+    }
 
     let updatedReplication;
 

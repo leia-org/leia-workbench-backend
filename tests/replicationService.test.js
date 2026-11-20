@@ -2,7 +2,13 @@ import { describe, expect, test, beforeEach, vi } from 'vitest';
 
 // Aislamos el servicio de su persistencia y de las dependencias que cargaría al importarse.
 vi.mock('../src/repositories/v1/ReplicationRepository.js', () => ({
-  default: { create: vi.fn(), findById: vi.fn(), toggleIsActive: vi.fn() },
+  default: {
+    create: vi.fn(),
+    findById: vi.fn(),
+    toggleIsActive: vi.fn(),
+    updateAskSolution: vi.fn(),
+    updateAskSolutionAndEvaluateSolution: vi.fn(),
+  },
 }));
 vi.mock('../src/repositories/v1/SessionRepository.js', () => ({
   default: { hasReplicationStarted: vi.fn() },
@@ -268,5 +274,123 @@ describe('toggleIsActive — bloqueo de activación incompleta', () => {
     ReplicationRepository.findById.mockResolvedValue(null);
 
     await expect(ReplicationService.toggleIsActive('fantasma')).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  test('impide activar si un stage citado por submitedSolution tiene askSolution desactivado', async () => {
+    const replication = {
+      _id: 'rep1',
+      isActive: false,
+      experiment: {
+        stages: [
+          { id: 's1', orchestration: { mode: 'single' } },
+          { id: 's2', orchestration: { mode: 'single' } },
+          { id: 's3', outputSources: { conversation: 's2', submitedSolution: 's1' }, orchestration: { mode: 'single' } },
+        ],
+        leias: [
+          {
+            id: 'l1',
+            stageId: 's1',
+            configuration: { askSolution: false, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: { spec: { behaviour: { spec: { description: 'Solve task' } } } },
+          },
+          {
+            id: 'l2',
+            stageId: 's2',
+            configuration: { askSolution: false, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: { spec: { behaviour: { spec: { description: 'Discuss' } } } },
+          },
+          {
+            id: 'l3',
+            stageId: 's3',
+            configuration: { askSolution: true, evaluateSolution: true },
+            runnerConfiguration: { ...completeConfig },
+            leia: {
+              spec: {
+                behaviour: {
+                  spec: {
+                    description: '{{previousStage.outputs.submitedSolution}} {{previousStage.outputs.conversation}}',
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(replication);
+
+    await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({ statusCode: 400 });
+    expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+  });
+});
+
+describe('toggleAskSolution — bloqueo por dependencia de submitedSolution entre stages', () => {
+  const buildStagedReplication = ({ l1Ask = true, l2Ask = true } = {}) => ({
+    _id: 'rep1',
+    experiment: {
+      stages: [
+        { id: 's1', orchestration: { mode: 'single' } },
+        { id: 's2', orchestration: { mode: 'single' } },
+        { id: 's3', outputSources: { conversation: 's2', submitedSolution: 's1' }, orchestration: { mode: 'single' } },
+      ],
+      leias: [
+        {
+          id: 'l1',
+          stageId: 's1',
+          configuration: { askSolution: l1Ask, evaluateSolution: l1Ask },
+          leia: { spec: { behaviour: { spec: { description: 'Stage 1' } } } },
+        },
+        {
+          id: 'l2',
+          stageId: 's2',
+          configuration: { askSolution: l2Ask, evaluateSolution: l2Ask },
+          leia: { spec: { behaviour: { spec: { description: 'Stage 2' } } } },
+        },
+        {
+          id: 'l3',
+          stageId: 's3',
+          configuration: { askSolution: true, evaluateSolution: true },
+          leia: {
+            spec: {
+              behaviour: {
+                spec: {
+                  description: '{{previousStage.outputs.submitedSolution}} and {{previousStage.outputs.conversation}}',
+                },
+              },
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  test('impide desactivar askSolution en un stage cuya submitedSolution cita un stage posterior', async () => {
+    ReplicationRepository.findById.mockResolvedValue(buildStagedReplication());
+
+    await expect(ReplicationService.toggleAskSolution('rep1', 'l1')).rejects.toMatchObject({ statusCode: 400 });
+    expect(ReplicationRepository.updateAskSolution).not.toHaveBeenCalled();
+    expect(ReplicationRepository.updateAskSolutionAndEvaluateSolution).not.toHaveBeenCalled();
+  });
+
+  test('permite desactivar askSolution en un stage del que solo se cita conversation', async () => {
+    const replication = buildStagedReplication();
+    ReplicationRepository.findById.mockResolvedValue(replication);
+    ReplicationRepository.updateAskSolutionAndEvaluateSolution.mockResolvedValue(replication);
+
+    await ReplicationService.toggleAskSolution('rep1', 'l2');
+
+    expect(ReplicationRepository.updateAskSolutionAndEvaluateSolution).toHaveBeenCalledWith('rep1', 'l2', false, false);
+  });
+
+  test('permite reactivar askSolution cuando estaba desactivado en un stage requerido', async () => {
+    const replication = buildStagedReplication({ l1Ask: false });
+    ReplicationRepository.findById.mockResolvedValue(replication);
+    ReplicationRepository.updateAskSolution.mockResolvedValue(replication);
+
+    await ReplicationService.toggleAskSolution('rep1', 'l1');
+
+    expect(ReplicationRepository.updateAskSolution).toHaveBeenCalledWith('rep1', 'l1', true);
   });
 });

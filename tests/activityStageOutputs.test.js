@@ -12,7 +12,7 @@ const stage = {
   replication: 'replication',
   isTest: false,
   stageId: 'third',
-  sourceStageId: 'first',
+  sourceStageIds: { conversation: 'first', submitedSolution: 'first' },
   previousStageSession: 'session-2',
 };
 const first = { ...stage, id: 'session-1', stageId: 'first', finishedAt };
@@ -38,6 +38,26 @@ test('uses the selected earlier stage, including named speakers, and leaves temp
   expect(description(resolved)).toMatch(/\nnull$/);
   expect(description(resolved)).not.toContain('Late transcript');
   expect(description(template)).toBe('{{previousStage.outputs.conversation}}\n{{previousStage.outputs.submitedSolution}}');
+});
+
+test('resolves each output from its own configured earlier stage', async () => {
+  const firstWithResult = { ...first, result: 'Solution from stage 1' };
+  const secondWithResult = { ...second, result: 'Solution from stage 2' };
+  SessionRepository.findById.mockImplementation(async (id) =>
+    id === first.id ? firstWithResult : secondWithResult);
+  const stageWithPerOutputSources = {
+    ...stage,
+    sourceStageIds: { conversation: 'second', submitedSolution: 'first' },
+  };
+  const template = actor('{{previousStage.outputs.conversation}}\n{{previousStage.outputs.submitedSolution}}');
+  const reviewMessage = { text: 'Reflection in stage 2', isLeia: false, timestamp: finishedAt };
+  MessageService.findBySession.mockResolvedValue([reviewMessage]);
+
+  const [resolved] = await resolveStageLeias(stageWithPerOutputSources, [template]);
+  expect(MessageService.findBySession).toHaveBeenCalledExactlyOnceWith(second.id);
+  expect(description(resolved)).toContain(JSON.stringify([{ role: 'participant', text: 'Reflection in stage 2' }]));
+  expect(description(resolved)).toContain(JSON.stringify('Solution from stage 1'));
+  expect(description(resolved)).not.toContain('Solution from stage 2');
 });
 
 test('refuses a source session belonging to a different participant', async () => {
