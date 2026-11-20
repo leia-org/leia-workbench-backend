@@ -132,7 +132,7 @@ test('stage transitions are sequential and retryable and only the selected stage
   expect(session.session.previousStageSession).toBeUndefined();
   expect(session.leia.leia.spec.behaviour.spec.description).toBeUndefined();
   expect(session.replication.experiment).toBeUndefined();
-  expect((await ActivityRun.findById(submittedData.runId)).finishedAt).toBeUndefined();
+  expect((await ActivityRun.findById(submittedData.runId)).finishedAt).toBeNull();
   expect((await post(debrief, 'finish')).status).toBe(200);
   expect((await ActivityRun.findById(submittedData.runId)).finishedAt).toBeInstanceOf(Date);
   // Re-activate to verify non-repeatable run is rejected with 403.

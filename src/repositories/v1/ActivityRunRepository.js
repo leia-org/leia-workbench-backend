@@ -5,6 +5,10 @@ class ActivityRunRepository {
     return await ActivityRun.findById(id);
   }
 
+  async findOpenByUserAndReplication(user, replication) {
+    return await ActivityRun.findOne({ user, replication, isTest: false, finishedAt: null });
+  }
+
   async findLatestByUserAndReplication(user, replication) {
     return await ActivityRun.findOne({ user, replication, isTest: false }).sort({
       startedAt: -1,
@@ -29,8 +33,10 @@ class ActivityRunRepository {
       const run = await this.create(data);
       return { run, created: true };
     } catch (error) {
-      if (error.code !== 11000 || !error.keyPattern?.runKey) throw error;
-      return { run: await ActivityRun.findOne({ runKey: data.runKey }), created: false };
+      if (error.code !== 11000 || data.isTest) throw error;
+      const existing = await this.findOpenByUserAndReplication(data.user, data.replication);
+      if (!existing) throw error;
+      return { run: existing, created: false };
     }
   }
 

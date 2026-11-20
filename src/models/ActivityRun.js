@@ -30,13 +30,11 @@ const activityRunSchema = new Schema(
     },
     finishedAt: {
       type: Date,
+      default: null,
     },
     currentStageIndex: {
       type: Number,
       default: 0,
-    },
-    runKey: {
-      type: String,
     },
     stages: {
       type: [stageEntrySchema],
@@ -64,6 +62,9 @@ activityRunSchema.index(
   { user: 1, replication: 1, isTest: 1, startedAt: -1 },
   { partialFilterExpression: { isTest: false } }
 );
-activityRunSchema.index({ runKey: 1 }, { unique: true, sparse: true });
+activityRunSchema.index(
+  { user: 1, replication: 1 },
+  { unique: true, partialFilterExpression: { isTest: false, finishedAt: { $type: 'null' } } }
+);
 
 export default model('ActivityRun', activityRunSchema);

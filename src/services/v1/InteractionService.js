@@ -317,7 +317,6 @@ class InteractionService {
         user: userId,
         replication: replication.id,
         isTest: false,
-        runKey: `run:${replication.id}:${userId}:${lastRun.id}`,
       });
       return await this.openStage(replication, firstStage, {
         userId,
@@ -340,7 +339,6 @@ class InteractionService {
       user: userId,
       replication: replication.id,
       isTest: false,
-      runKey: `run:${replication.id}:${userId}:${last?.id ?? ''}`,
     });
     return await this.openStage(replication, firstStage, {
       userId,
@@ -480,7 +478,6 @@ class InteractionService {
       const { run } = await ActivityRunService.createOnce({
         replication: replication.id,
         isTest: true,
-        runKey: `test-run:${randomUUID()}`,
       });
       return await this.openStage(replication, firstStage, {
         run,
