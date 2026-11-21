@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { initializeExperiment } from '../src/utils/entity.js';
 
 describe('initializeExperiment', () => {
-  test('configura cada LEIA en modo texto con el modelo por defecto del usuario', () => {
+  test('preserva el modo configurado en Designer y aplica el modelo por defecto del usuario', () => {
     const experiment = {
       leias: [
         {
@@ -11,6 +11,9 @@ describe('initializeExperiment', () => {
             askSolution: false,
             evaluateSolution: false,
           },
+        },
+        {
+          configuration: {},
         },
       ],
     };
@@ -22,7 +25,8 @@ describe('initializeExperiment', () => {
       'openai-responses'
     );
 
-    expect(result.leias[0].configuration.mode).toBe('standard');
+    expect(result.leias[0].configuration.mode).toBe('transcription');
+    expect(result.leias[1].configuration.mode).toBe('standard');
     expect(result.leias[0].runnerConfiguration).toMatchObject({
       modelName: 'gpt-4.1-mini',
       apiKeyId: 'key1',

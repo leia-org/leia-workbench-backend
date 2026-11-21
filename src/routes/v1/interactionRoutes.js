@@ -11,6 +11,7 @@ import {
   finishSession,
   saveDraft,
   getConversationDynamics,
+  continueStage,
 } from '../../controllers/v1/interactionController.js';
 import { authContext } from '../../middlewares/auth.js';
 
@@ -23,6 +24,7 @@ router.post('/:sessionId/messages', sendSessionMessage);
 router.post('/:sessionId/messages/stream', streamSessionMessage);
 router.post('/:sessionId/result', saveResultAndFinishSession);
 router.post('/:sessionId/finish', finishSession);
+router.post('/:sessionId/next-stage', continueStage);
 router.post('/:sessionId/draft', saveDraft);
 
 // GET

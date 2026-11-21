@@ -2,7 +2,15 @@ import { describe, expect, test, beforeEach, vi } from 'vitest';
 
 // Aislamos el servicio de su persistencia y de las dependencias que cargaría al importarse.
 vi.mock('../src/repositories/v1/ReplicationRepository.js', () => ({
-  default: { create: vi.fn(), findById: vi.fn(), toggleIsActive: vi.fn() },
+  default: {
+    create: vi.fn(),
+    findById: vi.fn(),
+    toggleIsActive: vi.fn(),
+    updateAskSolution: vi.fn(),
+    updateAskSolutionAndEvaluateSolution: vi.fn(),
+    updateShowSolution: vi.fn(),
+    updateAskSolutionAndShowSolution: vi.fn(),
+  },
 }));
 vi.mock('../src/repositories/v1/SessionRepository.js', () => ({
   default: { hasReplicationStarted: vi.fn() },
@@ -268,5 +276,343 @@ describe('toggleIsActive — bloqueo de activación incompleta', () => {
     ReplicationRepository.findById.mockResolvedValue(null);
 
     await expect(ReplicationService.toggleIsActive('fantasma')).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  test('impide activar si un stage citado por submitedSolution tiene askSolution desactivado', async () => {
+    const replication = {
+      _id: 'rep1',
+      isActive: false,
+      experiment: {
+        stages: [
+          { id: 's1', orchestration: { mode: 'single' } },
+          { id: 's2', orchestration: { mode: 'single' } },
+          { id: 's3', outputSources: { conversation: 's2', submitedSolution: 's1' }, orchestration: { mode: 'single' } },
+        ],
+        leias: [
+          {
+            id: 'l1',
+            stageId: 's1',
+            configuration: { askSolution: false, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: { spec: { behaviour: { spec: { description: 'Solve task' } } } },
+          },
+          {
+            id: 'l2',
+            stageId: 's2',
+            configuration: { askSolution: false, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: { spec: { behaviour: { spec: { description: 'Discuss' } } } },
+          },
+          {
+            id: 'l3',
+            stageId: 's3',
+            configuration: { askSolution: true, evaluateSolution: true },
+            runnerConfiguration: { ...completeConfig },
+            leia: {
+              spec: {
+                behaviour: {
+                  spec: {
+                    description: '{{previousStage.outputs.submitedSolution}} {{previousStage.outputs.conversation}}',
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(replication);
+
+    await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({ statusCode: 400 });
+    expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+  });
+
+  test('impide activar si un stage citado por conversation tiene una LEIA en modo transcription', async () => {
+    const replication = {
+      _id: 'rep1',
+      isActive: false,
+      experiment: {
+        stages: [
+          { id: 's1', orchestration: { mode: 'single' } },
+          { id: 's2', outputSources: { conversation: 's1', submitedSolution: null }, orchestration: { mode: 'single' } },
+        ],
+        leias: [
+          {
+            id: 'l1',
+            stageId: 's1',
+            configuration: { mode: 'transcription', askSolution: true, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: { spec: { behaviour: { spec: { description: 'Transcript' } } } },
+          },
+          {
+            id: 'l2',
+            stageId: 's2',
+            configuration: { mode: 'standard', askSolution: true, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: {
+              spec: {
+                behaviour: {
+                  spec: { description: 'Review {{previousStage.outputs.conversation}}' },
+                },
+              },
+            },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(replication);
+
+    await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({ statusCode: 400 });
+    expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+  });
+});
+
+describe('toggleAskSolution — bloqueo por dependencia de submitedSolution entre stages', () => {
+  const buildStagedReplication = ({ l1Ask = true, l2Ask = true } = {}) => ({
+    _id: 'rep1',
+    experiment: {
+      stages: [
+        { id: 's1', orchestration: { mode: 'single' } },
+        { id: 's2', orchestration: { mode: 'single' } },
+        { id: 's3', outputSources: { conversation: 's2', submitedSolution: 's1' }, orchestration: { mode: 'single' } },
+      ],
+      leias: [
+        {
+          id: 'l1',
+          stageId: 's1',
+          configuration: { askSolution: l1Ask, evaluateSolution: l1Ask },
+          leia: { spec: { behaviour: { spec: { description: 'Stage 1' } } } },
+        },
+        {
+          id: 'l2',
+          stageId: 's2',
+          configuration: { askSolution: l2Ask, evaluateSolution: l2Ask },
+          leia: { spec: { behaviour: { spec: { description: 'Stage 2' } } } },
+        },
+        {
+          id: 'l3',
+          stageId: 's3',
+          configuration: { askSolution: true, evaluateSolution: true },
+          leia: {
+            spec: {
+              behaviour: {
+                spec: {
+                  description: '{{previousStage.outputs.submitedSolution}} and {{previousStage.outputs.conversation}}',
+                },
+              },
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  test('impide desactivar askSolution en un stage cuya submitedSolution cita un stage posterior', async () => {
+    ReplicationRepository.findById.mockResolvedValue(buildStagedReplication());
+
+    await expect(ReplicationService.toggleAskSolution('rep1', 'l1')).rejects.toMatchObject({ statusCode: 400 });
+    expect(ReplicationRepository.updateAskSolution).not.toHaveBeenCalled();
+    expect(ReplicationRepository.updateAskSolutionAndEvaluateSolution).not.toHaveBeenCalled();
+  });
+
+  test('permite desactivar askSolution en un stage del que solo se cita conversation', async () => {
+    const replication = buildStagedReplication();
+    ReplicationRepository.findById.mockResolvedValue(replication);
+    ReplicationRepository.updateAskSolutionAndEvaluateSolution.mockResolvedValue(replication);
+
+    await ReplicationService.toggleAskSolution('rep1', 'l2');
+
+    expect(ReplicationRepository.updateAskSolutionAndEvaluateSolution).toHaveBeenCalledWith('rep1', 'l2', false, false);
+  });
+
+  test('permite reactivar askSolution cuando estaba desactivado en un stage requerido', async () => {
+    const replication = buildStagedReplication({ l1Ask: false });
+    ReplicationRepository.findById.mockResolvedValue(replication);
+    ReplicationRepository.updateAskSolution.mockResolvedValue(replication);
+
+    await ReplicationService.toggleAskSolution('rep1', 'l1');
+
+    expect(ReplicationRepository.updateAskSolution).toHaveBeenCalledWith('rep1', 'l1', true);
+  });
+
+  test('impide activar si la etapa consumidora usa modo transcription', async () => {
+    const replication = {
+      _id: 'rep1',
+      isActive: false,
+      experiment: {
+        stages: [
+          { id: 's1', orchestration: { mode: 'single' } },
+          { id: 's2', outputSources: { conversation: null, submitedSolution: 's1' }, orchestration: { mode: 'single' } },
+        ],
+        leias: [
+          {
+            id: 'l1',
+            stageId: 's1',
+            configuration: { mode: 'standard', askSolution: true, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: { spec: { behaviour: { spec: { description: 'Stage 1' } } } },
+          },
+          {
+            id: 'l2',
+            stageId: 's2',
+            configuration: { mode: 'transcription', askSolution: true, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: {
+              spec: {
+                behaviour: { spec: { description: 'Review {{previousStage.outputs.submitedSolution}}' } },
+              },
+            },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(replication);
+
+    await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({ statusCode: 400 });
+    expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+  });
+
+  test('en etapas MultiLEIA exige editar askSolution en el problemLeia y valida solo problemLeia al activar', async () => {
+    const multiReplication = {
+      _id: 'rep1',
+      isActive: false,
+      experiment: {
+        stages: [
+          { id: 's1', orchestration: { mode: 'multi', problemLeiaId: 'l1', openingLeiaId: 'l1' } },
+          { id: 's2', outputSources: { conversation: null, submitedSolution: 's1' }, orchestration: { mode: 'single' } },
+        ],
+        leias: [
+          {
+            id: 'l1',
+            stageId: 's1',
+            configuration: { mode: 'standard', askSolution: true, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: {
+              spec: {
+                problem: { spec: { process: ['game'], solution: 'ref' } },
+                behaviour: { spec: { process: ['game'], description: 'Problem owner' } },
+              },
+            },
+          },
+          {
+            id: 'l2',
+            stageId: 's1',
+            configuration: { mode: 'standard', askSolution: false, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: {
+              spec: {
+                problem: { spec: { process: ['game'] } },
+                behaviour: { spec: { process: ['game'], description: 'Secondary actor' } },
+              },
+            },
+          },
+          {
+            id: 'l3',
+            stageId: 's2',
+            configuration: { mode: 'standard', askSolution: true, evaluateSolution: false },
+            runnerConfiguration: { ...completeConfig },
+            leia: {
+              spec: {
+                behaviour: { spec: { description: 'Review {{previousStage.outputs.submitedSolution}}' } },
+              },
+            },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(multiReplication);
+    ReplicationRepository.toggleIsActive.mockResolvedValue({ ...multiReplication, isActive: true });
+
+    await expect(ReplicationService.toggleAskSolution('rep1', 'l2')).rejects.toMatchObject({ statusCode: 400 });
+    await expect(ReplicationService.toggleEvaluateSolution('rep1', 'l2')).rejects.toMatchObject({ statusCode: 400 });
+
+    // Even though secondary actor l2 has askSolution=false, problemLeia l1 has askSolution=true so activation succeeds.
+    await ReplicationService.toggleIsActive('rep1');
+    expect(ReplicationRepository.toggleIsActive).toHaveBeenCalledWith('rep1');
+  });
+
+  test('impide activar evaluateSolution si el problema no define solución de referencia', async () => {
+    const replication = {
+      _id: 'rep1',
+      experiment: {
+        leias: [
+          {
+            id: 'l1',
+            configuration: { askSolution: true, evaluateSolution: false },
+            leia: { spec: { problem: { spec: { description: 'Open problem' } } } },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(replication);
+
+    await expect(ReplicationService.toggleEvaluateSolution('rep1', 'l1')).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('toggleShowSolution desactiva, reactiva con askSolution y valida referencia / MultiLEIA', async () => {
+    const withSolution = {
+      _id: 'rep1',
+      experiment: {
+        leias: [
+          {
+            id: 'l1',
+            configuration: { askSolution: true, showSolution: true },
+            leia: { spec: { problem: { spec: { solution: 'Ref answer' } } } },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(withSolution);
+    ReplicationRepository.updateShowSolution.mockResolvedValue(withSolution);
+    await ReplicationService.toggleShowSolution('rep1', 'l1');
+    expect(ReplicationRepository.updateShowSolution).toHaveBeenCalledWith('rep1', 'l1', false);
+
+    // Activar showSolution cuando askSolution es false también activa askSolution.
+    const askDisabled = {
+      _id: 'rep1',
+      experiment: {
+        leias: [
+          {
+            id: 'l1',
+            configuration: { askSolution: false, showSolution: false },
+            leia: { spec: { problem: { spec: { solution: 'Ref answer' } } } },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(askDisabled);
+    ReplicationRepository.updateAskSolutionAndShowSolution.mockResolvedValue(askDisabled);
+    await ReplicationService.toggleShowSolution('rep1', 'l1');
+    expect(ReplicationRepository.updateAskSolutionAndShowSolution).toHaveBeenCalledWith('rep1', 'l1', true, true);
+
+    // Impide activar showSolution sin solución de referencia.
+    const withoutSolution = {
+      _id: 'rep1',
+      experiment: {
+        leias: [
+          {
+            id: 'l1',
+            configuration: { askSolution: true, showSolution: false },
+            leia: { spec: { problem: { spec: { description: 'Open problem' } } } },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(withoutSolution);
+    await expect(ReplicationService.toggleShowSolution('rep1', 'l1')).rejects.toMatchObject({ statusCode: 400 });
+
+    // Impide modificar showSolution en un actor secundario de una etapa MultiLEIA.
+    const multiReplication = {
+      _id: 'rep1',
+      experiment: {
+        stages: [{ id: 's1', orchestration: { mode: 'multi', problemLeiaId: 'l1', openingLeiaId: 'l1' } }],
+        leias: [
+          { id: 'l1', stageId: 's1', configuration: { askSolution: true, showSolution: true }, leia: { spec: { problem: { spec: { solution: 'ref' } } } } },
+          { id: 'l2', stageId: 's1', configuration: { askSolution: false, showSolution: false }, leia: { spec: { problem: { spec: { solution: 'ref' } } } } },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(multiReplication);
+    await expect(ReplicationService.toggleShowSolution('rep1', 'l2')).rejects.toMatchObject({ statusCode: 400 });
   });
 });

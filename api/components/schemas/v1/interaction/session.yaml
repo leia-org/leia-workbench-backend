@@ -1,6 +1,18 @@
 type: object
 additionalProperties: true
 properties:
+  stage:
+    type: object
+    required: [number, total, hasNext]
+    properties:
+      number:
+        type: integer
+        minimum: 1
+      total:
+        type: integer
+        minimum: 1
+      hasNext:
+        type: boolean
   conversationDynamics:
     $ref: './conversationDynamicsState.yaml'
   id:

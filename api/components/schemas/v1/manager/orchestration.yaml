@@ -5,8 +5,8 @@ properties:
     enum: [single, multi]
   maxInternalTurns:
     type: integer
-    minimum: 2
-    maximum: 5
+    minimum: 1
+    maximum: 8
   openingLeiaId:
     type: string
     nullable: true
