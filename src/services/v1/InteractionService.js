@@ -10,7 +10,6 @@ import SpectatorService from './SpectatorService.js';
 import SupervisorService from './SupervisorService.js';
 import { emitToReplication, emitToSession } from '../../socket/index.js';
 import logger from '../../utils/logger.js';
-import mongoose from 'mongoose';
 import { randomInt, randomUUID } from 'crypto';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import { resolveStageLeias } from './ActivityStageService.js';
@@ -55,7 +54,6 @@ function stripSupervisorFields(session) {
   delete data.supervisorFlags;
   delete data.supervisorState;
   delete data.conversationDynamicsState;
-  delete data.previousStageSession;
   delete data.sourceStageIds;
   delete data.stageRunKey;
   return data;
@@ -199,7 +197,6 @@ class InteractionService {
       stageId: stage.id,
       ...(resolvedStageIndex >= 0 ? { stageIndex: resolvedStageIndex } : {}),
       ...(Object.keys(sourceStageIds).length ? { sourceStageIds } : {}),
-      previousStageSession: previous?.id,
       stageRunKey,
     });
     if (run) {
@@ -312,28 +309,8 @@ class InteractionService {
       if (!replication.isRepeatable) {
         throw activityError('User has already finished this replication. Replication is not repeatable.', 403);
       }
-      const { run } = await ActivityRunService.createOnce({
-        user: userId,
-        replication: replication.id,
-        isTest: false,
-      });
-      return await this.openStage(replication, firstStage, {
-        userId,
-        run,
-        stageIndex: 0,
-        stageRunKey: `run:${run.id}:stage:${firstStage.id}`,
-      });
     }
 
-    // Fallback for legacy staged sessions created before ActivityRun existed.
-    const last = await SessionRepository.findLatestStageSession(userId, replication.id);
-    if (last && !last.finishedAt) return await this.openStageRunner(replication, last);
-    if (last && stageProgress(replication.experiment, last)?.hasNext) {
-      return await this.continueStage(last.id);
-    }
-    if (last && !replication.isRepeatable) {
-      throw activityError('User has already finished this replication. Replication is not repeatable.', 403);
-    }
     const { run } = await ActivityRunService.createOnce({
       user: userId,
       replication: replication.id,
@@ -354,7 +331,8 @@ class InteractionService {
     const replication = await ReplicationService.findById(previous.replication);
     if (!replication) throw activityError('Replication not found', 404);
     const run = previous.run ? await ActivityRunService.findById(previous.run) : null;
-    const hasOpenRun = Boolean(run && !run.finishedAt);
+    if (!run) throw activityError('Activity run not found', 404);
+    const hasOpenRun = !run.finishedAt;
     if (!previous.isTest && !replication.isActive && !hasOpenRun) {
       throw activityError('Replication is not active', 403);
     }
@@ -367,7 +345,7 @@ class InteractionService {
       run,
       stageIndex: progress.number,
       isTest: previous.isTest,
-      stageRunKey: run ? `run:${run.id}:stage:${nextStage.id}` : `next:${previous.id}`,
+      stageRunKey: `run:${run.id}:stage:${nextStage.id}`,
     });
   }
 
@@ -400,152 +378,28 @@ class InteractionService {
     }
 
     logger.info(`User ${userEmail} found`);
-    if (replication.experiment.stages) return await this.startStagedActivity(replication, user.id);
-
-    let session = await SessionService.findOneUnfinishedByUserAndReplication(user.id, replication.id);
-
-    if (!session) {
-      logger.info(
-        `Session not found for user ${userEmail} and replication ${replicationCode} checking possibility of creating a new one`
-      );
-      const hasAnyFinished = await SessionService.hasAnyFinished(user.id, replication.id);
-      if (hasAnyFinished && !replication.isRepeatable) {
-        const error = new Error('User has already finished this replication. Replication is not repeatable.');
-        error.statusCode = 403;
-        throw error;
-      } else {
-        logger.info(`Creating new session for user ${userEmail} and replication ${replicationCode}`);
-        if (isMultiLeiaEnabled(replication)) {
-          const entries = getMultiLeiaEntries(replication);
-          const problemLeia = getProblemLeia(replication);
-          session = await SessionService.create(user.id, replication.id, problemLeia.id, false, {
-            interactionMode: 'multi',
-            leias: entries.map((entry) => entry.id),
-          });
-        } else {
-          const nextLeiaId = await ReplicationService.getAndIncrementNextLeia(replication.id);
-          session = await SessionService.create(user.id, replication.id, nextLeiaId, false);
-        }
-        logger.info(`Session created for user ${userEmail} and replication ${replicationCode}`);
-      }
-    }
-
-    logger.info(`Session found for user ${userEmail} and replication ${replicationCode}`);
-    if (!session.isRunnerInitialized) {
-      logger.info(`Runner for session ${session.id} is not initialized, initializing now`);
-      const leia = replication.experiment.leias.find((leia) => session.leia.equals(leia.id));
-      if (!leia) {
-        const error = new Error('Leia not found');
-        error.statusCode = 404;
-        throw error;
-      }
-      if (session.interactionMode === 'multi') {
-        const entries = getMultiLeiaEntries(replication, session);
-        const result = await RunnerService.initializeMultiLeia(
-          session.id,
-          entries,
-          replication.experiment.orchestration
-        );
-        session = await SessionService.updateMultiLeiaState(session.id, result.state);
-      } else {
-        await RunnerService.initializeRunner(session.id, leia, replication.language);
-      }
-
-      // Update the runner status
-      session = await SessionService.updateIsRunnerInitialized(session.id, true);
-      logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
-    }
-
-    if (session.interactionMode !== 'multi') {
-      const activeLeia = replication.experiment.leias.find((entry) => session.leia.equals(entry.id));
-      await ConversationDynamicsService.openText(session.id, activeLeia);
-    }
-    return session.id;
+    return await this.startStagedActivity(replication, user.id);
   }
 
-  async startTestSession(replicationId, leiaId, multiLeia = false, staged = false) {
+  async startTestSession(replicationId) {
     const replication = await ReplicationService.findById(replicationId);
     if (!replication) {
       const error = new Error('Replication not found');
       error.statusCode = 404;
       throw error;
     }
-    if (staged || replication.experiment.stages) {
-      if (!replication.experiment.stages) throw activityError('This activity has no stages');
-      activityFlows(replication.experiment);
-      const firstStage = replication.experiment.stages[0];
-      const { run } = await ActivityRunService.createOnce({
-        replication: replication.id,
-        isTest: true,
-      });
-      return await this.openStage(replication, firstStage, {
-        run,
-        stageIndex: 0,
-        isTest: true,
-        stageRunKey: `run:${run.id}:stage:${firstStage.id}`,
-      });
-    }
-    if (multiLeia) {
-      if (!isMultiLeiaEnabled(replication)) {
-        const error = new Error('MultiLEIA is not enabled for this replication');
-        error.statusCode = 400;
-        throw error;
-      }
-      const entries = getMultiLeiaEntries(replication);
-      const invalidEntry = entries.find(
-        (entry) =>
-          !entry.runnerConfiguration?.modelName ||
-          !entry.runnerConfiguration?.apiKeyId ||
-          !entry.runnerConfiguration?.apiKeyRequesterId ||
-          entry.runnerConfiguration?.audioMode
-      );
-      if (invalidEntry) {
-        const error = new Error('All MultiLEIA actors require a valid text runner configuration');
-        error.statusCode = 400;
-        throw error;
-      }
-      const problemLeia = getProblemLeia(replication);
-      let session = await SessionService.create(null, replicationId, problemLeia.id, true, {
-        interactionMode: 'multi',
-        leias: entries.map((entry) => entry.id),
-      });
-      const result = await RunnerService.initializeMultiLeia(
-        session.id,
-        entries,
-        replication.experiment.orchestration
-      );
-      session = await SessionService.updateMultiLeiaState(session.id, result.state);
-      session = await SessionService.updateIsRunnerInitialized(session.id, true);
-      logger.info(`MultiLEIA runner initialized for test session ${session.id}`);
-      return session.id;
-    }
-
-    leiaId = new mongoose.Types.ObjectId(`${leiaId}`);
-    const leia = replication.experiment.leias.find((leia) => leiaId.equals(leia.id));
-
-    if (!leia) {
-      const error = new Error('Leia not found');
-      error.statusCode = 404;
-      throw error;
-    }
-    if (!leia.runnerConfiguration?.modelName || !leia.runnerConfiguration?.apiKeyId || !leia.runnerConfiguration?.apiKeyRequesterId) {
-      const error = new Error('Invalid runner configuration');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    let session = await SessionService.create(null, replicationId, leiaId, true);
-
-    // Initialize runner for the session
-    await RunnerService.initializeRunner(session.id, leia, replication.language);
-
-
-    // Update the runner status
-    session = await SessionService.updateIsRunnerInitialized(session.id, true);
-    logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
-    await ConversationDynamicsService.openText(session.id, leia);
-
-    return session.id;
+    activityFlows(replication.experiment);
+    const firstStage = replication.experiment.stages[0];
+    const { run } = await ActivityRunService.createOnce({
+      replication: replication.id,
+      isTest: true,
+    });
+    return await this.openStage(replication, firstStage, {
+      run,
+      stageIndex: 0,
+      isTest: true,
+      stageRunKey: `run:${run.id}:stage:${firstStage.id}`,
+    });
   }
 
   async getSessionData(sessionId) {
@@ -574,9 +428,8 @@ class InteractionService {
 
     const experiment = replication.experiment;
     const stage = experiment.stages?.find(({ id }) => id === session.stageId);
-    const multiLeia = buildMultiLeiaPayload(stage
-      ? { experiment: stageExperiment(experiment, stage) }
-      : replication, session);
+    if (!stage) throw activityError('Stage not found', 404);
+    const multiLeia = buildMultiLeiaPayload({ experiment: stageExperiment(experiment, stage) }, session);
     const progress = stageProgress(experiment, session);
 
     const replicationData = typeof replication.toJSON === 'function' ? replication.toJSON() : { ...replication };
@@ -1002,11 +855,8 @@ class InteractionService {
           400
         );
       }
-      session = session.stageId
-        ? await SessionService.finishStage(session.id, result)
-        : await SessionService.saveResultAndFinish(session.id, result);
+      session = await SessionService.finishStage(session.id, result);
       if (
-        session.stageId &&
         session.run &&
         replication &&
         !stageProgress(replication.experiment, session)?.hasNext
@@ -1048,7 +898,7 @@ class InteractionService {
       delete data.evaluation;
       delete data.score;
     }
-    if (session.stageId && typeof ReplicationService.findById === 'function') {
+    if (typeof ReplicationService.findById === 'function') {
       const replication = await ReplicationService.findById(session.replication);
       if (replication) data.stage = stageProgress(replication.experiment, session);
     }
@@ -1073,10 +923,10 @@ class InteractionService {
       throw error;
     }
     if (session.finishedAt) {
-      if (session.stageId) return await this.finishedSessionData(session);
-      const error = new Error('Session already finished');
-      error.statusCode = 403;
-      throw error;
+      const existingLeia = await ReplicationService.findLeia(session.replication, session.leia);
+      const hideEvaluation =
+        existingLeia?.configuration?.showSolution === false || existingLeia?.configuration?.askSolution === false;
+      return await this.finishedSessionData(session, { hideEvaluation });
     }
     if (typeof LukeService.flushSessionHistory === 'function') {
       const flushed = await LukeService.flushSessionHistory(session.id);
@@ -1102,12 +952,9 @@ class InteractionService {
         400
       );
     }
-    session = session.stageId
-      ? await SessionService.finishStage(session.id)
-      : await SessionService.finish(session.id);
+    session = await SessionService.finishStage(session.id);
 
     if (
-      session.stageId &&
       session.run &&
       replication &&
       !stageProgress(replication.experiment, session)?.hasNext
@@ -1122,7 +969,9 @@ class InteractionService {
     await RunnerService.deleteCache(session.id);
     logger.info(`Cache deleted for session ${session.id}`);
 
-    return await this.finishedSessionData(session);
+    const hideEvaluation =
+      finishedLeia?.configuration?.showSolution === false || finishedLeia?.configuration?.askSolution === false;
+    return await this.finishedSessionData(session, { hideEvaluation });
   }
 
   async saveDraft(sessionId, draft) {

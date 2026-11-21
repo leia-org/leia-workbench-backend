@@ -31,7 +31,19 @@ import ReplicationService from '../src/services/v1/ReplicationService.js';
 
 // Construye una replicación con LEIAs cuya configuración de runner se puede afinar por test.
 function buildReplication({ isActive = false, leias = [], orchestration } = {}) {
-  return { _id: 'rep1', isActive, experiment: { leias, orchestration } };
+  const stageId = 's1';
+  return {
+    _id: 'rep1',
+    isActive,
+    experiment: {
+      stages: [{ id: stageId, orchestration: orchestration ?? { mode: 'single' } }],
+      leias: leias.map((entry) => ({
+        stageId,
+        leia: { spec: { behaviour: { spec: { description: '' } } } },
+        ...entry,
+      })),
+    },
+  };
 }
 
 // Configuración de runner completa y válida.

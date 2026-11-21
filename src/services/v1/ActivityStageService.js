@@ -28,42 +28,25 @@ export async function resolveStageLeias(session, entries) {
     neededStageIds.add(targetStageId);
   }
 
+  if (!session.run) throw activityError('The source stage is unavailable', 409);
+  const run = await ActivityRunRepository.findById(session.run);
+  if (
+    !run ||
+    String(run.replication) !== String(session.replication) ||
+    String(run.user) !== String(session.user) ||
+    run.isTest !== session.isTest
+  ) {
+    throw activityError('The source stage is unavailable', 409);
+  }
   const sourcesByStageId = new Map();
-  if (session.run) {
-    const run = await ActivityRunRepository.findById(session.run);
-    if (
-      !run ||
-      String(run.replication) !== String(session.replication) ||
-      String(run.user) !== String(session.user) ||
-      run.isTest !== session.isTest
-    ) {
+  for (const targetStageId of neededStageIds) {
+    const stageRef = (run.stages || []).find((entry) => entry.stageId === targetStageId);
+    if (!stageRef?.session) throw activityError('The source stage is unavailable', 409);
+    const sourceSession = await SessionRepository.findById(stageRef.session);
+    if (!isValidSourceSession(sourceSession, session) || String(sourceSession.run) !== String(session.run)) {
       throw activityError('The source stage is unavailable', 409);
     }
-    for (const targetStageId of neededStageIds) {
-      const stageRef = (run.stages || []).find((entry) => entry.stageId === targetStageId);
-      if (!stageRef?.session) throw activityError('The source stage is unavailable', 409);
-      const sourceSession = await SessionRepository.findById(stageRef.session);
-      if (!isValidSourceSession(sourceSession, session) || String(sourceSession.run) !== String(session.run)) {
-        throw activityError('The source stage is unavailable', 409);
-      }
-      sourcesByStageId.set(targetStageId, sourceSession);
-    }
-  } else {
-    const visitedSessions = new Set(session.id ? [String(session.id)] : []);
-    let cursor = session;
-    while (sourcesByStageId.size < neededStageIds.size) {
-      if (!cursor.previousStageSession) throw activityError('The source stage is unavailable', 409);
-      const previousId = String(cursor.previousStageSession);
-      if (visitedSessions.has(previousId)) throw activityError('The source stage is unavailable', 409);
-      visitedSessions.add(previousId);
-      cursor = await SessionRepository.findById(cursor.previousStageSession);
-      if (!isValidSourceSession(cursor, session)) {
-        throw activityError('The source stage is unavailable', 409);
-      }
-      if (neededStageIds.has(cursor.stageId) && !sourcesByStageId.has(cursor.stageId)) {
-        sourcesByStageId.set(cursor.stageId, cursor);
-      }
-    }
+    sourcesByStageId.set(targetStageId, sourceSession);
   }
 
   const values = {};

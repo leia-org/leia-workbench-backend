@@ -21,7 +21,6 @@ const sessionSchema = new Schema(
       conversation: String,
       submitedSolution: String,
     },
-    previousStageSession: Schema.Types.ObjectId,
     stageRunKey: String,
     result: {
       type: String,

@@ -47,24 +47,6 @@ class SessionRepository {
     return await Session.find({ user: userId, replication: replicationId });
   }
 
-  async findOneUnfinishedByUserAndReplication(userId, replicationId) {
-    return await Session.findOne({
-      user: userId,
-      replication: replicationId,
-      finishedAt: null,
-      isTest: false,
-    });
-  }
-
-  async hasAnyFinished(userId, replicationId) {
-    return await Session.exists({ user: userId, replication: replicationId, finishedAt: { $ne: null }, isTest: false });
-  }
-
-  async findLatestStageSession(user, replication) {
-    return await Session.findOne({ user, replication, isTest: false, stageId: { $exists: true } })
-      .sort({ startedAt: -1, _id: -1 });
-  }
-
   async createStageOnce(sessionData) {
     try {
       const session = await this.create(sessionData);

@@ -22,13 +22,19 @@ const forwarded = [];
 const stagedExperimentId = new mongoose.Types.ObjectId().toString();
 let stagedExperiment;
 const bearer = jwt.sign({ id: owner, role: 'advanced' }, 'integration-signing-secret');
-const experiment = { id: experimentId, user: { id: owner }, leias: [{
-  id: leiaConfigId, configuration: { mode: 'standard' },
-  leia: { id: new mongoose.Types.ObjectId().toString(), metadata: { name: 'Interview LEIA' }, spec: {
-    problem: { spec: { solution: 'Private solution', evaluationPrompt: 'Private evaluation' } },
-    behaviour: { spec: { description: 'Private instructions' } },
-  } },
-}] };
+const defaultStageId = randomUUID();
+const experiment = {
+  id: experimentId,
+  user: { id: owner },
+  stages: [{ id: defaultStageId, orchestration: { mode: 'single' } }],
+  leias: [{
+    id: leiaConfigId, stageId: defaultStageId, configuration: { mode: 'standard' },
+    leia: { id: new mongoose.Types.ObjectId().toString(), metadata: { name: 'Interview LEIA' }, spec: {
+      problem: { spec: { solution: 'Private solution', evaluationPrompt: 'Private evaluation' } },
+      behaviour: { spec: { description: 'Private instructions' } },
+    } },
+  }],
+};
 const request = (path, method = 'GET', body, authorization = bearer) => fetch(`${http.url}/api/v1${path}`, {
   method, headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}) },
   ...(body ? { body: JSON.stringify(body) } : {}),
@@ -82,7 +88,7 @@ test('stage transitions are sequential and retryable and only the selected stage
   // Stage 1 supplies submitedSolution so Ask for student solution cannot be disabled; Stage 2 only supplies conversation.
   expect((await request(`/replications/${replication.id}/leia/${leias[0].id}/toggle-ask-solution`, 'PATCH')).status).toBe(400);
   expect((await request(`/replications/${replication.id}/leia/${leias[1].id}/toggle-ask-solution`, 'PATCH')).status).toBe(200);
-  const body = { replicationId: replication.id, staged: true };
+  const body = { replicationId: replication.id };
   const unauthorized = jwt.sign({ id: new mongoose.Types.ObjectId().toString(), role: 'advanced' }, 'integration-signing-secret');
   expect((await request('/interactions/test', 'POST', body, unauthorized)).status).toBe(403);
   const tested = await request('/interactions/test', 'POST', body);

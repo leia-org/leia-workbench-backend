@@ -26,10 +26,8 @@ export const startSession = async (req, res, next) => {
 
 export const startTestSession = async (req, res, next) => {
   try {
-    const { replicationId, leiaId, multiLeia, staged } = await startTestSessionValidator.validateAsync(req.body);
-    const sessionId = staged
-      ? await InteractionService.startTestSession(replicationId, leiaId, multiLeia, staged)
-      : await InteractionService.startTestSession(replicationId, leiaId, multiLeia);
+    const { replicationId } = await startTestSessionValidator.validateAsync(req.body);
+    const sessionId = await InteractionService.startTestSession(replicationId);
     res.status(201).json({ sessionId });
   } catch (error) {
     next(error);
