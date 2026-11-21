@@ -63,13 +63,13 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
       ReplicationService.findById(replicationId),
       SessionRepository.findByReplicationAndPopulateMessages(replicationId),
     ]);
-    const stages = replication?.experiment?.stages || [];
-    const stageIndexById = new Map(stages.map(({ id }, index) => [id, index]));
+    const stages = Array.isArray(replication?.experiment?.stages) ? replication.experiment.stages : [];
+    const stageIndexById = new Map(stages.filter((stage) => stage?.id).map(({ id }, index) => [id, index]));
     const stageTotal = stages.length || null;
 
     // Format sessions for dashboard
     const formattedSessions = sessions.map((session) => {
-      const messages = session.messages || [];
+      const messages = Array.isArray(session.messages) ? session.messages.filter(Boolean) : [];
       const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
       const resolvedStageIndex =
         typeof session.stageIndex === 'number'
