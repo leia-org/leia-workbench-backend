@@ -104,7 +104,11 @@ test('stage transitions are sequential and retryable and only the selected stage
   const submittedData = await submitted.json();
   expect(submittedData.stage).toMatchObject({ number: 1, total: 3, hasNext: true });
   expect(submittedData.runId).toBeTruthy();
+  // Reference solution and evaluation visibility is instructor-controlled via showSolution.
+  expect((await request(`/interactions/${interview}/solution`, 'GET', undefined, null)).status).toBe(200);
+  expect((await request(`/replications/${replication.id}/leia/${leias[0].id}/toggle-show-solution`, 'PATCH')).status).toBe(200);
   expect((await request(`/interactions/${interview}/solution`, 'GET', undefined, null)).status).toBe(403);
+  expect((await request(`/interactions/${interview}/evaluation`, 'GET', undefined, null)).status).toBe(403);
 
   const reviews = await Promise.all([start(), post(interview, 'next-stage')]);
   const reviewIds = await Promise.all(reviews.map(async (response) => (await response.json()).sessionId));

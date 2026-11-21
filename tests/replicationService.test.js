@@ -8,6 +8,8 @@ vi.mock('../src/repositories/v1/ReplicationRepository.js', () => ({
     toggleIsActive: vi.fn(),
     updateAskSolution: vi.fn(),
     updateAskSolutionAndEvaluateSolution: vi.fn(),
+    updateShowSolution: vi.fn(),
+    updateAskSolutionAndShowSolution: vi.fn(),
   },
 }));
 vi.mock('../src/repositories/v1/SessionRepository.js', () => ({
@@ -545,5 +547,72 @@ describe('toggleAskSolution — bloqueo por dependencia de submitedSolution entr
     ReplicationRepository.findById.mockResolvedValue(replication);
 
     await expect(ReplicationService.toggleEvaluateSolution('rep1', 'l1')).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('toggleShowSolution desactiva, reactiva con askSolution y valida referencia / MultiLEIA', async () => {
+    const withSolution = {
+      _id: 'rep1',
+      experiment: {
+        leias: [
+          {
+            id: 'l1',
+            configuration: { askSolution: true, showSolution: true },
+            leia: { spec: { problem: { spec: { solution: 'Ref answer' } } } },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(withSolution);
+    ReplicationRepository.updateShowSolution.mockResolvedValue(withSolution);
+    await ReplicationService.toggleShowSolution('rep1', 'l1');
+    expect(ReplicationRepository.updateShowSolution).toHaveBeenCalledWith('rep1', 'l1', false);
+
+    // Activar showSolution cuando askSolution es false también activa askSolution.
+    const askDisabled = {
+      _id: 'rep1',
+      experiment: {
+        leias: [
+          {
+            id: 'l1',
+            configuration: { askSolution: false, showSolution: false },
+            leia: { spec: { problem: { spec: { solution: 'Ref answer' } } } },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(askDisabled);
+    ReplicationRepository.updateAskSolutionAndShowSolution.mockResolvedValue(askDisabled);
+    await ReplicationService.toggleShowSolution('rep1', 'l1');
+    expect(ReplicationRepository.updateAskSolutionAndShowSolution).toHaveBeenCalledWith('rep1', 'l1', true, true);
+
+    // Impide activar showSolution sin solución de referencia.
+    const withoutSolution = {
+      _id: 'rep1',
+      experiment: {
+        leias: [
+          {
+            id: 'l1',
+            configuration: { askSolution: true, showSolution: false },
+            leia: { spec: { problem: { spec: { description: 'Open problem' } } } },
+          },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(withoutSolution);
+    await expect(ReplicationService.toggleShowSolution('rep1', 'l1')).rejects.toMatchObject({ statusCode: 400 });
+
+    // Impide modificar showSolution en un actor secundario de una etapa MultiLEIA.
+    const multiReplication = {
+      _id: 'rep1',
+      experiment: {
+        stages: [{ id: 's1', orchestration: { mode: 'multi', problemLeiaId: 'l1', openingLeiaId: 'l1' } }],
+        leias: [
+          { id: 'l1', stageId: 's1', configuration: { askSolution: true, showSolution: true }, leia: { spec: { problem: { spec: { solution: 'ref' } } } } },
+          { id: 'l2', stageId: 's1', configuration: { askSolution: false, showSolution: false }, leia: { spec: { problem: { spec: { solution: 'ref' } } } } },
+        ],
+      },
+    };
+    ReplicationRepository.findById.mockResolvedValue(multiReplication);
+    await expect(ReplicationService.toggleShowSolution('rep1', 'l2')).rejects.toMatchObject({ statusCode: 400 });
   });
 });

@@ -59,6 +59,8 @@ paths:
     $ref: './paths/v1/replications/_id-leia-_leiaId-toggleAskSolution.yaml'
   /v1/replications/{id}/leia/{leiaId}/toggle-evaluate-solution:
     $ref: './paths/v1/replications/_id-leia-_leiaId-toggleEvaluateSolution.yaml'
+  /v1/replications/{id}/leia/{leiaId}/toggle-show-solution:
+    $ref: './paths/v1/replications/_id-leia-_leiaId-toggleShowSolution.yaml'
   /v1/replications/{id}/regenerate-code:
     $ref: './paths/v1/replications/_id-regenerateCode.yaml'
   /v1/replications/{id}/duration:

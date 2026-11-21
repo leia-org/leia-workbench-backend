@@ -59,6 +59,7 @@ export function initializeExperiment(
       leia.leia.spec.problem.spec.solution.trim()
     );
     leia.configuration.evaluateSolution = hasReferenceSolution;
+    leia.configuration.showSolution = hasReferenceSolution;
   }
   return experiment;
 }

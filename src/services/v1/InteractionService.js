@@ -18,7 +18,6 @@ import {
   activityError,
   activityFlows,
   getConversationRequirementForLeia,
-  getSolutionRequirementForLeia,
   getStageOutputSourcesMap,
   stageExperiment,
   stageProgress,
@@ -587,11 +586,14 @@ class InteractionService {
       typeof leia.leia?.spec?.problem?.spec?.solution === 'string' &&
       leia.leia.spec.problem.spec.solution.trim()
     );
-    const solutionRequiredForNextStage = Boolean(getSolutionRequirementForLeia(experiment, leia));
+    const showSolutionEnabled =
+      Boolean(leia.configuration?.askSolution) && leia.configuration?.showSolution !== false;
     const conversationRequiredForNextStage = Boolean(getConversationRequirementForLeia(experiment, leia));
 
-    if (!session.finishedAt) {
+    if (!session.finishedAt || !showSolutionEnabled) {
       delete leia.leia.spec.problem.spec.solution;
+    }
+    if (!session.finishedAt) {
       delete leia.leia.spec.problem.spec.evaluationPrompt;
     }
 
@@ -639,7 +641,7 @@ class InteractionService {
         (audioMode == null && runnerProvider === 'openai-responses'));
 
     leia.audioMode = audioMode;
-    leia.showReferenceSolution = hasReferenceSolution && !solutionRequiredForNextStage;
+    leia.showReferenceSolution = hasReferenceSolution && showSolutionEnabled;
     leia.requiresConversationForNextStage = conversationRequiredForNextStage;
     if (infographicConfig.showToStudent && (infographicSrc || infographicFallbackSrc)) {
       leia.infographic = {
@@ -659,6 +661,10 @@ class InteractionService {
     // Supervisor data is instructor-only: strip it (and the supervisor config)
     // from the payload the student receives.
     const sessionData = stripSupervisorFields(session);
+    if (!showSolutionEnabled) {
+      delete sessionData.evaluation;
+      delete sessionData.score;
+    }
     if (progress) sessionData.stage = progress;
     sessionData.conversationDynamics = publicDynamicsState(session, leia);
     delete leia.leia.spec.behaviour.spec.conversationDynamics;
@@ -700,14 +706,8 @@ class InteractionService {
       throw error;
     }
 
-    if (session.stageId && typeof ReplicationService.findById === 'function') {
-      const replication = await ReplicationService.findById(session.replication);
-      if (replication && getSolutionRequirementForLeia(replication.experiment, leia)) {
-        throw activityError(
-          'Reference solution is hidden because a later stage uses your submitted solution',
-          403
-        );
-      }
+    if (leia.configuration?.showSolution === false || leia.configuration?.askSolution === false) {
+      throw activityError('Reference solution is hidden for this stage', 403);
     }
 
     const solution = leia.leia?.spec?.problem?.spec?.solution;
@@ -1014,13 +1014,40 @@ class InteractionService {
         await ActivityRunService.markFinished(session.run, session.finishedAt);
       }
       if (dynamicsLeia) SupervisorService.observeAsync(session.id, dynamicsLeia, { force: true });
+      if (
+        dynamicsLeia?.configuration?.evaluateSolution &&
+        dynamicsLeia?.configuration?.showSolution === false &&
+        typeof result === 'string' &&
+        result.trim()
+      ) {
+        this.evaluateSessionAsync(session.id, result);
+      }
     }
 
-    return await this.finishedSessionData(session);
+    const finalLeia = await ReplicationService.findLeia(session.replication, session.leia);
+    const hideEvaluation =
+      finalLeia?.configuration?.showSolution === false || finalLeia?.configuration?.askSolution === false;
+    return await this.finishedSessionData(session, { hideEvaluation });
   }
 
-  async finishedSessionData(session) {
+  evaluateSessionAsync(sessionId, result) {
+    Promise.resolve()
+      .then(async () => {
+        const res = await RunnerService.getEvaluationAndScore(sessionId, result);
+        await SessionService.saveEvaluationAndScore(sessionId, res.evaluation, res.score);
+        logger.info(`Background evaluation saved for session ${sessionId}`);
+      })
+      .catch((error) => {
+        logger.error(`Background evaluation failed for session ${sessionId}: ${error?.message || error}`);
+      });
+  }
+
+  async finishedSessionData(session, { hideEvaluation = false } = {}) {
     const data = stripSupervisorFields(session);
+    if (hideEvaluation) {
+      delete data.evaluation;
+      delete data.score;
+    }
     if (session.stageId && typeof ReplicationService.findById === 'function') {
       const replication = await ReplicationService.findById(session.replication);
       if (replication) data.stage = stageProgress(replication.experiment, session);
@@ -1120,6 +1147,11 @@ class InteractionService {
       const error = new Error('Session not found');
       error.statusCode = 404;
       throw error;
+    }
+
+    const leia = await ReplicationService.findLeia(session.replication, session.leia);
+    if (leia?.configuration?.showSolution === false || leia?.configuration?.askSolution === false) {
+      throw activityError('Evaluation is hidden for this stage', 403);
     }
 
     if (!session.evaluation || session.score == null) {

@@ -351,6 +351,49 @@ class ReplicationService {
     return updatedReplication;
   }
 
+  async toggleShowSolution(id, leiaId) {
+    const replication = await ReplicationRepository.findById(id);
+    const leia = replication?.experiment?.leias?.find((entry) => String(entry.id) === String(leiaId));
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.status = 404;
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const stage = replication.experiment?.stages?.find(({ id: stageId }) => stageId === leia.stageId);
+    if (stage?.orchestration?.mode === 'multi') {
+      const problemLeia = getStageProblemLeia(replication.experiment, stage);
+      if (problemLeia && String(problemLeia.id) !== String(leia.id)) {
+        throw activityError('Configure solution settings on the shared problem LEIA for MultiLEIA stages');
+      }
+    }
+
+    const askSolutionStatus = leia.configuration.askSolution;
+    const currentShowSolution = Boolean(askSolutionStatus) && leia.configuration.showSolution !== false;
+    const showSolutionStatus = !currentShowSolution;
+
+    if (showSolutionStatus) {
+      const hasReferenceSolution = Boolean(
+        typeof leia.leia?.spec?.problem?.spec?.solution === 'string' &&
+        leia.leia.spec.problem.spec.solution.trim()
+      );
+      if (!hasReferenceSolution) {
+        throw activityError('Showing the reference solution requires a reference solution in the problem definition');
+      }
+    }
+
+    if (!askSolutionStatus && showSolutionStatus) {
+      return await ReplicationRepository.updateAskSolutionAndShowSolution(
+        id,
+        leiaId,
+        true,
+        showSolutionStatus
+      );
+    }
+    return await ReplicationRepository.updateShowSolution(id, leiaId, showSolutionStatus);
+  }
+
   async getConversations(id) {
     const [replication, sessions] = await Promise.all([
       ReplicationRepository.findById(id),

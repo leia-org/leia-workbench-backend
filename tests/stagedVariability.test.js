@@ -23,6 +23,7 @@ vi.mock('../src/services/v1/SessionService.js', () => ({
     finish: vi.fn(),
     finishStage: vi.fn(),
     saveResultAndFinish: vi.fn(),
+    saveEvaluationAndScore: vi.fn(),
     updateIsRunnerInitialized: vi.fn(),
     updateMultiLeiaState: vi.fn(),
   },
@@ -38,6 +39,7 @@ vi.mock('../src/services/v1/RunnerService.js', () => ({
   default: {
     initializeRunner: vi.fn(),
     initializeMultiLeia: vi.fn(),
+    getEvaluationAndScore: vi.fn(),
     deleteCache: vi.fn(),
   },
 }));
@@ -59,9 +61,10 @@ import LukeService from '../src/services/v1/LukeService.js';
 import SessionService from '../src/services/v1/SessionService.js';
 import SessionRepository from '../src/repositories/v1/SessionRepository.js';
 import ReplicationService from '../src/services/v1/ReplicationService.js';
+import RunnerService from '../src/services/v1/RunnerService.js';
 
 describe('entity.initializeExperiment', () => {
-  test('preserves transcription mode and sets evaluateSolution based on problem solution presence', () => {
+  test('preserves transcription mode and sets evaluateSolution/showSolution based on problem solution presence', () => {
     const exp = initializeExperiment({
       leias: [
         {
@@ -77,8 +80,10 @@ describe('entity.initializeExperiment', () => {
 
     expect(exp.leias[0].configuration.mode).toBe('transcription');
     expect(exp.leias[0].configuration.evaluateSolution).toBe(false);
+    expect(exp.leias[0].configuration.showSolution).toBe(false);
     expect(exp.leias[1].configuration.mode).toBe('standard');
     expect(exp.leias[1].configuration.evaluateSolution).toBe(true);
+    expect(exp.leias[1].configuration.showSolution).toBe(true);
   });
 });
 
@@ -169,7 +174,7 @@ describe('staged activity runtime guards & ActivityRun behavior', () => {
     ReplicationService.findById.mockResolvedValue(buildStagedReplication());
   });
 
-  test('hides reference solution in getSessionData & rejects getSolutionAndFormat when a later stage consumes submitedSolution', async () => {
+  test('controls reference solution and evaluation visibility via configuration.showSolution', async () => {
     const session = {
       id: 'sess-1',
       run: 'run-1',
@@ -178,17 +183,77 @@ describe('staged activity runtime guards & ActivityRun behavior', () => {
       leia: { equals: (other) => String(other) === 'l1', toString: () => 'l1' },
       finishedAt: new Date(),
       result: 'My draft',
+      evaluation: 'Detailed feedback',
+      score: 8,
       interactionMode: 'single',
     };
     SessionService.findById.mockResolvedValue(session);
-    ReplicationService.findLeia.mockResolvedValue(buildStagedReplication().experiment.leias[0]);
 
-    const data = await InteractionService.getSessionData('sess-1');
-    expect(data.session.runId).toBe('run-1');
-    expect(data.leia.showReferenceSolution).toBe(false);
-    expect(data.leia.requiresConversationForNextStage).toBe(true);
+    // Enabled by default when reference solution exists (instructor decides, not auto-hidden).
+    const defaultRep = buildStagedReplication();
+    ReplicationService.findById.mockResolvedValue(defaultRep);
+    ReplicationService.findLeia.mockResolvedValue(defaultRep.experiment.leias[0]);
 
+    const visibleData = await InteractionService.getSessionData('sess-1');
+    expect(visibleData.session.runId).toBe('run-1');
+    expect(visibleData.session.evaluation).toBe('Detailed feedback');
+    expect(visibleData.session.score).toBe(8);
+    expect(visibleData.leia.showReferenceSolution).toBe(true);
+    expect(visibleData.leia.requiresConversationForNextStage).toBe(true);
+    await expect(InteractionService.getSolutionAndFormat('sess-1')).resolves.toEqual({
+      solution: 'Secret reference solution',
+      solutionFormat: 'text',
+    });
+    await expect(InteractionService.getEvaluation('sess-1')).resolves.toEqual({
+      evaluation: 'Detailed feedback',
+      score: 8,
+    });
+
+    // When instructor disables showSolution, reference solution and evaluation are hidden from the student.
+    const hiddenRep = buildStagedReplication();
+    hiddenRep.experiment.leias[0].configuration.showSolution = false;
+    ReplicationService.findById.mockResolvedValue(hiddenRep);
+    ReplicationService.findLeia.mockResolvedValue(hiddenRep.experiment.leias[0]);
+
+    const hiddenData = await InteractionService.getSessionData('sess-1');
+    expect(hiddenData.leia.showReferenceSolution).toBe(false);
+    expect(hiddenData.leia.leia.spec.problem.spec.solution).toBeUndefined();
+    expect(hiddenData.session.evaluation).toBeUndefined();
+    expect(hiddenData.session.score).toBeUndefined();
     await expect(InteractionService.getSolutionAndFormat('sess-1')).rejects.toMatchObject({ statusCode: 403 });
+    await expect(InteractionService.getEvaluation('sess-1')).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  test('runs background evaluation for instructors when evaluateSolution is on and showSolution is off', async () => {
+    const hiddenRep = buildStagedReplication();
+    hiddenRep.experiment.leias[0].configuration.showSolution = false;
+    hiddenRep.experiment.leias[0].configuration.evaluateSolution = true;
+    const openSession = {
+      id: 'sess-bg',
+      run: 'run-1',
+      replication: 'rep-1',
+      stageId: 's1',
+      leia: 'l1',
+      startedAt: new Date(),
+      messages: ['m1'],
+      conversationDynamicsState: { stoppingCondition: { satisfied: true } },
+    };
+    const finishedSession = { ...openSession, result: 'Student answer', finishedAt: new Date() };
+    SessionService.findById.mockResolvedValue(openSession);
+    SessionService.finishStage.mockResolvedValue(finishedSession);
+    ReplicationService.findById.mockResolvedValue(hiddenRep);
+    ReplicationService.findLeia.mockResolvedValue(hiddenRep.experiment.leias[0]);
+    RunnerService.getEvaluationAndScore.mockResolvedValue({ evaluation: 'Good work', score: 9 });
+    SessionService.saveEvaluationAndScore.mockResolvedValue({ ...finishedSession, evaluation: 'Good work', score: 9 });
+
+    const data = await InteractionService.saveResultAndFinishSession('sess-bg', 'Student answer');
+    expect(data.evaluation).toBeUndefined();
+    expect(data.score).toBeUndefined();
+
+    // Flush microtasks for background evaluation promise.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(RunnerService.getEvaluationAndScore).toHaveBeenCalledWith('sess-bg', 'Student answer');
+    expect(SessionService.saveEvaluationAndScore).toHaveBeenCalledWith('sess-bg', 'Good work', 9);
   });
 
   test('does not expose tool widgets in MultiLEIA sessions', async () => {

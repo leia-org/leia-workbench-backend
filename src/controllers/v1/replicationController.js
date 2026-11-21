@@ -235,6 +235,16 @@ export const toggleEvaluateSolution = async (req, res, next) => {
   }
 };
 
+export const toggleShowSolution = async (req, res, next) => {
+  try {
+    const { id, leiaId } = req.params;
+    const updatedReplication = await ReplicationService.toggleShowSolution(id, leiaId);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const getReplicationConversations = async (req, res, next) => {
   try {
     const conversations = await ReplicationService.getConversations(req.params.id);
