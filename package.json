@@ -12,7 +12,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "test:regression": "vitest run --exclude tests/lukeOpeningIntegration.test.js --exclude 'tests/integration/**'",
-    "test:integration": "vitest run --config vitest.integration.config.mjs"
+    "test:integration": "vitest run --config vitest.integration.config.mjs",
+    "migrate:staged-replications": "node --env-file-if-exists=.env ./scripts/migrate-staged-replications.js"
   },
   "repository": {
     "type": "git",
