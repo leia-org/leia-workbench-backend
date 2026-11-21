@@ -112,9 +112,13 @@ class ReplicationRepository {
   }
 
   async updateAskSolution(id, leiaId, askSolution) {
+    const update = { 'experiment.leias.$.configuration.askSolution': askSolution };
+    if (!askSolution) {
+      update['experiment.leias.$.configuration.showSolution'] = false;
+    }
     return await Replication.findOneAndUpdate(
       { _id: id, 'experiment.leias.id': leiaId },
-      { $set: { 'experiment.leias.$.configuration.askSolution': askSolution } },
+      { $set: update },
       { new: true }
     );
   }
@@ -128,12 +132,35 @@ class ReplicationRepository {
   }
 
   async updateAskSolutionAndEvaluateSolution(id, leiaId, askSolution, evaluateSolution) {
+    const update = {
+      'experiment.leias.$.configuration.askSolution': askSolution,
+      'experiment.leias.$.configuration.evaluateSolution': evaluateSolution,
+    };
+    if (!askSolution) {
+      update['experiment.leias.$.configuration.showSolution'] = false;
+    }
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.leias.id': leiaId },
+      { $set: update },
+      { new: true }
+    );
+  }
+
+  async updateShowSolution(id, leiaId, showSolution) {
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.leias.id': leiaId },
+      { $set: { 'experiment.leias.$.configuration.showSolution': showSolution } },
+      { new: true }
+    );
+  }
+
+  async updateAskSolutionAndShowSolution(id, leiaId, askSolution, showSolution) {
     return await Replication.findOneAndUpdate(
       { _id: id, 'experiment.leias.id': leiaId },
       {
         $set: {
           'experiment.leias.$.configuration.askSolution': askSolution,
-          'experiment.leias.$.configuration.evaluateSolution': evaluateSolution,
+          'experiment.leias.$.configuration.showSolution': showSolution,
         },
       },
       { new: true }

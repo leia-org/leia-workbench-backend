@@ -10,6 +10,19 @@ const sessionSchema = new Schema(
     finishedAt: {
       type: Date,
     },
+    run: {
+      type: Schema.Types.ObjectId,
+      ref: 'ActivityRun',
+      index: true,
+    },
+    stageId: String,
+    stageIndex: Number,
+    sourceStageIds: {
+      conversation: String,
+      submitedSolution: String,
+    },
+    previousStageSession: Schema.Types.ObjectId,
+    stageRunKey: String,
     result: {
       type: String,
     },
@@ -87,5 +100,6 @@ const sessionSchema = new Schema(
 );
 
 sessionSchema.index({ user: 1, replication: 1, isTest: 1 }, { partialFilterExpression: { isTest: false } });
+sessionSchema.index({ stageRunKey: 1 }, { unique: true, sparse: true });
 
 export default model('Session', sessionSchema);

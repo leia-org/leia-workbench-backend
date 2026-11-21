@@ -102,6 +102,13 @@ class RunnerService {
     return response.data;
   }
 
+  async getMultiLeiaState(sessionId) {
+    const response = await axios.get(`${process.env.RUNNER_URL}/api/v1/multi-leias/${sessionId}`, {
+      headers: { Authorization: 'Bearer ' + process.env.RUNNER_KEY },
+    });
+    return response.data;
+  }
+
   async sendMessage(sessionId, message, options = {}) {
     const body = {};
     if (options.opening === true) body.opening = true;

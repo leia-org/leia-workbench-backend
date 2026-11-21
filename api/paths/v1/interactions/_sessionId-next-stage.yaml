@@ -1,0 +1,23 @@
+post:
+  tags: [Interactions v1]
+  summary: Start or resume the stage after a completed stage
+  operationId: continueStage
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    '200':
+      description: Session ID of the next stage. Repeated calls return the same session.
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/interaction/sessionIdResponse.yaml'
+    '403':
+      description: The replication is inactive.
+    '404':
+      description: The staged session or replication was not found.
+    '409':
+      description: The stage is not finished or is the final stage.

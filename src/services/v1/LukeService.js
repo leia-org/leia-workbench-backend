@@ -3,6 +3,7 @@ import { createLukeServer, gemini } from '@leia-org/luke-server';
 import { openai } from '../../providers/lukeOpenAI.js';
 import { appendOpeningPrompt } from '../../utils/openingPrompt.js';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
+import { resolveStageLeias } from './ActivityStageService.js';
 import ReplicationService from './ReplicationService.js';
 import MessageService from './MessageService.js';
 import SessionService from './SessionService.js';
@@ -11,6 +12,21 @@ import logger from '../../utils/logger.js';
 import jwt from 'jsonwebtoken';
 
 class LukeService {
+  constructor() {
+    this.historyWrites = new Map();
+  }
+
+  async flushSessionHistory(sessionId) {
+    const pending = this.historyWrites.get(String(sessionId));
+    if (!pending) return false;
+    try {
+      await pending;
+    } catch {
+      // Errors during transcription persistence are already logged in saveHistory.
+    }
+    return true;
+  }
+
   initialize(httpServer) {
     const providers = [];
 
@@ -36,7 +52,7 @@ class LukeService {
     // Luke invokes saveHistory without awaiting it. Serialize each session's
     // writes so database timestamps, socket events and observers see the same
     // order as the provider, including after a reconnect/provider switch.
-    const historyWrites = new Map();
+    const historyWrites = this.historyWrites;
     const trackedProviders = providers.map((provider) => ({
       ...provider,
       connect: async (config) => {
@@ -103,7 +119,8 @@ class LukeService {
         },
         getSystemInstruction: async (userSession) => {
           if (!userSession?.leia) return undefined;
-          const instructions = buildInstructions(userSession.leia);
+          const [leia] = await resolveStageLeias(userSession.session, [userSession.leia]);
+          const instructions = buildInstructions(leia);
           const opening = getDynamics(userSession.leia).leiaSpeaksFirst;
           if (opening?.enabled !== true || !opening.config?.firstMessage) return instructions;
           // Live's system prompt is set before onConnect/audio readiness. Give

@@ -12,3 +12,18 @@ properties:
       $ref: './leia.yaml'
   orchestration:
     $ref: './orchestration.yaml'
+  stages:
+    type: array
+    description: Ordered stage definitions. Absent on legacy activities.
+    items:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        previousStageId:
+          type: string
+          format: uuid
+          nullable: true
+        orchestration:
+          $ref: './orchestration.yaml'

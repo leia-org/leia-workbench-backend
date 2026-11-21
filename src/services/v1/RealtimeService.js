@@ -1,6 +1,7 @@
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ReplicationService from './ReplicationService.js';
 import logger from '../../utils/logger.js';
+import { resolveStageLeias } from './ActivityStageService.js';
 
 class RealtimeService {
   async createRealtimeSession(sessionId, sdpOffer) {
@@ -13,13 +14,14 @@ class RealtimeService {
       throw error;
     }
 
-    const leia = await ReplicationService.findLeia(session.replication, session.leia);
-    if (!leia) {
+    const template = await ReplicationService.findLeia(session.replication, session.leia);
+    if (!template) {
       const error = new Error('Leia not found');
       error.statusCode = 404;
       throw error;
     }
 
+    const [leia] = await resolveStageLeias(session, [template]);
     const runnerConfiguration = leia.runnerConfiguration || {};
     if (!runnerConfiguration.audioMode || runnerConfiguration.audioMode !== 'realtime') {
       const error = new Error('Audio mode is not enabled for this LEIA');
@@ -34,6 +36,7 @@ class RealtimeService {
     const behaviourSpec = leia.leia?.spec?.behaviour?.spec || {};
 
     let instructions = realtimeConfig.instructions;
+    if (instructions && leia !== template) instructions += `\n${behaviourSpec.description}`;
     if (!instructions) {
       const instructionParts = [];
 
