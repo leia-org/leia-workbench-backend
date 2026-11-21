@@ -1,5 +1,7 @@
 type: object
 description: Experiment payload as returned by the Manager service.
+required:
+  - stages
 properties:
   id:
     type: string
@@ -10,20 +12,26 @@ properties:
     type: array
     items:
       $ref: './leia.yaml'
-  orchestration:
-    $ref: './orchestration.yaml'
   stages:
     type: array
-    description: Ordered stage definitions. Absent on legacy activities.
+    minItems: 1
+    description: Ordered stage definitions.
     items:
       type: object
       properties:
         id:
           type: string
           format: uuid
-        previousStageId:
-          type: string
-          format: uuid
-          nullable: true
+        outputSources:
+          type: object
+          properties:
+            conversation:
+              type: string
+              format: uuid
+              nullable: true
+            submitedSolution:
+              type: string
+              format: uuid
+              nullable: true
         orchestration:
           $ref: './orchestration.yaml'

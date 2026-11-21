@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 vi.mock('../src/models/Session.js', () => ({ default: {} }));
 vi.mock('../src/models/ActivityRun.js', () => ({ default: {} }));
 vi.mock('../src/repositories/v1/SessionRepository.js', () => ({
-  default: { findById: vi.fn(), createStageOnce: vi.fn(), findLatestStageSession: vi.fn() },
+  default: { findById: vi.fn(), createStageOnce: vi.fn() },
 }));
 vi.mock('../src/services/v1/ActivityRunService.js', () => ({
   default: {
@@ -20,9 +20,7 @@ vi.mock('../src/services/v1/LukeService.js', () => ({
 vi.mock('../src/services/v1/SessionService.js', () => ({
   default: {
     findById: vi.fn(),
-    finish: vi.fn(),
     finishStage: vi.fn(),
-    saveResultAndFinish: vi.fn(),
     saveEvaluationAndScore: vi.fn(),
     updateIsRunnerInitialized: vi.fn(),
     updateMultiLeiaState: vi.fn(),

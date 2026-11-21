@@ -4,14 +4,3 @@ required:
 properties:
   replicationId:
     $ref: '../../mongoId.yaml'
-  leiaId:
-    $ref: '../../mongoId.yaml'
-    nullable: true
-    description: Required for a legacy single-LEIA test.
-  multiLeia:
-    type: boolean
-    default: false
-  staged:
-    type: boolean
-    default: false
-    description: Start an activity test from its first stage.

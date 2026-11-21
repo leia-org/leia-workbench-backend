@@ -47,37 +47,8 @@ class SessionService {
   async findByUserAndReplication(userId, replicationId) {
     return await SessionRepository.findByUserAndReplication(userId, replicationId);
   }
-  async findOneUnfinishedByUserAndReplication(userId, replicationId) {
-    return await SessionRepository.findOneUnfinishedByUserAndReplication(userId, replicationId);
-  }
-  async hasAnyFinished(userId, replicationId) {
-    return await SessionRepository.hasAnyFinished(userId, replicationId);
-  }
 
   // WRITE METHODS
-
-  async create(userId, replicationId, leiaId, isTest = false, options = {}) {
-    const sessionData = {
-      user: userId,
-      replication: replicationId,
-      leia: leiaId,
-      isTest,
-      interactionMode: options.interactionMode || 'single',
-    };
-    if (Array.isArray(options.leias) && options.leias.length > 0) {
-      sessionData.leias = options.leias;
-    }
-    if (options.multiLeiaState) {
-      sessionData.multiLeiaState = options.multiLeiaState;
-    }
-    return await SessionRepository.create(sessionData);
-  }
-
-  async finish(id) {
-    const session = await SessionRepository.update(id, { finishedAt: new Date() });
-    this.emitFinished(id, session);
-    return session;
-  }
 
   async finishStage(id, result) {
     const changes = { finishedAt: new Date(), ...(result !== undefined ? { result } : {}) };
@@ -107,10 +78,6 @@ class SessionService {
 
   async saveResult(id, result) {
     return await SessionRepository.update(id, { result });
-  }
-
-  async saveResultAndFinish(id, result) {
-    return await SessionRepository.update(id, { result, finishedAt: new Date() });
   }
 
   async saveEvaluation(id, evaluation) {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 vi.mock('../src/models/Session.js', () => ({ default: {} }));
-vi.mock('../src/services/v1/SessionService.js', () => ({ default: { findById: vi.fn(), finish: vi.fn(), saveResultAndFinish: vi.fn() } }));
+vi.mock('../src/services/v1/SessionService.js', () => ({ default: { findById: vi.fn(), finishStage: vi.fn() } }));
 vi.mock('../src/services/v1/ReplicationService.js', () => ({ default: { findLeia: vi.fn() } }));
 vi.mock('../src/services/v1/RunnerService.js', () => ({ default: { deleteCache: vi.fn() } }));
 vi.mock('../src/services/v1/UserService.js', () => ({ default: {} }));
@@ -20,8 +20,11 @@ beforeEach(() => {
   ReplicationService.findLeia.mockResolvedValue({ leia: { spec: { behaviour: { spec: {
     conversationDynamics: { stoppingCondition: { enabled: true, config: { condition: 'Task complete' } } },
   } } } } });
-  SessionService.finish.mockResolvedValue({ ...session, finishedAt: new Date() });
-  SessionService.saveResultAndFinish.mockResolvedValue({ ...session, finishedAt: new Date(), result: 'solution' });
+  SessionService.finishStage.mockImplementation(async (_id, result) => ({
+    ...session,
+    finishedAt: new Date(),
+    ...(result !== undefined ? { result } : {}),
+  }));
   SpectatorService.generateSpectateToken.mockResolvedValue({ token: 'token', expiresAt: new Date() });
   SpectatorService.generateSpectateUrl.mockReturnValue('spectate');
 });
@@ -42,12 +45,12 @@ describe('finish and result endpoint enforcement', () => {
     const result = await InteractionService.saveResultAndFinishSession('session', 'solution');
     expect(result.result).toBe('solution');
     expect(result.spectateUrl).toBe('spectate');
-    expect(SessionService.saveResultAndFinish).not.toHaveBeenCalled();
+    expect(SessionService.finishStage).not.toHaveBeenCalled();
   });
   test('does not allow changing a result after submission', async () => {
     SessionService.findById.mockResolvedValue({ ...session, finishedAt: new Date(), result: 'original' });
     await expect(InteractionService.saveResultAndFinishSession('session', 'changed')).rejects.toMatchObject({ statusCode: 403 });
-    expect(SessionService.saveResultAndFinish).not.toHaveBeenCalled();
+    expect(SessionService.finishStage).not.toHaveBeenCalled();
   });
   test('returns an existing zero score without evaluating again', async () => {
     SessionService.findById.mockResolvedValue({ ...session, finishedAt: new Date(), result: 'solution', evaluation: 'Try again', score: 0 });
@@ -56,15 +59,13 @@ describe('finish and result endpoint enforcement', () => {
   for (const method of ['finishSession', 'saveResultAndFinishSession']) {
     test(`${method} rejects a premature finish before any database mutation`, async () => {
       await expect(InteractionService[method]('session', 'solution')).rejects.toMatchObject({ statusCode: 403 });
-      expect(SessionService.finish).not.toHaveBeenCalled();
-      expect(SessionService.saveResultAndFinish).not.toHaveBeenCalled();
+      expect(SessionService.finishStage).not.toHaveBeenCalled();
       expect(SpectatorService.generateSpectateToken).not.toHaveBeenCalled();
     });
     test(`${method} accepts LEIA's saved decision and hides internal state`, async () => {
       const decided = { ...session, conversationDynamicsState: { stoppingCondition: { satisfied: true } } };
       SessionService.findById.mockResolvedValue(decided);
-      SessionService.finish.mockResolvedValue({ ...decided, finishedAt: new Date() });
-      SessionService.saveResultAndFinish.mockResolvedValue({ ...decided, finishedAt: new Date() });
+      SessionService.finishStage.mockResolvedValue({ ...decided, finishedAt: new Date() });
       const result = await InteractionService[method]('session', 'solution');
       expect(result.finishedAt).toBeInstanceOf(Date);
       expect(result.conversationDynamicsState).toBeUndefined();

@@ -9,21 +9,32 @@ vi.mock('../src/repositories/v1/SessionRepository.js', () => ({ default: { findB
 vi.mock('../src/services/v1/MessageService.js', () => ({ default: { findBySession: vi.fn() } }));
 
 const finishedAt = new Date('2026-11-18T12:00:00Z');
+const runId = 'run-1';
 const stage = {
+  run: runId,
   user: 'student',
   replication: 'replication',
   isTest: false,
   stageId: 'third',
   sourceStageIds: { conversation: 'first', submitedSolution: 'first' },
-  previousStageSession: 'session-2',
 };
 const first = { ...stage, id: 'session-1', stageId: 'first', finishedAt };
-const second = { ...stage, id: 'session-2', stageId: 'second', previousStageSession: first.id, finishedAt };
+const second = { ...stage, id: 'session-2', stageId: 'second', finishedAt };
 const description = (entry) => entry.leia.spec.behaviour.spec.description;
 const actor = (value) => ({ leia: { spec: { behaviour: { spec: { description: value } } } } });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  ActivityRunRepository.findById.mockResolvedValue({
+    id: runId,
+    user: 'student',
+    replication: 'replication',
+    isTest: false,
+    stages: [
+      { stageId: 'first', stageIndex: 0, session: first.id },
+      { stageId: 'second', stageIndex: 1, session: second.id },
+    ],
+  });
   SessionRepository.findById.mockImplementation(async (id) => id === first.id ? first : second);
 });
 
@@ -63,18 +74,15 @@ test('resolves each output from its own configured earlier stage', async () => {
 });
 
 test('refuses a source session belonging to a different participant', async () => {
-  SessionRepository.findById.mockResolvedValueOnce({ ...second, user: 'another-student' });
+  SessionRepository.findById.mockResolvedValueOnce({ ...first, user: 'another-student' });
   const template = actor('{{previousStage.outputs.conversation}}');
   await expect(resolveStageLeias(stage, [template])).rejects.toMatchObject({ statusCode: 409 });
   expect(MessageService.findBySession).not.toHaveBeenCalled();
 });
 
-test('resolves source stages directly from ActivityRun without walking previousStageSession', async () => {
-  const runId = 'run-1';
+test('resolves source stages directly from ActivityRun', async () => {
   const stageWithRun = {
     ...stage,
-    run: runId,
-    previousStageSession: undefined,
     sourceStageIds: { conversation: 'second', submitedSolution: 'first' },
   };
   ActivityRunRepository.findById.mockResolvedValue({

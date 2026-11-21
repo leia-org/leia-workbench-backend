@@ -7,17 +7,9 @@ export const startSessionValidator = Joi.object({
 
 export const startTestSessionValidator = Joi.object({
   replicationId: Joi.string().hex().length(24).required(),
-  staged: Joi.boolean().default(false),
-  multiLeia: Joi.boolean().default(false),
-  leiaId: Joi.string().hex().length(24).when('staged', {
-    is: true,
-    then: Joi.optional().allow(null),
-    otherwise: Joi.when('multiLeia', {
-      is: true,
-      then: Joi.optional().allow(null),
-      otherwise: Joi.required(),
-    }),
-  }),
+  staged: Joi.any().strip(),
+  multiLeia: Joi.any().strip(),
+  leiaId: Joi.any().strip(),
 });
 
 // `message` and `toolResults` are mutually-required (one or the other):

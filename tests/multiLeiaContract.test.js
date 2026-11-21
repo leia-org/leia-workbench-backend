@@ -19,21 +19,19 @@ beforeEach(() => {
 });
 
 describe('MultiLEIA interaction contract', () => {
-  test('allows testing the complete graph without an individual leiaId', async () => {
+  test('requires only replicationId to start a staged test session and strips legacy fields', async () => {
     const value = await startTestSessionValidator.validateAsync({
       replicationId: '507f1f77bcf86cd799439011',
       multiLeia: true,
+      staged: true,
     });
 
-    expect(value.multiLeia).toBe(true);
-    expect(value.leiaId).toBeUndefined();
+    expect(value).toEqual({ replicationId: '507f1f77bcf86cd799439011' });
   });
 
-  test('keeps leiaId mandatory for a single-LEIA test', async () => {
+  test('rejects missing replicationId', async () => {
     await expect(
-      startTestSessionValidator.validateAsync({
-        replicationId: '507f1f77bcf86cd799439011',
-      })
+      startTestSessionValidator.validateAsync({})
     ).rejects.toThrow();
   });
 

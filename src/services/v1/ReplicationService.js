@@ -240,10 +240,6 @@ class ReplicationService {
     return await ReplicationRepository.updateLeiaRunnerConfiguration(id, leiaId, runnerConfiguration);
   }
 
-  async getAndIncrementNextLeia(id) {
-    return await ReplicationRepository.getAndIncrementNextLeia(id);
-  }
-
   async recordStageAssignment(replicationId, leiaId) {
     return await ReplicationRepository.incrementLeiaSessionCount(replicationId, leiaId);
   }

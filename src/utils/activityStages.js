@@ -113,7 +113,9 @@ export function stageProgress(experiment, session) {
 }
 
 export function activityFlows(experiment) {
-  if (!experiment.stages) return [experiment];
+  if (!Array.isArray(experiment?.stages) || !experiment.stages.length) {
+    throw activityError('Invalid activity stages');
+  }
   const positions = new Map(experiment.stages.map(({ id }, index) => [id, index]));
   if (!positions.size || positions.size !== experiment.stages.length ||
       experiment.leias.some(({ stageId }) => !positions.has(stageId))) {
