@@ -439,11 +439,23 @@ class ReplicationService {
       return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
     };
 
+    const runKeyOf = (session) => (session.run ? String(session.run) : String(session.id || ''));
+    const runStartByKey = new Map();
+    for (const session of sessions) {
+      const key = runKeyOf(session);
+      const ts = new Date(session.startedAt || 0).getTime();
+      const prev = runStartByKey.get(key);
+      if (prev === undefined || ts < prev) {
+        runStartByKey.set(key, ts);
+      }
+    }
+
     const sortedSessions = [...sessions].sort((a, b) => {
-      const runA = a.run ? String(a.run) : String(a.id || '');
-      const runB = b.run ? String(b.run) : String(b.id || '');
+      const runA = runKeyOf(a);
+      const runB = runKeyOf(b);
       if (runA !== runB) {
-        return new Date(a.startedAt || 0).getTime() - new Date(b.startedAt || 0).getTime();
+        const diff = (runStartByKey.get(runA) ?? 0) - (runStartByKey.get(runB) ?? 0);
+        return diff !== 0 ? diff : runA.localeCompare(runB);
       }
       const idxA =
         typeof a.stageIndex === 'number'
@@ -453,10 +465,11 @@ class ReplicationService {
         typeof b.stageIndex === 'number'
           ? b.stageIndex
           : stageIndexById.get(b.stageId) ?? 0;
-      return idxA - idxB;
+      if (idxA !== idxB) return idxA - idxB;
+      return new Date(a.startedAt || 0).getTime() - new Date(b.startedAt || 0).getTime();
     });
 
-    let csv = 'Session ID,Run ID,Stage,LEIA,User,Started At,Finished At,Message,Is LEIA,Timestamp,Score,Evaluation,Submitted Solution\n';
+    let csv = 'Session ID,Run ID,Stage,LEIA,User,Started At,Finished At,Message,Is LEIA,Sender,Timestamp,Score,Evaluation,Submitted Solution\n';
 
     for (const session of sortedSessions) {
       const sessionId = session.id || '';
@@ -483,12 +496,13 @@ class ReplicationService {
         for (const message of session.messages) {
           const messageText = escapeCsv(message.text);
           const isLeia = message.isLeia ? 'TRUE' : 'FALSE';
+          const sender = escapeCsv(message.senderName || (message.isLeia ? leiaName : 'Participant'));
           const timestamp = message.timestamp ? new Date(message.timestamp).toISOString() : '';
 
-          csv += `${escapeCsv(sessionId)},${escapeCsv(runId)},${escapeCsv(stageLabel)},${escapeCsv(leiaName)},${escapeCsv(userId)},${startedAt},${finishedAt},${messageText},${isLeia},${timestamp},${score},${evaluation},${submittedSolution}\n`;
+          csv += `${escapeCsv(sessionId)},${escapeCsv(runId)},${escapeCsv(stageLabel)},${escapeCsv(leiaName)},${escapeCsv(userId)},${startedAt},${finishedAt},${messageText},${isLeia},${sender},${timestamp},${score},${evaluation},${submittedSolution}\n`;
         }
       } else {
-        csv += `${escapeCsv(sessionId)},${escapeCsv(runId)},${escapeCsv(stageLabel)},${escapeCsv(leiaName)},${escapeCsv(userId)},${startedAt},${finishedAt},"No messages",,,${score},${evaluation},${submittedSolution}\n`;
+        csv += `${escapeCsv(sessionId)},${escapeCsv(runId)},${escapeCsv(stageLabel)},${escapeCsv(leiaName)},${escapeCsv(userId)},${startedAt},${finishedAt},"No messages",,,,${score},${evaluation},${submittedSolution}\n`;
       }
     }
 

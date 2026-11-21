@@ -90,17 +90,43 @@ describe('Stage observability (conversations, CSV, spectator & live)', () => {
     expect(result[1]).toMatchObject({ id: 'sess-1', runId: 'run-1', stageNumber: 1, stageTotal: 2 });
   });
 
-  test('getConversationsCSV exports Run ID, Stage, LEIA, and Submitted Solution sorted by stage', async () => {
+  test('getConversationsCSV groups concurrent runs contiguously, sorts by stage, and includes Sender', async () => {
+    const concurrentRunStage1 = {
+      id: 'sess-b1',
+      run: 'run-2',
+      stageId: 's1',
+      stageIndex: 0,
+      leia: 'l1',
+      user: { email: 'bob@example.com' },
+      startedAt: new Date('2026-11-20T10:05:00Z'),
+      finishedAt: null,
+      result: null,
+      evaluation: null,
+      score: null,
+      messages: [
+        { text: 'Multi agent reply', isLeia: true, senderName: 'Analyst', timestamp: new Date('2026-11-20T10:06:00Z') },
+      ],
+    };
+    SessionRepository.findByReplicationAndPopulateMessages.mockResolvedValue([
+      stage2Session,
+      concurrentRunStage1,
+      stage1Session,
+    ]);
+
     const csv = await ReplicationService.getConversationsCSV('rep-1');
     const lines = csv.trim().split('\n');
     expect(lines[0]).toBe(
-      'Session ID,Run ID,Stage,LEIA,User,Started At,Finished At,Message,Is LEIA,Timestamp,Score,Evaluation,Submitted Solution'
+      'Session ID,Run ID,Stage,LEIA,User,Started At,Finished At,Message,Is LEIA,Sender,Timestamp,Score,Evaluation,Submitted Solution'
     );
-    // Stage 1 appears before Stage 2 in the exported CSV.
+    // run-1 (started 10:00) keeps Stage 1 and Stage 2 contiguous before run-2 (started 10:05).
     const stage1Pos = csv.indexOf('sess-1,run-1,1/2,Interviewer');
     const stage2Pos = csv.indexOf('sess-2,run-1,2/2,"Reviewer, Sr."');
+    const run2Pos = csv.indexOf('sess-b1,run-2,1/2,Interviewer');
     expect(stage1Pos).toBeGreaterThan(0);
     expect(stage2Pos).toBeGreaterThan(stage1Pos);
+    expect(run2Pos).toBeGreaterThan(stage2Pos);
+    expect(csv).toContain(',FALSE,Participant,');
+    expect(csv).toContain(',TRUE,Analyst,');
     expect(csv).toContain('"classDiagram\n  class A"');
     expect(csv).toContain('"Good ""work"""');
   });
