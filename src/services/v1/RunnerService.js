@@ -189,21 +189,32 @@ class RunnerService {
     return completion;
   }
 
-  async getEvaluationAndScore(sessionId, result) {
+  async getEvaluationAndScore(sessionId, result, options = {}) {
+    const payload = {
+      sessionId,
+      ...(result !== undefined && result !== null ? { result } : {}),
+      ...(options.evaluationMode ? { evaluationMode: options.evaluationMode } : {}),
+      ...(options.rubric ? { rubric: options.rubric } : {}),
+      ...(options.context ? { context: options.context } : {}),
+      ...(options.language ? { language: options.language } : {}),
+      ...(options.runnerConfiguration ? { runnerConfiguration: options.runnerConfiguration } : {}),
+    };
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/evaluation`,
-      {
-        sessionId,
-        result,
-      },
+      payload,
       {
         headers: {
           Authorization: 'Bearer ' + process.env.RUNNER_KEY,
         },
       }
     );
-    const { evaluation, score } = response.data;
-    return { evaluation, score };
+    const { evaluation, score, evaluationMode, rubricEvaluation } = response.data;
+    return {
+      evaluation,
+      score,
+      ...(evaluationMode ? { evaluationMode } : {}),
+      ...(rubricEvaluation ? { rubricEvaluation } : {}),
+    };
   }
 
   async deleteCache(sessionId) {

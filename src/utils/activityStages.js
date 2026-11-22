@@ -13,9 +13,14 @@ export function getStageOutputSource(stage, output) {
 export function getStageReferencedOutputs(leias) {
   const outputs = new Set();
   for (const entry of leias || []) {
-    const description = entry?.leia?.spec?.behaviour?.spec?.description || '';
-    for (const match of description.matchAll(referencePattern)) {
-      outputs.add(match[1]);
+    const templates = [
+      entry?.leia?.spec?.behaviour?.spec?.description || '',
+      entry?.leia?.spec?.rubric?.spec?.evaluationPrompt || '',
+    ];
+    for (const template of templates) {
+      for (const match of template.matchAll(referencePattern)) {
+        outputs.add(match[1]);
+      }
     }
   }
   return outputs;
@@ -125,9 +130,12 @@ export function activityFlows(experiment) {
     if (!flow.leias.length || flow.leias.some(({ leia }) => !leia?.spec)) {
       throw activityError(`Stage ${number} requires valid LEIAs`);
     }
-    const descriptions = flow.leias.map(({ leia }) => leia.spec.behaviour?.spec?.description || '');
-    const references = descriptions.flatMap((description) => [...description.matchAll(anyReference)]);
-    const supportedReferences = descriptions.flatMap((description) => [...description.matchAll(referencePattern)]);
+    const templates = flow.leias.flatMap(({ leia }) => [
+      leia.spec.behaviour?.spec?.description || '',
+      leia.spec.rubric?.spec?.evaluationPrompt || '',
+    ]);
+    const references = templates.flatMap((template) => [...template.matchAll(anyReference)]);
+    const supportedReferences = templates.flatMap((template) => [...template.matchAll(referencePattern)]);
     if (references.length !== supportedReferences.length) {
       throw activityError(`Stage ${number} contains an unsupported previous stage output`);
     }

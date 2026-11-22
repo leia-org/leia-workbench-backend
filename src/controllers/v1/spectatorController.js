@@ -90,6 +90,10 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
         startedAt: session.startedAt,
         finishedAt: session.finishedAt,
         isActive: !session.finishedAt,
+        score: session.score ?? null,
+        evaluationMode: session.evaluationMode || (session.rubricEvaluation ? 'rubric' : session.evaluation ? 'classic' : null),
+        evaluation: session.evaluation ?? null,
+        rubricEvaluation: session.rubricEvaluation ?? null,
         messageCount: messages.length,
         lastMessage: lastMessage
           ? {
