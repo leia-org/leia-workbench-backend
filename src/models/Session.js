@@ -32,6 +32,14 @@ const sessionSchema = new Schema(
     score: {
       type: Number,
     },
+    evaluationMode: {
+      type: String,
+      enum: ['classic', 'rubric'],
+    },
+    rubricEvaluation: {
+      type: Schema.Types.Mixed,
+      default: undefined,
+    },
     messages: [
       {
         type: Schema.Types.ObjectId,

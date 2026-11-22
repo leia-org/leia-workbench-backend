@@ -14,6 +14,7 @@ import {
   deleteReplicationForm,
   toggleAskSolution,
   toggleEvaluateSolution,
+  updateEvaluationMode,
   toggleShowSolution,
   getReplicationConversations,
   downloadReplicationConversationsCSV,
@@ -40,6 +41,7 @@ router.patch('/:id/toggle-shared', requireAdvanced, toggleReplicationIsShared);
 router.patch('/:id/language', authContext, updateReplicationLanguage);
 router.patch('/:id/leia/:leiaId/toggle-ask-solution', authContext, toggleAskSolution);
 router.patch('/:id/leia/:leiaId/toggle-evaluate-solution', authContext, toggleEvaluateSolution);
+router.patch('/:id/leia/:leiaId/evaluation-mode', authContext, updateEvaluationMode);
 router.patch('/:id/leia/:leiaId/toggle-show-solution', authContext, toggleShowSolution);
 router.patch('/:id/duration', authContext, updateReplicationDuration);
 router.patch('/:id/experiment', authContext, updateReplicationExperiment);

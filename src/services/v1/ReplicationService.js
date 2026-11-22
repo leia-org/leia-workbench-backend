@@ -9,6 +9,14 @@ import {
   getStageProblemLeia,
   getStagesRequiringSolution,
 } from '../../utils/activityStages.js';
+import {
+  collectRubricCsvColumns,
+  extractRubricCsvValues,
+  hasReferenceSolution,
+  hasRubric,
+  resolveEvaluationMode,
+  rubricRequiresSubmittedSolution,
+} from '../../utils/rubricEvaluation.js';
 import axios from 'axios';
 
 function normalizeProcess(process) {
@@ -278,7 +286,7 @@ class ReplicationService {
     }
 
     const askSolutionStatus = !leia.configuration.askSolution;
-    const evaluatedSolutionStatus = leia.configuration.evaluateSolution;
+    const evaluationMode = resolveEvaluationMode(leia.configuration);
 
     if (!askSolutionStatus) {
       const dependentStages = getSolutionRequirementForLeia(replication.experiment, leia);
@@ -288,24 +296,33 @@ class ReplicationService {
           `Ask for student solution cannot be disabled because ${stageList} uses this stage's submitted solution`
         );
       }
+      if (evaluationMode === 'rubric' && rubricRequiresSubmittedSolution(leia)) {
+        throw activityError(
+          'Ask for student solution cannot be disabled because the rubric evaluation prompt references the submitted solution'
+        );
+      }
     }
 
-    let updatedReplication;
-
-    if (!askSolutionStatus && evaluatedSolutionStatus) {
-      updatedReplication = await ReplicationRepository.updateAskSolutionAndEvaluateSolution(
+    if (!askSolutionStatus && evaluationMode === 'classic') {
+      return await ReplicationRepository.updateAskSolutionAndEvaluateSolution(
         id,
         leiaId,
-        askSolutionStatus,
+        false,
         false
       );
-    } else {
-      updatedReplication = await ReplicationRepository.updateAskSolution(id, leiaId, askSolutionStatus);
     }
-    return updatedReplication;
+    if (!askSolutionStatus && evaluationMode === 'rubric') {
+      return await ReplicationRepository.updateAskSolution(id, leiaId, askSolutionStatus, {
+        clearShowSolution: false,
+      });
+    }
+    return await ReplicationRepository.updateAskSolution(id, leiaId, askSolutionStatus);
   }
 
-  async toggleEvaluateSolution(id, leiaId) {
+  async updateEvaluationMode(id, leiaId, evaluationMode) {
+    if (!['none', 'classic', 'rubric'].includes(evaluationMode)) {
+      throw activityError("Invalid evaluation mode. Expected 'none', 'classic', or 'rubric'");
+    }
     const replication = await ReplicationRepository.findById(id);
     const leia = replication?.experiment?.leias?.find((entry) => String(entry.id) === String(leiaId));
     if (!leia) {
@@ -323,32 +340,60 @@ class ReplicationService {
       }
     }
 
-    const askSolutionStatus = leia.configuration.askSolution;
-    const evaluateSolutionStatus = !leia.configuration.evaluateSolution;
-
-    if (evaluateSolutionStatus) {
-      const hasReferenceSolution = Boolean(
-        typeof leia.leia?.spec?.problem?.spec?.solution === 'string' &&
-        leia.leia.spec.problem.spec.solution.trim()
-      );
-      if (!hasReferenceSolution) {
-        throw activityError('Automatic evaluation requires a reference solution in the problem definition');
+    if (evaluationMode === 'classic') {
+      if (!hasReferenceSolution(leia)) {
+        throw activityError('Classic evaluation requires a reference solution in the problem definition');
       }
+      return await ReplicationRepository.updateEvaluationConfiguration(id, leiaId, {
+        evaluationMode: 'classic',
+        evaluateSolution: true,
+        ...(leia.configuration.askSolution ? {} : { askSolution: true }),
+      });
     }
 
-    let updatedReplication;
-
-    if (!askSolutionStatus && evaluateSolutionStatus) {
-      updatedReplication = await ReplicationRepository.updateAskSolutionAndEvaluateSolution(
-        id,
-        leiaId,
-        true,
-        evaluateSolutionStatus
-      );
-    } else {
-      updatedReplication = await ReplicationRepository.updateEvaluateSolution(id, leiaId, evaluateSolutionStatus);
+    if (evaluationMode === 'rubric') {
+      if (!hasRubric(leia)) {
+        throw activityError('Rubric evaluation requires a rubric in the LEIA definition');
+      }
+      const needsSolution = rubricRequiresSubmittedSolution(leia);
+      return await ReplicationRepository.updateEvaluationConfiguration(id, leiaId, {
+        evaluationMode: 'rubric',
+        evaluateSolution: true,
+        ...(needsSolution && !leia.configuration.askSolution ? { askSolution: true } : {}),
+      });
     }
-    return updatedReplication;
+
+    const updates = {
+      evaluationMode: 'none',
+      evaluateSolution: false,
+    };
+    if (!leia.configuration.askSolution) {
+      updates.showSolution = false;
+    }
+    return await ReplicationRepository.updateEvaluationConfiguration(id, leiaId, updates);
+  }
+
+  async toggleEvaluateSolution(id, leiaId) {
+    const replication = await ReplicationRepository.findById(id);
+    const leia = replication?.experiment?.leias?.find((entry) => String(entry.id) === String(leiaId));
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.status = 404;
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const currentMode = resolveEvaluationMode(leia.configuration);
+    if (currentMode !== 'none') {
+      return await this.updateEvaluationMode(id, leiaId, 'none');
+    }
+    if (hasReferenceSolution(leia)) {
+      return await this.updateEvaluationMode(id, leiaId, 'classic');
+    }
+    if (hasRubric(leia)) {
+      return await this.updateEvaluationMode(id, leiaId, 'rubric');
+    }
+    throw activityError('Automatic evaluation requires a reference solution in the problem definition');
   }
 
   async toggleShowSolution(id, leiaId) {
@@ -369,21 +414,19 @@ class ReplicationService {
       }
     }
 
-    const askSolutionStatus = leia.configuration.askSolution;
-    const currentShowSolution = Boolean(askSolutionStatus) && leia.configuration.showSolution !== false;
+    const evaluationMode = resolveEvaluationMode(leia.configuration);
+    const askSolutionStatus = Boolean(leia.configuration.askSolution);
+    const canShowWithoutAsk = evaluationMode === 'rubric';
+    const currentShowSolution = (askSolutionStatus || canShowWithoutAsk) && leia.configuration.showSolution !== false;
     const showSolutionStatus = !currentShowSolution;
 
     if (showSolutionStatus) {
-      const hasReferenceSolution = Boolean(
-        typeof leia.leia?.spec?.problem?.spec?.solution === 'string' &&
-        leia.leia.spec.problem.spec.solution.trim()
-      );
-      if (!hasReferenceSolution) {
+      if (!hasReferenceSolution(leia) && evaluationMode !== 'rubric') {
         throw activityError('Showing the reference solution requires a reference solution in the problem definition');
       }
     }
 
-    if (!askSolutionStatus && showSolutionStatus) {
+    if (!askSolutionStatus && showSolutionStatus && evaluationMode !== 'rubric') {
       return await ReplicationRepository.updateAskSolutionAndShowSolution(
         id,
         leiaId,
@@ -469,7 +512,26 @@ class ReplicationService {
       return new Date(a.startedAt || 0).getTime() - new Date(b.startedAt || 0).getTime();
     });
 
-    let csv = 'Session ID,Run ID,Stage,LEIA,User,Started At,Finished At,Message,Is LEIA,Sender,Timestamp,Score,Evaluation,Submitted Solution\n';
+    const rubricColumns = collectRubricCsvColumns(replication, sortedSessions);
+    const baseHeaders = [
+      'Session ID',
+      'Run ID',
+      'Stage',
+      'LEIA',
+      'User',
+      'Started At',
+      'Finished At',
+      'Message',
+      'Is LEIA',
+      'Sender',
+      'Timestamp',
+      'Evaluation Mode',
+      'Score',
+      'Evaluation',
+      'Submitted Solution',
+      ...rubricColumns.map((col) => col.header),
+    ];
+    let csv = `${baseHeaders.map(escapeCsv).join(',')}\n`;
 
     for (const session of sortedSessions) {
       const sessionId = session.id || '';
@@ -488,9 +550,15 @@ class ReplicationService {
       const userId = session.user?.email || session.user?.id || 'Anonymous';
       const startedAt = session.startedAt ? new Date(session.startedAt).toISOString() : '';
       const finishedAt = session.finishedAt ? new Date(session.finishedAt).toISOString() : '';
+      const evaluationMode =
+        session.evaluationMode || (session.rubricEvaluation ? 'rubric' : session.evaluation ? 'classic' : '');
       const score = session.score ?? '';
       const evaluation = escapeCsv(session.evaluation);
       const submittedSolution = escapeCsv(session.result);
+      const rubricCells = extractRubricCsvValues(session.rubricEvaluation, rubricColumns)
+        .map(escapeCsv)
+        .join(',');
+      const rubricSuffix = rubricColumns.length ? `,${rubricCells}` : '';
 
       if (session.messages && session.messages.length > 0) {
         for (const message of session.messages) {
@@ -499,10 +567,10 @@ class ReplicationService {
           const sender = escapeCsv(message.senderName || (message.isLeia ? leiaName : 'Participant'));
           const timestamp = message.timestamp ? new Date(message.timestamp).toISOString() : '';
 
-          csv += `${escapeCsv(sessionId)},${escapeCsv(runId)},${escapeCsv(stageLabel)},${escapeCsv(leiaName)},${escapeCsv(userId)},${startedAt},${finishedAt},${messageText},${isLeia},${sender},${timestamp},${score},${evaluation},${submittedSolution}\n`;
+          csv += `${escapeCsv(sessionId)},${escapeCsv(runId)},${escapeCsv(stageLabel)},${escapeCsv(leiaName)},${escapeCsv(userId)},${startedAt},${finishedAt},${messageText},${isLeia},${sender},${timestamp},${escapeCsv(evaluationMode)},${score},${evaluation},${submittedSolution}${rubricSuffix}\n`;
         }
       } else {
-        csv += `${escapeCsv(sessionId)},${escapeCsv(runId)},${escapeCsv(stageLabel)},${escapeCsv(leiaName)},${escapeCsv(userId)},${startedAt},${finishedAt},"No messages",,,,${score},${evaluation},${submittedSolution}\n`;
+        csv += `${escapeCsv(sessionId)},${escapeCsv(runId)},${escapeCsv(stageLabel)},${escapeCsv(leiaName)},${escapeCsv(userId)},${startedAt},${finishedAt},"No messages",,,,${escapeCsv(evaluationMode)},${score},${evaluation},${submittedSolution}${rubricSuffix}\n`;
       }
     }
 

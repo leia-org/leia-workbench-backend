@@ -235,6 +235,17 @@ export const toggleEvaluateSolution = async (req, res, next) => {
   }
 };
 
+export const updateEvaluationMode = async (req, res, next) => {
+  try {
+    const { id, leiaId } = req.params;
+    const { evaluationMode } = req.body || {};
+    const updatedReplication = await ReplicationService.updateEvaluationMode(id, leiaId, evaluationMode);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const toggleShowSolution = async (req, res, next) => {
   try {
     const { id, leiaId } = req.params;

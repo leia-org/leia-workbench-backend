@@ -13,15 +13,17 @@ import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
 import { randomInt, randomUUID } from 'crypto';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
-import { resolveStageLeias } from './ActivityStageService.js';
+import { resolvePreviousStageOutputs, resolveStageLeias } from './ActivityStageService.js';
 import {
   activityError,
   activityFlows,
   getConversationRequirementForLeia,
   getStageOutputSourcesMap,
+  referencePattern,
   stageExperiment,
   stageProgress,
 } from '../../utils/activityStages.js';
+import { resolveEvaluationMode } from '../../utils/rubricEvaluation.js';
 
 const stageInitializations = new Map();
 const TIMER_EXPIRY_GRACE_MS = 5000;
@@ -586,8 +588,14 @@ class InteractionService {
       typeof leia.leia?.spec?.problem?.spec?.solution === 'string' &&
       leia.leia.spec.problem.spec.solution.trim()
     );
+    const evaluationMode = resolveEvaluationMode(leia.configuration);
+    leia.configuration = {
+      ...leia.configuration,
+      evaluationMode,
+    };
     const showSolutionEnabled =
-      Boolean(leia.configuration?.askSolution) && leia.configuration?.showSolution !== false;
+      (Boolean(leia.configuration?.askSolution) || evaluationMode === 'rubric') &&
+      leia.configuration?.showSolution !== false;
     const conversationRequiredForNextStage = Boolean(getConversationRequirementForLeia(experiment, leia));
 
     if (!session.finishedAt || !showSolutionEnabled) {
@@ -595,6 +603,9 @@ class InteractionService {
     }
     if (!session.finishedAt) {
       delete leia.leia.spec.problem.spec.evaluationPrompt;
+      if (leia.leia?.spec?.rubric?.spec) {
+        delete leia.leia.spec.rubric.spec.evaluationPrompt;
+      }
     }
 
     delete leia.leia.spec.behaviour.spec.description;
@@ -664,6 +675,8 @@ class InteractionService {
     if (!showSolutionEnabled) {
       delete sessionData.evaluation;
       delete sessionData.score;
+      delete sessionData.evaluationMode;
+      delete sessionData.rubricEvaluation;
     }
     if (progress) sessionData.stage = progress;
     sessionData.conversationDynamics = publicDynamicsState(session, leia);
@@ -1014,27 +1027,95 @@ class InteractionService {
         await ActivityRunService.markFinished(session.run, session.finishedAt);
       }
       if (dynamicsLeia) SupervisorService.observeAsync(session.id, dynamicsLeia, { force: true });
+      const evalMode = resolveEvaluationMode(dynamicsLeia?.configuration);
       if (
-        dynamicsLeia?.configuration?.evaluateSolution &&
+        evalMode !== 'none' &&
         dynamicsLeia?.configuration?.showSolution === false &&
-        typeof result === 'string' &&
-        result.trim()
+        (evalMode === 'rubric' || (typeof result === 'string' && result.trim()))
       ) {
         this.evaluateSessionAsync(session.id, result);
       }
     }
 
     const finalLeia = await ReplicationService.findLeia(session.replication, session.leia);
+    const finalEvalMode = resolveEvaluationMode(finalLeia?.configuration);
     const hideEvaluation =
-      finalLeia?.configuration?.showSolution === false || finalLeia?.configuration?.askSolution === false;
+      finalLeia?.configuration?.showSolution === false ||
+      (finalLeia?.configuration?.askSolution === false && finalEvalMode !== 'rubric');
     return await this.finishedSessionData(session, { hideEvaluation });
+  }
+
+  async executeSessionEvaluation(session, leia, replication) {
+    const evaluationMode = resolveEvaluationMode(leia?.configuration);
+    if (evaluationMode === 'rubric') {
+      const rubric = leia?.leia?.spec?.rubric;
+      if (!rubric?.spec?.sections?.length) {
+        throw activityError('Rubric is missing for this LEIA', 400);
+      }
+      const messages = await MessageService.findBySession(session.id);
+      const currentConversation = (messages || [])
+        .filter((message) => !session.finishedAt || message.timestamp <= session.finishedAt)
+        .map((message) => ({
+          role: message.senderType || (message.isLeia ? 'agent' : 'participant'),
+          ...(message.senderName ? { speaker: message.senderName } : {}),
+          text: message.text,
+        }));
+      const promptTemplate = rubric.spec.evaluationPrompt || '';
+      const requestedPrevious = new Set(
+        [...promptTemplate.matchAll(referencePattern)].map((match) => match[1])
+      );
+      const previousOutputs = requestedPrevious.size
+        ? await resolvePreviousStageOutputs(session, requestedPrevious)
+        : {};
+      const runnerConfiguration = leia?.runnerConfiguration
+        ? {
+            ...leia.runnerConfiguration,
+            apiKeyRequesterId:
+              leia.runnerConfiguration.apiKeyRequesterId ||
+              (replication?.user ? String(replication.user) : undefined),
+          }
+        : undefined;
+      const res = await RunnerService.getEvaluationAndScore(session.id, session.result, {
+        evaluationMode: 'rubric',
+        rubric,
+        context: {
+          currentStage: {
+            outputs: {
+              conversation: currentConversation,
+              submitedSolution: session.result ?? null,
+            },
+          },
+          ...(requestedPrevious.size ? { previousStage: { outputs: previousOutputs } } : {}),
+        },
+        language: replication?.language || 'en',
+        runnerConfiguration,
+      });
+      return await SessionService.saveEvaluationAndScore(session.id, res.evaluation, res.score, {
+        evaluationMode: 'rubric',
+        rubricEvaluation: res.rubricEvaluation,
+      });
+    }
+
+    const res = await RunnerService.getEvaluationAndScore(session.id, session.result);
+    return await SessionService.saveEvaluationAndScore(session.id, res.evaluation, res.score);
   }
 
   evaluateSessionAsync(sessionId, result) {
     Promise.resolve()
       .then(async () => {
-        const res = await RunnerService.getEvaluationAndScore(sessionId, result);
-        await SessionService.saveEvaluationAndScore(sessionId, res.evaluation, res.score);
+        const session = await SessionService.findById(sessionId);
+        if (!session) return;
+        const [leia, replication] = await Promise.all([
+          ReplicationService.findLeia(session.replication, session.leia),
+          typeof ReplicationService.findById === 'function'
+            ? ReplicationService.findById(session.replication)
+            : null,
+        ]);
+        const effectiveSession =
+          result !== undefined && session.result === undefined
+            ? { ...(typeof session.toJSON === 'function' ? session.toJSON() : session), id: session.id, result }
+            : session;
+        await this.executeSessionEvaluation(effectiveSession, leia, replication);
         logger.info(`Background evaluation saved for session ${sessionId}`);
       })
       .catch((error) => {
@@ -1047,6 +1128,8 @@ class InteractionService {
     if (hideEvaluation) {
       delete data.evaluation;
       delete data.score;
+      delete data.evaluationMode;
+      delete data.rubricEvaluation;
     }
     if (session.stageId && typeof ReplicationService.findById === 'function') {
       const replication = await ReplicationService.findById(session.replication);
@@ -1119,10 +1202,20 @@ class InteractionService {
     const finishedLeia = await ReplicationService.findLeia(session.replication, session.leia);
     if (finishedLeia) SupervisorService.observeAsync(session.id, finishedLeia, { force: true });
 
-    await RunnerService.deleteCache(session.id);
-    logger.info(`Cache deleted for session ${session.id}`);
+    const finishedEvalMode = resolveEvaluationMode(finishedLeia?.configuration);
+    if (finishedEvalMode === 'rubric') {
+      if (finishedLeia?.configuration?.showSolution === false) {
+        this.evaluateSessionAsync(session.id);
+      }
+    } else {
+      await RunnerService.deleteCache(session.id);
+      logger.info(`Cache deleted for session ${session.id}`);
+    }
 
-    return await this.finishedSessionData(session);
+    const hideEvaluation =
+      finishedLeia?.configuration?.showSolution === false ||
+      (finishedLeia?.configuration?.askSolution === false && finishedEvalMode !== 'rubric');
+    return await this.finishedSessionData(session, { hideEvaluation });
   }
 
   async saveDraft(sessionId, draft) {
@@ -1149,8 +1242,17 @@ class InteractionService {
       throw error;
     }
 
-    const leia = await ReplicationService.findLeia(session.replication, session.leia);
-    if (leia?.configuration?.showSolution === false || leia?.configuration?.askSolution === false) {
+    const [leia, replication] = await Promise.all([
+      ReplicationService.findLeia(session.replication, session.leia),
+      typeof ReplicationService.findById === 'function'
+        ? ReplicationService.findById(session.replication)
+        : null,
+    ]);
+    const evaluationMode = resolveEvaluationMode(leia?.configuration);
+    if (
+      leia?.configuration?.showSolution === false ||
+      (leia?.configuration?.askSolution === false && evaluationMode !== 'rubric')
+    ) {
       throw activityError('Evaluation is hidden for this stage', 403);
     }
 
@@ -1161,18 +1263,22 @@ class InteractionService {
         throw error;
       }
 
-      if (!session.result) {
+      if (evaluationMode !== 'rubric' && !session.result) {
         const error = new Error('Session has no result yet');
         error.statusCode = 403;
         throw error;
       }
 
       logger.info('Session has no evaluation yet, trying to get it from the runner');
-      const res = await RunnerService.getEvaluationAndScore(session.id, session.result);
-      session = await SessionService.saveEvaluationAndScore(session.id, res.evaluation, res.score);
+      session = await this.executeSessionEvaluation(session, leia, replication);
       logger.info('Session evaluation saved');
     }
-    return { evaluation: session.evaluation, score: session.score };
+    return {
+      evaluation: session.evaluation,
+      score: session.score,
+      ...(session.evaluationMode ? { evaluationMode: session.evaluationMode } : {}),
+      ...(session.rubricEvaluation ? { rubricEvaluation: session.rubricEvaluation } : {}),
+    };
   }
 }
 

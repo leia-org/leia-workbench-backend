@@ -121,8 +121,36 @@ class SessionService {
     return await SessionRepository.update(id, { score });
   }
 
-  async saveEvaluationAndScore(id, evaluation, score) {
-    return await SessionRepository.update(id, { score, evaluation });
+  async saveEvaluationAndScore(id, evaluation, score, details = {}) {
+    const updates = {
+      score,
+      evaluation,
+      ...(details.evaluationMode ? { evaluationMode: details.evaluationMode } : {}),
+      ...(details.rubricEvaluation !== undefined ? { rubricEvaluation: details.rubricEvaluation } : {}),
+    };
+    const updated = await SessionRepository.update(id, updates);
+    if (updated) {
+      this.emitEvaluated(id, updated);
+    }
+    return updated;
+  }
+
+  emitEvaluated(id, session) {
+    try {
+      const payload = {
+        sessionId: id,
+        score: session.score,
+        evaluationMode: session.evaluationMode || (session.rubricEvaluation ? 'rubric' : 'classic'),
+        evaluation: session.evaluation,
+        ...(session.rubricEvaluation ? { rubricEvaluation: session.rubricEvaluation } : {}),
+      };
+      emitToSession(id, 'session:evaluated', payload);
+      if (session.replication) {
+        emitToReplication(session.replication.toString(), 'session:evaluated', payload);
+      }
+    } catch (error) {
+      console.error('Failed to emit session evaluated via WebSocket:', error);
+    }
   }
 
   async addMessage(id, messageId) {

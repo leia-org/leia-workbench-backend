@@ -12,12 +12,8 @@ function isValidSourceSession(candidate, session) {
   );
 }
 
-export async function resolveStageLeias(session, entries) {
-  if (!session?.stageId) return entries;
-  const description = (entry) => entry.leia?.spec?.behaviour?.spec?.description || '';
-  const requested = new Set(entries.flatMap((entry) =>
-    [...description(entry).matchAll(referencePattern)].map((match) => match[1])));
-  if (!requested.size) return entries;
+export async function resolvePreviousStageOutputs(session, requested) {
+  if (!session?.stageId || !requested?.size) return {};
 
   const targetStageByOutput = new Map();
   const neededStageIds = new Set();
@@ -80,6 +76,18 @@ export async function resolveStageLeias(session, entries) {
     const source = sourcesByStageId.get(targetStageByOutput.get('submitedSolution'));
     values.submitedSolution = source.result ?? null;
   }
+
+  return values;
+}
+
+export async function resolveStageLeias(session, entries) {
+  if (!session?.stageId) return entries;
+  const description = (entry) => entry.leia?.spec?.behaviour?.spec?.description || '';
+  const requested = new Set(entries.flatMap((entry) =>
+    [...description(entry).matchAll(referencePattern)].map((match) => match[1])));
+  if (!requested.size) return entries;
+
+  const values = await resolvePreviousStageOutputs(session, requested);
 
   return entries.map((entry) => {
     const template = description(entry);
