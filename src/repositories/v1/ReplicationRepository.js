@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { replicationOwnershipQuery } from '../../utils/replicationOwnership.js';
 import Replication from '../../models/Replication.js';
 import { regexQuery } from '../../utils/search.js';
 class ReplicationRepository {
@@ -19,9 +20,7 @@ class ReplicationRepository {
     return { replications, nextCursor };
   }
   async findAllByUser(userId, lastReplicationId, text) {
-    const query = {
-      $or: [{ 'experiment.user.id': userId }, { 'experiment.user._id': userId }, { 'experiment.user': userId }],
-    };
+    const query = replicationOwnershipQuery(userId);
     if (lastReplicationId) {
       query._id = { $gt: new mongoose.Types.ObjectId(`${lastReplicationId}`) };
     }
@@ -112,10 +111,28 @@ class ReplicationRepository {
     });
   }
 
-  async updateAskSolution(id, leiaId, askSolution) {
+  async updateAskSolution(id, leiaId, askSolution, { clearShowSolution = true } = {}) {
+    const update = { 'experiment.leias.$.configuration.askSolution': askSolution };
+    if (!askSolution && clearShowSolution) {
+      update['experiment.leias.$.configuration.showSolution'] = false;
+    }
     return await Replication.findOneAndUpdate(
       { _id: id, 'experiment.leias.id': leiaId },
-      { $set: { 'experiment.leias.$.configuration.askSolution': askSolution } },
+      { $set: update },
+      { new: true }
+    );
+  }
+
+  async updateEvaluationConfiguration(id, leiaId, fields) {
+    const update = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) {
+        update[`experiment.leias.$.configuration.${key}`] = value;
+      }
+    }
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.leias.id': leiaId },
+      { $set: update },
       { new: true }
     );
   }
@@ -129,12 +146,38 @@ class ReplicationRepository {
   }
 
   async updateAskSolutionAndEvaluateSolution(id, leiaId, askSolution, evaluateSolution) {
+    const update = {
+      'experiment.leias.$.configuration.askSolution': askSolution,
+      'experiment.leias.$.configuration.evaluateSolution': evaluateSolution,
+    };
+    if (!evaluateSolution) {
+      update['experiment.leias.$.configuration.evaluationMode'] = 'none';
+    }
+    if (!askSolution) {
+      update['experiment.leias.$.configuration.showSolution'] = false;
+    }
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.leias.id': leiaId },
+      { $set: update },
+      { new: true }
+    );
+  }
+
+  async updateShowSolution(id, leiaId, showSolution) {
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.leias.id': leiaId },
+      { $set: { 'experiment.leias.$.configuration.showSolution': showSolution } },
+      { new: true }
+    );
+  }
+
+  async updateAskSolutionAndShowSolution(id, leiaId, askSolution, showSolution) {
     return await Replication.findOneAndUpdate(
       { _id: id, 'experiment.leias.id': leiaId },
       {
         $set: {
           'experiment.leias.$.configuration.askSolution': askSolution,
-          'experiment.leias.$.configuration.evaluateSolution': evaluateSolution,
+          'experiment.leias.$.configuration.showSolution': showSolution,
         },
       },
       { new: true }

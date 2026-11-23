@@ -7,6 +7,10 @@ import logger from '../../utils/logger.js';
 const DEFAULT_EVERY_N = 4;
 const TRANSCRIPT_WINDOW = 12; // messages of context sent to the supervisor
 const EXISTING_FLAGS_WINDOW = 30;
+// Runner module behind OpenAI keys. The runner resolves the supervisor key as an
+// OpenAI key, so a LEIA key from any other provider (alma, gemini, ollama) is
+// rejected by leia-auth and the supervisor pass fails.
+const OPENAI_PROVIDER_MODULE = 'openai-responses';
 
 // Background supervisor: a per-LEIA LLM (configured by the instructor in the
 // designer, at `leia.leia.spec.supervisorConfig`) that observes the activity
@@ -75,6 +79,23 @@ function filterDuplicateFlags(flags, existingFlags) {
   });
 }
 
+// The supervisor's BYOK key: its own one (chosen in the designer) or, failing
+// that, the LEIA's runner key when that key is OpenAI. Id and requester always
+// come from the same source, so they never mix two different keys.
+function resolveSupervisorKey(supervisorConfig, runnerConfiguration) {
+  if (supervisorConfig.apiKeyId && supervisorConfig.apiKeyRequesterId) {
+    return { apiKeyId: supervisorConfig.apiKeyId, apiKeyRequesterId: supervisorConfig.apiKeyRequesterId };
+  }
+  if (
+    runnerConfiguration.provider === OPENAI_PROVIDER_MODULE &&
+    runnerConfiguration.apiKeyId &&
+    runnerConfiguration.apiKeyRequesterId
+  ) {
+    return { apiKeyId: runnerConfiguration.apiKeyId, apiKeyRequesterId: runnerConfiguration.apiKeyRequesterId };
+  }
+  return null;
+}
+
 class SupervisorService {
   // Fire-and-forget: swallow every error, the activity must not be affected.
   observeAsync(sessionId, leia, options = {}) {
@@ -93,12 +114,15 @@ class SupervisorService {
     // provider. Prefer its dedicated OpenAI key (chosen in the designer); fall
     // back to the LEIA's runner key only when that key is itself OpenAI.
     const runnerConfiguration = leia.runnerConfiguration || {};
-    const apiKeyId = supervisorConfig.apiKeyId || runnerConfiguration.apiKeyId;
-    const apiKeyRequesterId = supervisorConfig.apiKeyRequesterId || runnerConfiguration.apiKeyRequesterId;
-    if (!apiKeyId || !apiKeyRequesterId) {
-      logger.warn(`Supervisor enabled but no OpenAI BYOK key for session ${sessionId}; skipping.`);
+    const supervisorKey = resolveSupervisorKey(supervisorConfig, runnerConfiguration);
+    if (!supervisorKey) {
+      logger.warn(
+        `Supervisor enabled but no OpenAI BYOK key for session ${sessionId} ` +
+          `(LEIA provider: ${runnerConfiguration.provider || 'none'}); skipping.`
+      );
       return;
     }
+    const { apiKeyId, apiKeyRequesterId } = supervisorKey;
 
     const session = await SessionService.findById(sessionId);
     if (!session) return;

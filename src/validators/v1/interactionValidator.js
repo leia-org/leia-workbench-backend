@@ -7,11 +7,16 @@ export const startSessionValidator = Joi.object({
 
 export const startTestSessionValidator = Joi.object({
   replicationId: Joi.string().hex().length(24).required(),
+  staged: Joi.boolean().default(false),
   multiLeia: Joi.boolean().default(false),
-  leiaId: Joi.when('multiLeia', {
+  leiaId: Joi.string().hex().length(24).when('staged', {
     is: true,
-    then: Joi.string().hex().length(24).allow(null).optional(),
-    otherwise: Joi.string().hex().length(24).required(),
+    then: Joi.optional().allow(null),
+    otherwise: Joi.when('multiLeia', {
+      is: true,
+      then: Joi.optional().allow(null),
+      otherwise: Joi.required(),
+    }),
   }),
 });
 

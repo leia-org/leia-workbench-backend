@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireTestRunsPreview } from '../../config/testRuns.js';
 import {
   startSession,
   getSessionData,
@@ -11,6 +12,8 @@ import {
   finishSession,
   saveDraft,
   getConversationDynamics,
+  continueStage,
+  createTestRun,
 } from '../../controllers/v1/interactionController.js';
 import { authContext } from '../../middlewares/auth.js';
 
@@ -23,7 +26,9 @@ router.post('/:sessionId/messages', sendSessionMessage);
 router.post('/:sessionId/messages/stream', streamSessionMessage);
 router.post('/:sessionId/result', saveResultAndFinishSession);
 router.post('/:sessionId/finish', finishSession);
+router.post('/:sessionId/next-stage', continueStage);
 router.post('/:sessionId/draft', saveDraft);
+router.post('/:sessionId/test-runs', requireTestRunsPreview, createTestRun);
 
 // GET
 router.get('/:sessionId', getSessionData);

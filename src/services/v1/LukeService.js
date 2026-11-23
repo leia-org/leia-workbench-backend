@@ -3,6 +3,7 @@ import { createLukeServer, gemini } from '@leia-org/luke-server';
 import { openai } from '../../providers/lukeOpenAI.js';
 import { appendOpeningPrompt } from '../../utils/openingPrompt.js';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
+import { resolveStageLeias } from './ActivityStageService.js';
 import ReplicationService from './ReplicationService.js';
 import MessageService from './MessageService.js';
 import SessionService from './SessionService.js';
@@ -11,6 +12,21 @@ import logger from '../../utils/logger.js';
 import jwt from 'jsonwebtoken';
 
 class LukeService {
+  constructor() {
+    this.historyWrites = new Map();
+  }
+
+  async flushSessionHistory(sessionId) {
+    const pending = this.historyWrites.get(String(sessionId));
+    if (!pending) return false;
+    try {
+      await pending;
+    } catch {
+      // Errors during transcription persistence are already logged in saveHistory.
+    }
+    return true;
+  }
+
   initialize(httpServer) {
     const providers = [];
 
@@ -36,7 +52,7 @@ class LukeService {
     // Luke invokes saveHistory without awaiting it. Serialize each session's
     // writes so database timestamps, socket events and observers see the same
     // order as the provider, including after a reconnect/provider switch.
-    const historyWrites = new Map();
+    const historyWrites = this.historyWrites;
     const trackedProviders = providers.map((provider) => ({
       ...provider,
       connect: async (config) => {
@@ -103,7 +119,8 @@ class LukeService {
         },
         getSystemInstruction: async (userSession) => {
           if (!userSession?.leia) return undefined;
-          const instructions = buildInstructions(userSession.leia);
+          const [leia] = await resolveStageLeias(userSession.session, [userSession.leia]);
+          const instructions = buildInstructions(leia);
           const opening = getDynamics(userSession.leia).leiaSpeaksFirst;
           if (opening?.enabled !== true || !opening.config?.firstMessage) return instructions;
           // Live's system prompt is set before onConnect/audio readiness. Give
@@ -329,7 +346,7 @@ function baseWidgetDescription(widgetType, slot) {
         `- Widget "codeEditor" (in the ${slot} panel): a live Monaco code editor the user can see and edit, with a configured problem and test suite. Supports JavaScript and Python (Python runs in-browser via PyScript). Three tools are available:`,
         '    * codeEditor_read() → returns { content, language, fnName }. Call FIRST whenever you need to know what the user wrote, before commenting on or editing the code. Never claim you cannot see the editor — always read.',
         '    * codeEditor_applyDiff({ edits: [{find, replace}, ...] }) → edits the user\'s code with search-and-replace pairs. Each `find` must appear exactly ONCE in the current content (include surrounding context to make it unique). Returns { applied, errors, content }. Use this to fix bugs, add comments, or rewrite a function — always read first so you know the exact text to target. If errors come back saying \'find not present\' or \'multiple occurrences\', read again and retry with a more specific anchor.',
-        '    * codeEditor_runTests() → executes the user\'s current code against the problem\'s test suite and returns { passed, failed, total, language, fnName, results: [{name, ok, error?, expected?, actual?}], error? }. Call this when the user asks you to "check", "run", "verify", "test", or says "I think I got it" / "try it". After running, summarise the outcome out loud: which tests passed, which failed, why (using `expected` vs `actual` or the `error` field), and suggest a fix if any failed. The widget shows the results visually but the user is in voice mode and relies on you.',
+        '    * codeEditor_runTests() → executes the user\'s current code against the problem\'s test suite and returns { passed, failed, total, language, fnName, results: [{name, ok, error?, expected?, actual?}], error? }. Call this when the user asks you to "check", "run", "verify", "test", or says "I think I got it" / "try it". After running, summarise the outcome out loud: which tests passed, which failed, why (using `expected` vs `actual` or the `error` field), and suggest a fix if any failed. The widget shows the results visually but the user is in voice mode and relies on you. The user can also run the tests themself with the widget\'s "Run tests" button and you are not told when they do, so call this tool whenever you need the current results instead of assuming the last ones you saw.',
       ].join('\n');
     default:
       return null;

@@ -102,12 +102,31 @@ class RunnerService {
     return response.data;
   }
 
+  async getMultiLeiaState(sessionId) {
+    const response = await axios.get(`${process.env.RUNNER_URL}/api/v1/multi-leias/${sessionId}`, {
+      headers: { Authorization: 'Bearer ' + process.env.RUNNER_KEY },
+    });
+    return response.data;
+  }
+
   async sendMessage(sessionId, message, options = {}) {
     const body = {};
     if (options.opening === true) body.opening = true;
     if (typeof message === 'string' && message.length > 0) body.message = message;
     if (Array.isArray(options.tools) && options.tools.length > 0) body.tools = options.tools;
     if (Array.isArray(options.toolResults) && options.toolResults.length > 0) body.toolResults = options.toolResults;
+    // Untrusted hidden context for this turn (e.g. test runs the student
+    // started). Only meaningful next to a user message; the runner answers
+    // `contextApplied: true` when it used it.
+    if (
+      typeof options.context === 'string' &&
+      options.context.length > 0 &&
+      body.message &&
+      !body.opening &&
+      !body.toolResults
+    ) {
+      body.context = options.context;
+    }
 
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/leias/${sessionId}/messages`,
@@ -182,21 +201,32 @@ class RunnerService {
     return completion;
   }
 
-  async getEvaluationAndScore(sessionId, result) {
+  async getEvaluationAndScore(sessionId, result, options = {}) {
+    const payload = {
+      sessionId,
+      ...(result !== undefined && result !== null ? { result } : {}),
+      ...(options.evaluationMode ? { evaluationMode: options.evaluationMode } : {}),
+      ...(options.rubric ? { rubric: options.rubric } : {}),
+      ...(options.context ? { context: options.context } : {}),
+      ...(options.language ? { language: options.language } : {}),
+      ...(options.runnerConfiguration ? { runnerConfiguration: options.runnerConfiguration } : {}),
+    };
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/evaluation`,
-      {
-        sessionId,
-        result,
-      },
+      payload,
       {
         headers: {
           Authorization: 'Bearer ' + process.env.RUNNER_KEY,
         },
       }
     );
-    const { evaluation, score } = response.data;
-    return { evaluation, score };
+    const { evaluation, score, evaluationMode, rubricEvaluation } = response.data;
+    return {
+      evaluation,
+      score,
+      ...(evaluationMode ? { evaluationMode } : {}),
+      ...(rubricEvaluation ? { rubricEvaluation } : {}),
+    };
   }
 
   async deleteCache(sessionId) {

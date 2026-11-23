@@ -59,6 +59,8 @@ paths:
     $ref: './paths/v1/replications/_id-leia-_leiaId-toggleAskSolution.yaml'
   /v1/replications/{id}/leia/{leiaId}/toggle-evaluate-solution:
     $ref: './paths/v1/replications/_id-leia-_leiaId-toggleEvaluateSolution.yaml'
+  /v1/replications/{id}/leia/{leiaId}/toggle-show-solution:
+    $ref: './paths/v1/replications/_id-leia-_leiaId-toggleShowSolution.yaml'
   /v1/replications/{id}/regenerate-code:
     $ref: './paths/v1/replications/_id-regenerateCode.yaml'
   /v1/replications/{id}/duration:
@@ -75,6 +77,10 @@ paths:
     $ref: './paths/v1/replications/_id-conversations.yaml'
   /v1/replications/{id}/conversations/csv:
     $ref: './paths/v1/replications/_id-conversations-csv.yaml'
+  /v1/replications/{id}/test-runs/csv:
+    $ref: './paths/v1/replications/_id-test-runs-csv.yaml'
+  /v1/replications/{id}/sessions/{sessionId}/test-runs:
+    $ref: './paths/v1/replications/_id-sessions-_sessionId-test-runs.yaml'
   /v1/replications/exists/{name}:
     $ref: './paths/v1/replications/exists-_name.yaml'
 
@@ -95,12 +101,16 @@ paths:
     $ref: './paths/v1/interactions/_sessionId-conversation-dynamics.yaml'
   /v1/interactions/{sessionId}/finish:
     $ref: './paths/v1/interactions/_sessionId-finish.yaml'
+  /v1/interactions/{sessionId}/next-stage:
+    $ref: './paths/v1/interactions/_sessionId-next-stage.yaml'
   /v1/interactions/{sessionId}/evaluation:
     $ref: './paths/v1/interactions/_sessionId-evaluation.yaml'
   /v1/interactions/{sessionId}/solution:
     $ref: './paths/v1/interactions/_sessionId-solution.yaml'
   /v1/interactions/{sessionId}/draft:
     $ref: './paths/v1/interactions/_sessionId-draft.yaml'
+  /v1/interactions/{sessionId}/test-runs:
+    $ref: './paths/v1/interactions/_sessionId-test-runs.yaml'
 
   # Runner
   /v1/runner/models:

@@ -4,6 +4,10 @@ import generatePassword from 'omgopass';
 
 const ReplicationSchema = new Schema(
   {
+    user: {
+      type: Schema.Types.ObjectId,
+      alias: 'userId',
+    },
     name: {
       type: String,
       required: true,

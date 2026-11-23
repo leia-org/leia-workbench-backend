@@ -3,6 +3,8 @@ import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import SessionService from '../../services/v1/SessionService.js';
 import ReplicationService from '../../services/v1/ReplicationService.js';
 import InteractionService from '../../services/v1/InteractionService.js';
+import TestRunService from '../../services/v1/TestRunService.js';
+import { isTestRunsPreviewEnabled } from '../../config/testRuns.js';
 
 export const generateSpectateToken = async (req, res, next) => {
   try {
@@ -26,12 +28,19 @@ export const getSessionForSpectator = async (req, res, next) => {
     const { id: sessionId } = req.params;
 
     // Verify token (already done in middleware)
-    // Token payload is in req.spectateSession
+    // Token payload is in req.spectateSession / req.spectateRun
 
     if (req.spectateSession !== sessionId) {
-      const error = new Error('Spectate token does not match session');
-      error.statusCode = 403;
-      throw error;
+      let authorizedByRun = false;
+      if (req.spectateRun) {
+        const target = await SessionRepository.findById(sessionId);
+        authorizedByRun = Boolean(target?.run && String(target.run) === String(req.spectateRun));
+      }
+      if (!authorizedByRun) {
+        const error = new Error('Spectate token does not match session');
+        error.statusCode = 403;
+        throw error;
+      }
     }
 
     const data = await InteractionService.getSessionData(sessionId)
@@ -52,21 +61,52 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
       options.userId = userId;
     }
     await ReplicationService.checkAccess(replicationId, req.user.isAdmin, req.user.shareToken);
-    let sessions = await SessionRepository.findByReplicationAndPopulateMessages(replicationId);
+    const [replication, sessions] = await Promise.all([
+      ReplicationService.findById(replicationId),
+      SessionRepository.findByReplicationAndPopulateMessages(replicationId),
+    ]);
+    const stages = replication?.experiment?.stages || [];
+    const stageIndexById = new Map(stages.map(({ id }, index) => [id, index]));
+    const stageTotal = stages.length || null;
+    // Test runs recorded so far, so the dashboard keeps them across a refresh
+    // (live ones arrive afterwards as session:testRun events).
+    const testRunsBySession = isTestRunsPreviewEnabled()
+      ? await TestRunService.liveSummariesBySession(replicationId)
+      : null;
 
     // Format sessions for dashboard
     const formattedSessions = sessions.map((session) => {
       const messages = session.messages || [];
       const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+      const resolvedStageIndex =
+        typeof session.stageIndex === 'number'
+          ? session.stageIndex
+          : session.stageId && stageIndexById.has(session.stageId)
+            ? stageIndexById.get(session.stageId)
+            : null;
+      const flags = req.user.isAdmin && Array.isArray(session.supervisorFlags) ? session.supervisorFlags : undefined;
+      const testRuns = testRunsBySession?.get(String(session.id));
 
       return {
         id: session.id,
+        runId: session.run ? String(session.run) : null,
+        stageId: session.stageId || null,
+        stageNumber: resolvedStageIndex !== null ? resolvedStageIndex + 1 : null,
+        stageTotal,
         user: session.user,
         leia: session.leia,
         startedAt: session.startedAt,
         finishedAt: session.finishedAt,
         isActive: !session.finishedAt,
+        score: session.score ?? null,
+        evaluationMode: session.evaluationMode || (session.rubricEvaluation ? 'rubric' : session.evaluation ? 'classic' : null),
+        evaluation: session.evaluation ?? null,
+        rubricEvaluation: session.rubricEvaluation ?? null,
         messageCount: messages.length,
+        ...(testRunsBySession && {
+          testRunCount: testRuns?.testRunCount || 0,
+          testRuns: testRuns?.testRuns || [],
+        }),
         lastMessage: lastMessage
           ? {
             text: lastMessage.text,
@@ -74,6 +114,7 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
             timestamp: lastMessage.timestamp,
           }
           : null,
+        ...(flags ? { supervisorFlags: flags, supervisorFlagCount: flags.length } : {}),
       };
     });
 

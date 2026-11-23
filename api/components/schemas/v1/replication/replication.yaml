@@ -3,6 +3,14 @@ properties:
   id:
     $ref: '../../mongoId.yaml'
     description: Unique identifier for the replication
+  user:
+    $ref: '../../mongoId.yaml'
+    description: Authenticated user who created the replication; absent in legacy replications
+    readOnly: true
+  userId:
+    $ref: '../../mongoId.yaml'
+    description: Alias of user
+    readOnly: true
   name:
     type: string
   code:

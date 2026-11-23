@@ -1,3 +1,4 @@
+import { ownsReplication } from '../utils/replicationOwnership.js';
 import { verifyToken } from '../utils/jwt.js';
 import logger from '../utils/logger.js';
 import ReplicationService from '../services/v1/ReplicationService.js';
@@ -98,7 +99,14 @@ export async function authContext(req, res, next) {
           return next(error);
         }
 
-        const decoded = verifyToken(parts[1]);
+        let decoded;
+        try {
+          decoded = verifyToken(parts[1]);
+        } catch {
+          const error = new Error('Invalid or expired token');
+          error.statusCode = 401;
+          return next(error);
+        }
 
         req.user = {
           ...decoded,
@@ -117,20 +125,14 @@ export async function authContext(req, res, next) {
         return next(error);
       }
 
-      const replicationOwner =
-        replication.experiment?.user?._id ??
-        replication.experiment?.user?.id ??
-        replication.experiment?.user;
-
-      const isOwner =
-        replicationOwner?.toString() === req.user.id?.toString();
+      const isOwner = ownsReplication(replication, req.user);
 
       const canAccessReplication =
         req.user.isAdmin === true || isOwner;
 
       // checkAccess lanza "Access denied" cuando no tiene acceso
       await ReplicationService.checkAccess(
-        req.params.id,
+        replicationId,
         canAccessReplication,
         req.user.shareToken
       );

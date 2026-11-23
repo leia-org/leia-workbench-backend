@@ -3,6 +3,7 @@ import { createFrontendOriginHandler } from '../utils/frontendOrigins.js';
 import logger from '../utils/logger.js';
 import SpectatorService from '../services/v1/SpectatorService.js';
 import ReplicationService from '../services/v1/ReplicationService.js';
+import SessionRepository from '../repositories/v1/SessionRepository.js';
 import { verifyToken } from '../utils/jwt.js';
 
 let io = null;
@@ -33,6 +34,7 @@ export function initializeSocket(httpServer) {
           spectate: {
             sessionId: decoded.sessionId,
             replicationId: decoded.replicationId,
+            runId: decoded.runId || null,
           },
         };
       } catch (error) {
@@ -93,7 +95,16 @@ export function initializeSocket(httpServer) {
 
         if (socket.user?.spectate) {
           if (socket.user.spectate.sessionId !== sessionId) {
-            throw new Error('Spectate token does not match the requested session');
+            let authorizedByRun = false;
+            if (socket.user.spectate.runId) {
+              const target = await SessionRepository.findById(sessionId);
+              authorizedByRun = Boolean(
+                target?.run && String(target.run) === String(socket.user.spectate.runId)
+              );
+            }
+            if (!authorizedByRun) {
+              throw new Error('Spectate token does not match the requested session');
+            }
           }
         } else if (!socket.user?.isAdmin) {
           throw new Error('Spectate access denied');

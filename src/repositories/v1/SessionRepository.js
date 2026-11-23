@@ -25,6 +25,11 @@ class SessionRepository {
       .populate('user', 'email');
   }
 
+  // Same session set as the conversations export, without loading messages.
+  async findByReplicationWithUser(replicationId) {
+    return await Session.find({ replication: replicationId, isTest: false }).populate('user', 'email');
+  }
+
   async findByReplicationAndLeia(replicationId, leiaId) {
     return await Session.find({ replication: replicationId, leia: leiaId, isTest: false });
   }
@@ -60,6 +65,21 @@ class SessionRepository {
     return await Session.exists({ user: userId, replication: replicationId, finishedAt: { $ne: null }, isTest: false });
   }
 
+  async findLatestStageSession(user, replication) {
+    return await Session.findOne({ user, replication, isTest: false, stageId: { $exists: true } })
+      .sort({ startedAt: -1, _id: -1 });
+  }
+
+  async createStageOnce(sessionData) {
+    try {
+      const session = await this.create(sessionData);
+      return { session, created: true };
+    } catch (error) {
+      if (error.code !== 11000 || !error.keyPattern?.stageRunKey) throw error;
+      return { session: await Session.findOne({ stageRunKey: sessionData.stageRunKey }), created: false };
+    }
+  }
+
   async findActiveByReplication(replicationId, options = {}) {
     const query = {
       replication: replicationId,
@@ -93,6 +113,10 @@ class SessionRepository {
 
   async update(id, sessionData) {
     return await Session.findByIdAndUpdate(id, sessionData, { new: true });
+  }
+
+  async finishStage(id, changes) {
+    return await Session.findOneAndUpdate({ _id: id, finishedAt: null }, changes, { new: true });
   }
 
   async addMessage(id, messageId) {
