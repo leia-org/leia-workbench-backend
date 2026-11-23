@@ -3,6 +3,8 @@ import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import SessionService from '../../services/v1/SessionService.js';
 import ReplicationService from '../../services/v1/ReplicationService.js';
 import InteractionService from '../../services/v1/InteractionService.js';
+import TestRunService from '../../services/v1/TestRunService.js';
+import { isTestRunsPreviewEnabled } from '../../config/testRuns.js';
 
 export const generateSpectateToken = async (req, res, next) => {
   try {
@@ -66,6 +68,11 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
     const stages = replication?.experiment?.stages || [];
     const stageIndexById = new Map(stages.map(({ id }, index) => [id, index]));
     const stageTotal = stages.length || null;
+    // Test runs recorded so far, so the dashboard keeps them across a refresh
+    // (live ones arrive afterwards as session:testRun events).
+    const testRunsBySession = isTestRunsPreviewEnabled()
+      ? await TestRunService.liveSummariesBySession(replicationId)
+      : null;
 
     // Format sessions for dashboard
     const formattedSessions = sessions.map((session) => {
@@ -78,6 +85,7 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
             ? stageIndexById.get(session.stageId)
             : null;
       const flags = req.user.isAdmin && Array.isArray(session.supervisorFlags) ? session.supervisorFlags : undefined;
+      const testRuns = testRunsBySession?.get(String(session.id));
 
       return {
         id: session.id,
@@ -95,6 +103,10 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
         evaluation: session.evaluation ?? null,
         rubricEvaluation: session.rubricEvaluation ?? null,
         messageCount: messages.length,
+        ...(testRunsBySession && {
+          testRunCount: testRuns?.testRunCount || 0,
+          testRuns: testRuns?.testRuns || [],
+        }),
         lastMessage: lastMessage
           ? {
             text: lastMessage.text,

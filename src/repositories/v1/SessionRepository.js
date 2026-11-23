@@ -25,6 +25,11 @@ class SessionRepository {
       .populate('user', 'email');
   }
 
+  // Same session set as the conversations export, without loading messages.
+  async findByReplicationWithUser(replicationId) {
+    return await Session.find({ replication: replicationId, isTest: false }).populate('user', 'email');
+  }
+
   async findByReplicationAndLeia(replicationId, leiaId) {
     return await Session.find({ replication: replicationId, leia: leiaId, isTest: false });
   }
