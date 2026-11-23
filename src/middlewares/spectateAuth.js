@@ -14,6 +14,7 @@ export function requireSpectateToken(req, res, next) {
     const decoded = SpectatorService.verifySpectateToken(token);
     req.spectateSession = decoded.sessionId;
     req.spectateReplication = decoded.replicationId;
+    req.spectateRun = decoded.runId || null;
     next();
   } catch (error) {
     logger.error('Spectate token verification failed:', error);

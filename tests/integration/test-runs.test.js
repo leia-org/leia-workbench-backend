@@ -43,6 +43,7 @@ const join = async (email, code) => (await (await request('/interactions', 'POST
 beforeAll(async () => {
   vi.stubEnv('JWT_SECRET', 'integration-signing-secret'); vi.stubEnv('JWT_ISSUER', ''); vi.stubEnv('JWT_AUDIENCE', '');
   vi.stubEnv('RUNNER_KEY', 'integration-runner');
+  vi.stubEnv('FRONTEND_URL', 'https://pre.workbench.leia.ovh');
   await connectMongo(); await Replication.init(); await TestRun.init();
   const peer = express(); peer.use(express.json());
   peer.post('/api/v1/leias', (req, res) => res.status(201).json({ sessionId: req.body.sessionId }));
@@ -155,7 +156,7 @@ test('instructors read summaries in lists, code on demand and a CSV; students an
   expect(csv).toContain('"function twoSum(nums, target) {\n  return ""a, b"";\n}\n"');
   expect(csv).not.toContain('hidden test session code');
   const conversationsCsv = await (await request(`/replications/${replication.id}/conversations/csv?token=share-coding`)).text();
-  expect(conversationsCsv.split('\n')[0]).toBe('Session ID,User,Started At,Finished At,Message,Is LEIA,Timestamp,Score,Evaluation');
+  expect(conversationsCsv.split('\n')[0]).toBe('Session ID,Run ID,Stage,LEIA,User,Started At,Finished At,Message,Is LEIA,Sender,Timestamp,Evaluation Mode,Score,Evaluation,Submitted Solution');
   expect(conversationsCsv).not.toContain('twoSum');
 
   const live = await (await request(`/spectator/replications/${replication.id}/sessions?token=share-coding`)).json();
@@ -163,7 +164,21 @@ test('instructors read summaries in lists, code on demand and a CSV; students an
   expect(liveSession.testRunCount).toBe(2);
   expect(liveSession.testRuns.every((run) => !('code' in run))).toBe(true);
 
-  const studentView = JSON.stringify(await (await request(`/interactions/${sessionId}`)).json());
-  expect(studentView).not.toContain('testRuns');
-  expect(studentView).not.toContain('reportedToLeiaAt');
+  const studentView = await (await request(`/interactions/${sessionId}`)).json();
+  expect(studentView.leia.testRunsEnabled).toBe(true);
+  expect(studentView.session).not.toHaveProperty('testRuns');
+  expect(JSON.stringify(studentView)).not.toContain('reportedToLeiaAt');
+});
+
+test('production keeps test-run routes and student capability disabled', async () => {
+  vi.stubEnv('FRONTEND_URL', 'https://workbench.leia.ovh');
+  try {
+    const sessionId = await join('production-guard@example.com', 'RCODE1');
+    const data = await (await request(`/interactions/${sessionId}`)).json();
+    expect(data.leia).not.toHaveProperty('testRunsEnabled');
+    expect((await request(`/interactions/${sessionId}/test-runs`, 'POST', report())).status).toBe(404);
+    expect((await request(`/replications/${replication.id}/test-runs/csv?token=share-coding`)).status).toBe(404);
+  } finally {
+    vi.stubEnv('FRONTEND_URL', 'https://pre.workbench.leia.ovh');
+  }
 });

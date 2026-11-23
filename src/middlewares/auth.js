@@ -132,7 +132,7 @@ export async function authContext(req, res, next) {
 
       // checkAccess lanza "Access denied" cuando no tiene acceso
       await ReplicationService.checkAccess(
-        req.params.id,
+        replicationId,
         canAccessReplication,
         req.user.shareToken
       );

@@ -21,6 +21,7 @@ class SpectatorService {
       sessionId,
       type: 'spectate',
       replicationId: session.replication.toString(),
+      ...(session.run ? { runId: String(session.run) } : {}),
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, {

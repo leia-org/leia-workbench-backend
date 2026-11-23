@@ -2,6 +2,21 @@ import ReplicationRepository from '../../repositories/v1/ReplicationRepository.j
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
+import {
+  activityError,
+  activityFlows,
+  getSolutionRequirementForLeia,
+  getStageProblemLeia,
+  getStagesRequiringSolution,
+} from '../../utils/activityStages.js';
+import {
+  collectRubricCsvColumns,
+  extractRubricCsvValues,
+  hasReferenceSolution,
+  hasRubric,
+  resolveEvaluationMode,
+  rubricRequiresSubmittedSolution,
+} from '../../utils/rubricEvaluation.js';
 import axios from 'axios';
 
 function normalizeProcess(process) {
@@ -143,8 +158,9 @@ class ReplicationService {
       throw error;
     }
     if (!replication.isActive) {
-      if (replication.experiment?.orchestration?.mode === 'multi') {
-        const leias = replication.experiment?.leias || [];
+      for (const flow of activityFlows(replication.experiment)) {
+        if (flow.orchestration?.mode !== 'multi') continue;
+        const leias = flow.leias || [];
         if (leias.length < 2) {
           const error = new Error('MultiLEIA requires at least two LEIAs');
           error.statusCode = 400;
@@ -155,7 +171,22 @@ class ReplicationService {
           error.statusCode = 400;
           throw error;
         }
-        validateMultiLeiaProcesses(replication.experiment);
+        validateMultiLeiaProcesses(flow);
+      }
+      const stagesRequiringSolution = getStagesRequiringSolution(replication.experiment);
+      for (const [sourceStageId, dependentStages] of stagesRequiringSolution.entries()) {
+        const stageIndex = replication.experiment.stages.findIndex(({ id: stageId }) => stageId === sourceStageId);
+        const sourceStage = replication.experiment.stages[stageIndex];
+        const stageLeias = replication.experiment.leias.filter((entry) => entry.stageId === sourceStageId);
+        const targetLeias = sourceStage?.orchestration?.mode === 'multi'
+          ? [getStageProblemLeia(replication.experiment, sourceStage)].filter(Boolean)
+          : stageLeias;
+        if (targetLeias.some((entry) => entry.configuration?.askSolution === false)) {
+          const stageList = dependentStages.map((n) => `Stage ${n}`).join(', ');
+          throw activityError(
+            `Stage ${stageIndex + 1} requires "Ask for student solution" to be enabled because ${stageList} uses its submitted solution`
+          );
+        }
       }
       const invalidLeias = this._getLeiasWithInvalidRunnerConfiguration(replication);
       if (invalidLeias.length > 0) {
@@ -205,11 +236,24 @@ class ReplicationService {
   }
 
   async updateLeiaRunnerConfiguration(id, leiaId, runnerConfiguration) {
+    if (runnerConfiguration.audioMode) {
+      const replication = await ReplicationRepository.findById(id);
+      const experiment = replication?.experiment;
+      const entry = experiment?.leias.find((leia) => String(leia.id) === String(leiaId));
+      const stage = experiment?.stages?.find(({ id: stageId }) => stageId === entry?.stageId);
+      if (stage?.orchestration?.mode === 'multi') {
+        throw activityError('MultiLEIA stages support text mode only');
+      }
+    }
     return await ReplicationRepository.updateLeiaRunnerConfiguration(id, leiaId, runnerConfiguration);
   }
 
   async getAndIncrementNextLeia(id) {
     return await ReplicationRepository.getAndIncrementNextLeia(id);
+  }
+
+  async recordStageAssignment(replicationId, leiaId) {
+    return await ReplicationRepository.incrementLeiaSessionCount(replicationId, leiaId);
   }
 
   async updateForm(id, form) {
@@ -225,85 +269,308 @@ class ReplicationService {
   }
 
   async toggleAskSolution(id, leiaId) {
-    const leia = await ReplicationRepository.findLeia(id, leiaId);
+    const replication = await ReplicationRepository.findById(id);
+    const leia = replication?.experiment?.leias?.find((entry) => String(entry.id) === String(leiaId));
     if (!leia) {
       const error = new Error('Leia not found');
-      error.status = 404;
+      error.statusCode = 404;
       throw error;
+    }
+
+    const stage = replication.experiment?.stages?.find(({ id: stageId }) => stageId === leia.stageId);
+    if (stage?.orchestration?.mode === 'multi') {
+      const problemLeia = getStageProblemLeia(replication.experiment, stage);
+      if (problemLeia && String(problemLeia.id) !== String(leia.id)) {
+        throw activityError('Configure solution settings on the shared problem LEIA for MultiLEIA stages');
+      }
     }
 
     const askSolutionStatus = !leia.configuration.askSolution;
-    const evaluatedSolutionStatus = leia.configuration.evaluateSolution;
+    const evaluationMode = resolveEvaluationMode(leia.configuration);
 
-    let updatedReplication;
+    if (!askSolutionStatus) {
+      const dependentStages = getSolutionRequirementForLeia(replication.experiment, leia);
+      if (dependentStages) {
+        const stageList = dependentStages.map((n) => `Stage ${n}`).join(', ');
+        throw activityError(
+          `Ask for student solution cannot be disabled because ${stageList} uses this stage's submitted solution`
+        );
+      }
+      if (evaluationMode === 'rubric' && rubricRequiresSubmittedSolution(leia)) {
+        throw activityError(
+          'Ask for student solution cannot be disabled because the rubric evaluation prompt references the submitted solution'
+        );
+      }
+    }
 
-    if (!askSolutionStatus && evaluatedSolutionStatus) {
-      updatedReplication = await ReplicationRepository.updateAskSolutionAndEvaluateSolution(
+    if (!askSolutionStatus && evaluationMode === 'classic') {
+      return await ReplicationRepository.updateAskSolutionAndEvaluateSolution(
         id,
         leiaId,
-        askSolutionStatus,
+        false,
         false
       );
-    } else {
-      updatedReplication = await ReplicationRepository.updateAskSolution(id, leiaId, askSolutionStatus);
     }
-    return updatedReplication;
+    if (!askSolutionStatus && evaluationMode === 'rubric') {
+      return await ReplicationRepository.updateAskSolution(id, leiaId, askSolutionStatus, {
+        clearShowSolution: false,
+      });
+    }
+    return await ReplicationRepository.updateAskSolution(id, leiaId, askSolutionStatus);
   }
 
-  async toggleEvaluateSolution(id, leiaId) {
-    const leia = await ReplicationRepository.findLeia(id, leiaId);
+  async updateEvaluationMode(id, leiaId, evaluationMode) {
+    if (!['none', 'classic', 'rubric'].includes(evaluationMode)) {
+      throw activityError("Invalid evaluation mode. Expected 'none', 'classic', or 'rubric'");
+    }
+    const replication = await ReplicationRepository.findById(id);
+    const leia = replication?.experiment?.leias?.find((entry) => String(entry.id) === String(leiaId));
     if (!leia) {
       const error = new Error('Leia not found');
       error.status = 404;
+      error.statusCode = 404;
       throw error;
     }
 
-    const askSolutionStatus = leia.configuration.askSolution;
-    const evaluateSolutionStatus = !leia.configuration.evaluateSolution;
+    const stage = replication.experiment?.stages?.find(({ id: stageId }) => stageId === leia.stageId);
+    if (stage?.orchestration?.mode === 'multi') {
+      const problemLeia = getStageProblemLeia(replication.experiment, stage);
+      if (problemLeia && String(problemLeia.id) !== String(leia.id)) {
+        throw activityError('Configure solution settings on the shared problem LEIA for MultiLEIA stages');
+      }
+    }
 
-    let updatedReplication;
+    if (evaluationMode === 'classic') {
+      if (!hasReferenceSolution(leia)) {
+        throw activityError('Classic evaluation requires a reference solution in the problem definition');
+      }
+      return await ReplicationRepository.updateEvaluationConfiguration(id, leiaId, {
+        evaluationMode: 'classic',
+        evaluateSolution: true,
+        ...(leia.configuration.askSolution ? {} : { askSolution: true }),
+      });
+    }
 
-    if (!askSolutionStatus && evaluateSolutionStatus) {
-      updatedReplication = await ReplicationRepository.updateAskSolutionAndEvaluateSolution(
+    if (evaluationMode === 'rubric') {
+      if (!hasRubric(leia)) {
+        throw activityError('Rubric evaluation requires a rubric in the LEIA definition');
+      }
+      const needsSolution = rubricRequiresSubmittedSolution(leia);
+      return await ReplicationRepository.updateEvaluationConfiguration(id, leiaId, {
+        evaluationMode: 'rubric',
+        evaluateSolution: true,
+        ...(needsSolution && !leia.configuration.askSolution ? { askSolution: true } : {}),
+      });
+    }
+
+    const updates = {
+      evaluationMode: 'none',
+      evaluateSolution: false,
+    };
+    if (!leia.configuration.askSolution) {
+      updates.showSolution = false;
+    }
+    return await ReplicationRepository.updateEvaluationConfiguration(id, leiaId, updates);
+  }
+
+  async toggleEvaluateSolution(id, leiaId) {
+    const replication = await ReplicationRepository.findById(id);
+    const leia = replication?.experiment?.leias?.find((entry) => String(entry.id) === String(leiaId));
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.status = 404;
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const currentMode = resolveEvaluationMode(leia.configuration);
+    if (currentMode !== 'none') {
+      return await this.updateEvaluationMode(id, leiaId, 'none');
+    }
+    if (hasReferenceSolution(leia)) {
+      return await this.updateEvaluationMode(id, leiaId, 'classic');
+    }
+    if (hasRubric(leia)) {
+      return await this.updateEvaluationMode(id, leiaId, 'rubric');
+    }
+    throw activityError('Automatic evaluation requires a reference solution in the problem definition');
+  }
+
+  async toggleShowSolution(id, leiaId) {
+    const replication = await ReplicationRepository.findById(id);
+    const leia = replication?.experiment?.leias?.find((entry) => String(entry.id) === String(leiaId));
+    if (!leia) {
+      const error = new Error('Leia not found');
+      error.status = 404;
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const stage = replication.experiment?.stages?.find(({ id: stageId }) => stageId === leia.stageId);
+    if (stage?.orchestration?.mode === 'multi') {
+      const problemLeia = getStageProblemLeia(replication.experiment, stage);
+      if (problemLeia && String(problemLeia.id) !== String(leia.id)) {
+        throw activityError('Configure solution settings on the shared problem LEIA for MultiLEIA stages');
+      }
+    }
+
+    const evaluationMode = resolveEvaluationMode(leia.configuration);
+    const askSolutionStatus = Boolean(leia.configuration.askSolution);
+    const canShowWithoutAsk = evaluationMode === 'rubric';
+    const currentShowSolution = (askSolutionStatus || canShowWithoutAsk) && leia.configuration.showSolution !== false;
+    const showSolutionStatus = !currentShowSolution;
+
+    if (showSolutionStatus) {
+      if (!hasReferenceSolution(leia) && evaluationMode !== 'rubric') {
+        throw activityError('Showing the reference solution requires a reference solution in the problem definition');
+      }
+    }
+
+    if (!askSolutionStatus && showSolutionStatus && evaluationMode !== 'rubric') {
+      return await ReplicationRepository.updateAskSolutionAndShowSolution(
         id,
         leiaId,
         true,
-        evaluateSolutionStatus
+        showSolutionStatus
       );
-    } else {
-      updatedReplication = await ReplicationRepository.updateEvaluateSolution(id, leiaId, evaluateSolutionStatus);
     }
-    return updatedReplication;
+    return await ReplicationRepository.updateShowSolution(id, leiaId, showSolutionStatus);
   }
 
   async getConversations(id) {
-    const sessions = await SessionRepository.findByReplicationAndPopulateMessages(id);
-    return sessions;
+    const [replication, sessions] = await Promise.all([
+      ReplicationRepository.findById(id),
+      SessionRepository.findByReplicationAndPopulateMessages(id),
+    ]);
+    const stages = replication?.experiment?.stages || [];
+    const stageIndexById = new Map(stages.map(({ id: stageId }, index) => [stageId, index]));
+    const stageTotal = stages.length || null;
+
+    return sessions.map((session) => {
+      const data = typeof session.toJSON === 'function' ? session.toJSON() : { ...session };
+      const resolvedStageIndex =
+        typeof data.stageIndex === 'number'
+          ? data.stageIndex
+          : data.stageId && stageIndexById.has(data.stageId)
+            ? stageIndexById.get(data.stageId)
+            : null;
+      return {
+        ...data,
+        runId: data.run ? String(data.run) : null,
+        stageNumber: resolvedStageIndex !== null ? resolvedStageIndex + 1 : null,
+        stageTotal,
+      };
+    });
   }
 
   async getConversationsCSV(id) {
-    const sessions = await SessionRepository.findByReplicationAndPopulateMessages(id);
+    const [replication, sessions] = await Promise.all([
+      ReplicationRepository.findById(id),
+      SessionRepository.findByReplicationAndPopulateMessages(id),
+    ]);
+    const stages = replication?.experiment?.stages || [];
+    const stageIndexById = new Map(stages.map(({ id: stageId }, index) => [stageId, index]));
+    const leiaNameById = new Map();
+    for (const entry of replication?.experiment?.leias || []) {
+      const name = entry?.leia?.metadata?.name || String(entry?.id || '');
+      if (entry?.id) leiaNameById.set(String(entry.id), name);
+      if (entry?.leia?.id) leiaNameById.set(String(entry.leia.id), name);
+    }
+    const escapeCsv = (value) => {
+      if (value === undefined || value === null || value === '') return '';
+      const str = String(value);
+      return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    };
 
-    let csv = 'Session ID,User,Started At,Finished At,Message,Is LEIA,Timestamp,Score,Evaluation\n';
-
+    const runKeyOf = (session) => (session.run ? String(session.run) : String(session.id || ''));
+    const runStartByKey = new Map();
     for (const session of sessions) {
+      const key = runKeyOf(session);
+      const ts = new Date(session.startedAt || 0).getTime();
+      const prev = runStartByKey.get(key);
+      if (prev === undefined || ts < prev) {
+        runStartByKey.set(key, ts);
+      }
+    }
+
+    const sortedSessions = [...sessions].sort((a, b) => {
+      const runA = runKeyOf(a);
+      const runB = runKeyOf(b);
+      if (runA !== runB) {
+        const diff = (runStartByKey.get(runA) ?? 0) - (runStartByKey.get(runB) ?? 0);
+        return diff !== 0 ? diff : runA.localeCompare(runB);
+      }
+      const idxA =
+        typeof a.stageIndex === 'number'
+          ? a.stageIndex
+          : stageIndexById.get(a.stageId) ?? 0;
+      const idxB =
+        typeof b.stageIndex === 'number'
+          ? b.stageIndex
+          : stageIndexById.get(b.stageId) ?? 0;
+      if (idxA !== idxB) return idxA - idxB;
+      return new Date(a.startedAt || 0).getTime() - new Date(b.startedAt || 0).getTime();
+    });
+
+    const rubricColumns = collectRubricCsvColumns(replication, sortedSessions);
+    const baseHeaders = [
+      'Session ID',
+      'Run ID',
+      'Stage',
+      'LEIA',
+      'User',
+      'Started At',
+      'Finished At',
+      'Message',
+      'Is LEIA',
+      'Sender',
+      'Timestamp',
+      'Evaluation Mode',
+      'Score',
+      'Evaluation',
+      'Submitted Solution',
+      ...rubricColumns.map((col) => col.header),
+    ];
+    let csv = `${baseHeaders.map(escapeCsv).join(',')}\n`;
+
+    for (const session of sortedSessions) {
       const sessionId = session.id || '';
+      const runId = session.run ? String(session.run) : '';
+      const resolvedStageIndex =
+        typeof session.stageIndex === 'number'
+          ? session.stageIndex
+          : session.stageId && stageIndexById.has(session.stageId)
+            ? stageIndexById.get(session.stageId)
+            : null;
+      const stageLabel =
+        resolvedStageIndex !== null
+          ? `${resolvedStageIndex + 1}/${stages.length || resolvedStageIndex + 1}`
+          : '';
+      const leiaName = leiaNameById.get(String(session.leia || '')) || String(session.leia || '');
       const userId = session.user?.email || session.user?.id || 'Anonymous';
       const startedAt = session.startedAt ? new Date(session.startedAt).toISOString() : '';
       const finishedAt = session.finishedAt ? new Date(session.finishedAt).toISOString() : '';
-      const score = session.score || '';
-      const evaluation = session.evaluation ? `"${session.evaluation.replace(/"/g, '""')}"` : '';
+      const evaluationMode =
+        session.evaluationMode || (session.rubricEvaluation ? 'rubric' : session.evaluation ? 'classic' : '');
+      const score = session.score ?? '';
+      const evaluation = escapeCsv(session.evaluation);
+      const submittedSolution = escapeCsv(session.result);
+      const rubricCells = extractRubricCsvValues(session.rubricEvaluation, rubricColumns)
+        .map(escapeCsv)
+        .join(',');
+      const rubricSuffix = rubricColumns.length ? `,${rubricCells}` : '';
 
       if (session.messages && session.messages.length > 0) {
         for (const message of session.messages) {
-          const messageText = message.text ? `"${message.text.replace(/"/g, '""')}"` : '';
+          const messageText = escapeCsv(message.text);
           const isLeia = message.isLeia ? 'TRUE' : 'FALSE';
+          const sender = escapeCsv(message.senderName || (message.isLeia ? leiaName : 'Participant'));
           const timestamp = message.timestamp ? new Date(message.timestamp).toISOString() : '';
 
-          csv += `${sessionId},${userId},${startedAt},${finishedAt},${messageText},${isLeia},${timestamp},${score},${evaluation}\n`;
+          csv += `${escapeCsv(sessionId)},${escapeCsv(runId)},${escapeCsv(stageLabel)},${escapeCsv(leiaName)},${escapeCsv(userId)},${startedAt},${finishedAt},${messageText},${isLeia},${sender},${timestamp},${escapeCsv(evaluationMode)},${score},${evaluation},${submittedSolution}${rubricSuffix}\n`;
         }
       } else {
-        csv += `${sessionId},${userId},${startedAt},${finishedAt},"No messages",,,${score},${evaluation}\n`;
+        csv += `${escapeCsv(sessionId)},${escapeCsv(runId)},${escapeCsv(stageLabel)},${escapeCsv(leiaName)},${escapeCsv(userId)},${startedAt},${finishedAt},"No messages",,,,${escapeCsv(evaluationMode)},${score},${evaluation},${submittedSolution}${rubricSuffix}\n`;
       }
     }
 

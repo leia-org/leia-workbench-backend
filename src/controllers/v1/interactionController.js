@@ -1,6 +1,5 @@
 import ConversationDynamicsService from '../../services/v1/ConversationDynamicsService.js';
 import InteractionService from '../../services/v1/InteractionService.js';
-import ReplicationService from '../../services/v1/ReplicationService.js';
 import TestRunService from '../../services/v1/TestRunService.js';
 import { createTestRunValidator } from '../../validators/v1/testRunValidator.js';
 import {
@@ -29,10 +28,20 @@ export const startSession = async (req, res, next) => {
 
 export const startTestSession = async (req, res, next) => {
   try {
-    const { replicationId, leiaId, multiLeia } = await startTestSessionValidator.validateAsync(req.body);
-    await ReplicationService.checkAccess(replicationId, req.user.isAdmin, req.user.shareToken);
-    const sessionId = await InteractionService.startTestSession(replicationId, leiaId, multiLeia);
+    const { replicationId, leiaId, multiLeia, staged } = await startTestSessionValidator.validateAsync(req.body);
+    const sessionId = staged
+      ? await InteractionService.startTestSession(replicationId, leiaId, multiLeia, staged)
+      : await InteractionService.startTestSession(replicationId, leiaId, multiLeia);
     res.status(201).json({ sessionId });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const continueStage = async (req, res, next) => {
+  try {
+    const sessionId = await InteractionService.continueStage(req.params.sessionId);
+    res.json({ sessionId });
   } catch (error) {
     next(error);
   }

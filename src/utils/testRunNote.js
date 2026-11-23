@@ -1,6 +1,6 @@
 // Builds the hidden context the LEIA receives when the student ran the test
 // suite on their own since their previous message. It travels to the runner as
-// a separate `developer` item, never inside the student's text.
+// a separate untrusted data item, never inside the student's text.
 
 // The runner rejects a context longer than this.
 export const MAX_NOTE_LENGTH = 4000;

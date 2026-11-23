@@ -281,8 +281,8 @@ describe('getReplicationCSV — una fila por ejecución', () => {
     );
     // El código multilínea va entre comillas con las comillas internas dobladas.
     expect(csv).toContain(',FALSE,"function twoSum(a, b) {\n  return ""x"";\n}"\n');
-    // Segunda ejecución de la misma sesión: número 2, sin prefijo anti-fórmulas.
-    expect(csv).toContain('s1,ana@example.com,tr2,2,2026-11-13T10:10:00.000Z,leia,javascript,twoSum,error,0,0,0,3,SyntaxError,,[],,TRUE,@decorator\n');
+    // Segunda ejecución de la misma sesión: número 2, con el prefijo anti-fórmulas.
+    expect(csv).toContain('s1,ana@example.com,tr2,2,2026-11-13T10:10:00.000Z,leia,javascript,twoSum,error,0,0,0,3,SyntaxError,,[],,TRUE,"\'@decorator"\n');
     expect(csv).not.toContain('tr3');
   });
 

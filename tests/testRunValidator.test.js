@@ -50,6 +50,9 @@ describe('createTestRunValidator', () => {
 describe('utilidades CSV', () => {
   test('solo entrecomilla cuando hace falta y dobla las comillas', () => {
     expect(csvCell('plain')).toBe('plain');
+    expect(csvCell(' = 2 + 2')).toBe(`"' = 2 + 2"`);
+    expect(csvCell('@decorator')).toBe(`"'@decorator"`);
+    expect(csvCell(-2)).toBe('-2');
     expect(csvCell(12)).toBe('12');
     expect(csvCell(null)).toBe('');
     expect(csvCell(undefined)).toBe('');

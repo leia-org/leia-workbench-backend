@@ -38,6 +38,7 @@ const upTo = new Date('2026-11-13T10:00:00.000Z');
 const note = { context: '[Automatic context from the code editor.]', upTo };
 
 beforeEach(() => {
+  vi.stubEnv('FRONTEND_URL', 'https://pre.workbench.leia.ovh');
   vi.clearAllMocks();
   SessionService.findById.mockResolvedValue(session);
   SessionService.addMessage.mockResolvedValue(session);

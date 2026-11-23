@@ -2,6 +2,7 @@ import { ownsReplication as isReplicationOwner } from '../../utils/replicationOw
 import ReplicationService from '../../services/v1/ReplicationService.js';
 import SessionService from '../../services/v1/SessionService.js';
 import TestRunService from '../../services/v1/TestRunService.js';
+import { isTestRunsPreviewEnabled } from '../../config/testRuns.js';
 import {
   createReplicationValidator,
   updateReplicationNameValidator,
@@ -236,12 +237,35 @@ export const toggleEvaluateSolution = async (req, res, next) => {
   }
 };
 
+export const updateEvaluationMode = async (req, res, next) => {
+  try {
+    const { id, leiaId } = req.params;
+    const { evaluationMode } = req.body || {};
+    const updatedReplication = await ReplicationService.updateEvaluationMode(id, leiaId, evaluationMode);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const toggleShowSolution = async (req, res, next) => {
+  try {
+    const { id, leiaId } = req.params;
+    const updatedReplication = await ReplicationService.toggleShowSolution(id, leiaId);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const getReplicationConversations = async (req, res, next) => {
   try {
     const conversations = await ReplicationService.getConversations(req.params.id);
     // Each session also carries its test runs, without the code snapshots
     // (those are loaded on demand, see getSessionTestRuns).
-    res.json(await TestRunService.attachSummaries(req.params.id, conversations));
+    res.json(isTestRunsPreviewEnabled()
+      ? await TestRunService.attachSummaries(req.params.id, conversations)
+      : conversations);
   } catch (err) {
     next(err);
   }
