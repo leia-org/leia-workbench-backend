@@ -95,6 +95,13 @@ describe('Luke transcript persistence', () => {
     await Promise.all([assistantWrite, otherWrite]);
     expect(SessionService.addMessage).toHaveBeenCalledTimes(3);
   });
+  test('ignores blank or whitespace-only final transcriptions', async () => {
+    LukeService.initialize({});
+    const { saveHistory } = createServer.mock.calls[0][0].session;
+    await saveHistory({ sessionId: 'session', leia: {} }, { role: 'user', text: '   ', final: true });
+    expect(MessageService.create).not.toHaveBeenCalled();
+    expect(SessionService.addMessage).not.toHaveBeenCalled();
+  });
 });
 describe('Luke opening provider lifecycle', () => {
   test.each(['gemini', 'openai'])('%s reconnect replays the actual assistant opening', async (provider) => {
