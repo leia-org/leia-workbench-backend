@@ -102,12 +102,12 @@ describe('workbench rubric evaluation configuration & CSV', () => {
           leia: {
             spec: {
               behaviour: { spec: { description: 'Base' } },
-              rubric: sampleRubric('Compare with {{previousStage.outputs.conversation}}'),
+              rubric: sampleRubric('Compare with {{previousStage.outputs.conversation}} and {{previousStage.leia.problem.description}}'),
             },
           },
         },
       ]),
-    ]).toEqual(['conversation']);
+    ]).toEqual(['conversation', 'problem']);
   });
 
   test('allows rubric evaluation without askSolution when rubric does not require submitted solution', async () => {

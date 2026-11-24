@@ -1,6 +1,17 @@
-export const referencePattern = /{{\s*previousStage\.outputs\.(conversation|submitedSolution)\s*}}/g;
+export const PREVIOUS_STAGE_PROBLEM_FIELDS = [
+  'description',
+  'details',
+  'personaBackground',
+  'solution',
+  'initialSolution',
+  'solutionFormat',
+  'evaluationPrompt',
+  'process',
+];
+export const referencePattern =
+  /{{\s*previousStage\.(?:outputs\.(conversation|submitedSolution)|leia\.problem\.(description|details|personaBackground|solution|initialSolution|solutionFormat|evaluationPrompt|process))\s*}}/g;
 const anyReference = /{{\s*previousStage\b[^{}]*}}/g;
-export const STAGE_OUTPUTS = ['conversation', 'submitedSolution'];
+export const STAGE_OUTPUTS = ['conversation', 'submitedSolution', 'problem'];
 
 export function activityError(message, statusCode = 400) {
   return Object.assign(new Error(message), { statusCode });
@@ -19,7 +30,7 @@ export function getStageReferencedOutputs(leias) {
     ];
     for (const template of templates) {
       for (const match of template.matchAll(referencePattern)) {
-        outputs.add(match[1]);
+        outputs.add(match[1] || 'problem');
       }
     }
   }
@@ -139,7 +150,7 @@ export function activityFlows(experiment) {
     if (references.length !== supportedReferences.length) {
       throw activityError(`Stage ${number} contains an unsupported previous stage output`);
     }
-    const referencedOutputs = new Set(supportedReferences.map((match) => match[1]));
+    const referencedOutputs = new Set(supportedReferences.map((match) => match[1] || 'problem'));
     for (const output of STAGE_OUTPUTS) {
       const sourceId = getStageOutputSource(stage, output);
       if ((referencedOutputs.has(output) || sourceId) && !(positions.get(sourceId) < index)) {

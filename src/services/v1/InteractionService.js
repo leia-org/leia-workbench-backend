@@ -1096,11 +1096,21 @@ class InteractionService {
         }));
       const promptTemplate = rubric.spec.evaluationPrompt || '';
       const requestedPrevious = new Set(
-        [...promptTemplate.matchAll(referencePattern)].map((match) => match[1])
+        [...promptTemplate.matchAll(referencePattern)].map((match) => match[1] || 'problem')
       );
-      const previousOutputs = requestedPrevious.size
+      const previousData = requestedPrevious.size
         ? await resolvePreviousStageOutputs(session, requestedPrevious)
         : {};
+      const previousStageContext = {};
+      if (requestedPrevious.has('conversation') || requestedPrevious.has('submitedSolution')) {
+        previousStageContext.outputs = {
+          ...(requestedPrevious.has('conversation') ? { conversation: previousData.conversation } : {}),
+          ...(requestedPrevious.has('submitedSolution') ? { submitedSolution: previousData.submitedSolution } : {}),
+        };
+      }
+      if (requestedPrevious.has('problem')) {
+        previousStageContext.leia = { problem: previousData.problem || {} };
+      }
       const runnerConfiguration = leia?.runnerConfiguration
         ? {
             ...leia.runnerConfiguration,
@@ -1119,7 +1129,7 @@ class InteractionService {
               submitedSolution: session.result ?? null,
             },
           },
-          ...(requestedPrevious.size ? { previousStage: { outputs: previousOutputs } } : {}),
+          ...(requestedPrevious.size ? { previousStage: previousStageContext } : {}),
         },
         language: replication?.language || 'en',
         runnerConfiguration,
