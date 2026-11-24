@@ -192,6 +192,14 @@ class ReplicationRepository {
     );
   }
 
+  async updateStagePreviousConversation(id, stageId, previousConversation) {
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.stages.id': stageId },
+      { $set: { 'experiment.stages.$.previousConversation': previousConversation } },
+      { new: true }
+    );
+  }
+
   async incrementLeiaSessionCount(id, leiaId) {
     return await Replication.findOneAndUpdate(
       { _id: id, 'experiment.leias.id': leiaId },

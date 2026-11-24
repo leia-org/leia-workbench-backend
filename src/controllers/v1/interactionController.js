@@ -201,3 +201,14 @@ export const getSolution = async (req, res, next) => {
     next(error);
   }
 };
+
+export const getPreviousStageConversation = async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+    const view = typeof req.query.view === 'string' ? req.query.view : undefined;
+    const data = await InteractionService.getPreviousStageConversation(sessionId, { view });
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};

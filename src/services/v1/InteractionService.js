@@ -15,12 +15,18 @@ import logger from '../../utils/logger.js';
 import mongoose from 'mongoose';
 import { randomInt, randomUUID } from 'crypto';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
-import { resolvePreviousStageOutputs, resolveStageLeias } from './ActivityStageService.js';
+import {
+  resolvePreviousStageOutputs,
+  resolveSourceStageSession,
+  resolveStageLeias,
+} from './ActivityStageService.js';
 import {
   activityError,
   activityFlows,
   getConversationRequirementForLeia,
   getStageOutputSourcesMap,
+  getStagePreviousConversationConfig,
+  publicPreviousConversationConfig,
   referencePattern,
   stageExperiment,
   stageProgress,
@@ -684,6 +690,8 @@ class InteractionService {
       delete sessionData.rubricEvaluation;
     }
     if (progress) sessionData.stage = progress;
+    const previousConversation = publicPreviousConversationConfig(experiment, stage);
+    if (previousConversation) sessionData.previousConversation = previousConversation;
     sessionData.conversationDynamics = publicDynamicsState(session, leia);
     delete leia.leia.spec.behaviour.spec.conversationDynamics;
     if (leia.leia?.spec) delete leia.leia.spec.supervisorConfig;
@@ -738,6 +746,114 @@ class InteractionService {
     }
 
     return { solution, solutionFormat };
+  }
+
+  async getPreviousStageConversation(sessionId, { view } = {}) {
+    const session = await SessionService.findById(sessionId);
+    if (!session) {
+      throw activityError('Session not found', 404);
+    }
+
+    const replication = await ReplicationService.findById(session.replication);
+    if (!replication) {
+      throw activityError('Replication not found', 404);
+    }
+
+    const experiment = replication.experiment;
+    const stages = experiment?.stages || [];
+    const stage = stages.find(({ id }) => id === session.stageId);
+    const config = getStagePreviousConversationConfig(experiment, stage);
+    if (!config) {
+      throw activityError('Previous conversation is not enabled for this stage', 403);
+    }
+
+    if (view === 'editor' && config.availability !== 'both') {
+      throw activityError('Previous conversation is only available in chat for this stage', 403);
+    }
+
+    const sourceSession = await resolveSourceStageSession(session, config.sourceStageId);
+    const sourceStage = stages.find(({ id }) => id === config.sourceStageId);
+    const sourceLeia = experiment?.leias?.find(
+      (entry) => String(entry.id) === String(sourceSession.leia)
+    );
+
+    const serializeMessage = (message, fallbackIndex) => {
+      const plain = typeof message?.toJSON === 'function' ? message.toJSON() : message || {};
+      return {
+        id: plain.id ? String(plain.id) : `prev-msg-${fallbackIndex}`,
+        text: typeof plain.text === 'string' ? plain.text : '',
+        isLeia: Boolean(plain.isLeia),
+        ...(plain.timestamp ? { timestamp: plain.timestamp } : {}),
+        ...(plain.sequence !== undefined ? { sequence: plain.sequence } : {}),
+        ...(plain.senderType ? { senderType: plain.senderType } : {}),
+        ...(plain.senderId ? { senderId: String(plain.senderId) } : {}),
+        ...(plain.senderName ? { senderName: plain.senderName } : {}),
+      };
+    };
+
+    const mode = sourceLeia?.configuration?.mode || 'standard';
+    let messages = [];
+    let externalTranscriptionLink = null;
+
+    if (mode === 'transcription') {
+      if (Array.isArray(sourceLeia?.configuration?.data?.messages)) {
+        messages = sourceLeia.configuration.data.messages.map(serializeMessage);
+      } else if (typeof sourceLeia?.configuration?.data?.link === 'string' && sourceLeia.configuration.data.link.trim()) {
+        externalTranscriptionLink = sourceLeia.configuration.data.link.trim();
+      }
+    } else {
+      const rawMessages = (await MessageService.findBySession(sourceSession.id)) || [];
+      const finishedMs = sourceSession.finishedAt ? new Date(sourceSession.finishedAt).getTime() : null;
+      messages = rawMessages
+        .filter((message) => {
+          if (finishedMs === null || Number.isNaN(finishedMs) || !message?.timestamp) return true;
+          const msgMs = new Date(message.timestamp).getTime();
+          return Number.isNaN(msgMs) || msgMs <= finishedMs;
+        })
+        .map(serializeMessage);
+    }
+
+    const personaSpec = sourceLeia?.leia?.spec?.persona?.spec || {};
+    const leiaName =
+      (typeof personaSpec.firstName === 'string' && personaSpec.firstName.trim()) ||
+      (typeof personaSpec.fullName === 'string' && personaSpec.fullName.trim()) ||
+      (typeof sourceLeia?.leia?.metadata?.name === 'string' && sourceLeia.leia.metadata.name.trim()) ||
+      'LEIA';
+    const personaAvatar =
+      typeof personaSpec.avatar === 'string' && personaSpec.avatar.trim()
+        ? personaSpec.avatar.trim()
+        : null;
+    const leiaId = sourceLeia?.leia?.id
+      ? String(sourceLeia.leia.id)
+      : sourceLeia?.id
+        ? String(sourceLeia.id)
+        : null;
+    const personaId = sourceLeia?.leia?.spec?.persona?.id
+      ? String(sourceLeia.leia.spec.persona.id)
+      : null;
+    const audioMode = sourceLeia?.runnerConfiguration?.audioMode || null;
+    const multiLeia = buildMultiLeiaPayload(
+      sourceStage ? { experiment: stageExperiment(experiment, sourceStage) } : replication,
+      sourceSession
+    );
+
+    return {
+      stage: {
+        number: config.stageNumber,
+        total: stages.length,
+      },
+      availability: config.availability,
+      interactionMode: sourceSession.interactionMode || 'single',
+      mode,
+      audioMode,
+      leiaName,
+      personaAvatar,
+      leiaId,
+      personaId,
+      ...(multiLeia ? { actors: multiLeia.actors } : {}),
+      ...(externalTranscriptionLink ? { externalTranscriptionLink } : {}),
+      messages,
+    };
   }
 
   async streamSessionMessage(sessionId, message, options = {}) {
@@ -1177,7 +1293,12 @@ class InteractionService {
     }
     if (session.stageId && typeof ReplicationService.findById === 'function') {
       const replication = await ReplicationService.findById(session.replication);
-      if (replication) data.stage = stageProgress(replication.experiment, session);
+      if (replication) {
+        data.stage = stageProgress(replication.experiment, session);
+        const stage = replication.experiment?.stages?.find(({ id }) => id === session.stageId);
+        const previousConversation = publicPreviousConversationConfig(replication.experiment, stage);
+        if (previousConversation) data.previousConversation = previousConversation;
+      }
     }
     // Generate spectator link with 1 year expiration
     const oneYearInSeconds = 365 * 24 * 60 * 60; // 31,536,000 seconds

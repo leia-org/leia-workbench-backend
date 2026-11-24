@@ -20,19 +20,10 @@ function isValidSourceSession(candidate, session) {
   );
 }
 
-export async function resolvePreviousStageOutputs(session, requested) {
-  if (!session?.stageId || !requested?.size) return {};
-
-  const targetStageByOutput = new Map();
-  const neededStageIds = new Set();
-  for (const output of requested) {
-    const targetStageId = session.sourceStageIds?.[output];
-    if (!targetStageId) throw activityError('The source stage is unavailable', 409);
-    targetStageByOutput.set(output, targetStageId);
-    neededStageIds.add(targetStageId);
-  }
-
+export async function resolveSourceStageSessions(session, neededStageIds) {
   const sourcesByStageId = new Map();
+  if (!session?.stageId || !neededStageIds?.size) return sourcesByStageId;
+
   if (session.run) {
     const run = await ActivityRunRepository.findById(session.run);
     if (
@@ -69,6 +60,31 @@ export async function resolvePreviousStageOutputs(session, requested) {
       }
     }
   }
+
+  return sourcesByStageId;
+}
+
+export async function resolveSourceStageSession(session, targetStageId) {
+  if (!targetStageId) throw activityError('The source stage is unavailable', 409);
+  const sourcesByStageId = await resolveSourceStageSessions(session, new Set([targetStageId]));
+  const sourceSession = sourcesByStageId.get(targetStageId);
+  if (!sourceSession) throw activityError('The source stage is unavailable', 409);
+  return sourceSession;
+}
+
+export async function resolvePreviousStageOutputs(session, requested) {
+  if (!session?.stageId || !requested?.size) return {};
+
+  const targetStageByOutput = new Map();
+  const neededStageIds = new Set();
+  for (const output of requested) {
+    const targetStageId = session.sourceStageIds?.[output];
+    if (!targetStageId) throw activityError('The source stage is unavailable', 409);
+    targetStageByOutput.set(output, targetStageId);
+    neededStageIds.add(targetStageId);
+  }
+
+  const sourcesByStageId = await resolveSourceStageSessions(session, neededStageIds);
 
   const values = {};
   if (requested.has('conversation')) {

@@ -12,6 +12,7 @@ export const referencePattern =
   /{{\s*previousStage\.(?:outputs\.(conversation|submitedSolution)|leia\.problem\.(description|details|personaBackground|solution|initialSolution|solutionFormat|evaluationPrompt|process))\s*}}/g;
 const anyReference = /{{\s*previousStage\b[^{}]*}}/g;
 export const STAGE_OUTPUTS = ['conversation', 'submitedSolution', 'problem'];
+export const PREVIOUS_CONVERSATION_AVAILABILITIES = ['chat', 'both'];
 const outputLabels = {
   conversation: 'conversation',
   submitedSolution: 'submitted solution',
@@ -24,6 +25,33 @@ export function activityError(message, statusCode = 400) {
 
 export function getStageOutputSource(stage, output) {
   return stage?.outputSources?.[output] ?? null;
+}
+
+export function getStagePreviousConversationConfig(experiment, stage) {
+  const stages = experiment?.stages;
+  if (!Array.isArray(stages) || !stage?.id) return null;
+  const stageIndex = stages.findIndex(({ id }) => id === stage.id);
+  if (stageIndex <= 0) return null;
+  const config = stage.previousConversation;
+  if (!config?.enabled || !config.sourceStageId) return null;
+  const sourceStageIndex = stages.findIndex(({ id }) => id === config.sourceStageId);
+  if (sourceStageIndex === -1 || !(sourceStageIndex < stageIndex)) return null;
+  return {
+    enabled: true,
+    sourceStageId: config.sourceStageId,
+    stageNumber: sourceStageIndex + 1,
+    availability: config.availability === 'chat' ? 'chat' : 'both',
+  };
+}
+
+export function publicPreviousConversationConfig(experiment, stage) {
+  const config = getStagePreviousConversationConfig(experiment, stage);
+  if (!config) return undefined;
+  return {
+    enabled: true,
+    stageNumber: config.stageNumber,
+    availability: config.availability,
+  };
 }
 
 export function getStageReferencedOutputs(leias) {
@@ -191,6 +219,25 @@ export function activityFlows(experiment) {
         throw activityError(
           `Stage ${number} cannot use transcription mode because it uses outputs from an earlier stage`
         );
+      }
+    }
+    const previousConversation = stage.previousConversation;
+    if (previousConversation) {
+      if (previousConversation.enabled && index === 0) {
+        throw activityError('The first stage cannot show a previous stage conversation');
+      }
+      if (
+        previousConversation.availability !== undefined &&
+        !PREVIOUS_CONVERSATION_AVAILABILITIES.includes(previousConversation.availability)
+      ) {
+        throw activityError(`Invalid previous conversation availability in stage ${number}`);
+      }
+      const prevConvSourceId = previousConversation.sourceStageId ?? null;
+      if (prevConvSourceId && !(positions.get(prevConvSourceId) < index)) {
+        throw activityError(`The previous conversation source of stage ${number} must be an earlier stage`);
+      }
+      if (previousConversation.enabled && !prevConvSourceId) {
+        throw activityError(`Select an earlier stage for previous conversation in stage ${number}`);
       }
     }
     return flow;

@@ -17,6 +17,7 @@ import {
   toggleEvaluateSolution,
   updateEvaluationMode,
   toggleShowSolution,
+  updateStagePreviousConversation,
   getReplicationConversations,
   downloadReplicationConversationsCSV,
   getSessionTestRuns,
@@ -46,6 +47,7 @@ router.patch('/:id/leia/:leiaId/toggle-ask-solution', authContext, toggleAskSolu
 router.patch('/:id/leia/:leiaId/toggle-evaluate-solution', authContext, toggleEvaluateSolution);
 router.patch('/:id/leia/:leiaId/evaluation-mode', authContext, updateEvaluationMode);
 router.patch('/:id/leia/:leiaId/toggle-show-solution', authContext, toggleShowSolution);
+router.patch('/:id/stages/:stageId/previous-conversation', authContext, updateStagePreviousConversation);
 router.patch('/:id/duration', authContext, updateReplicationDuration);
 router.patch('/:id/experiment', authContext, updateReplicationExperiment);
 router.patch('/:id/form', authContext, updateReplicationForm);

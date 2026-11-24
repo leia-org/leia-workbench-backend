@@ -1,0 +1,46 @@
+get:
+  tags:
+    - Interactions v1
+  summary: Get the student's configured previous stage conversation for the current session
+  operationId: getPreviousStageConversation
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      description: The ID of the current stage session
+      schema:
+        type: string
+    - name: view
+      in: query
+      required: false
+      description: View requesting the conversation (chat or editor)
+      schema:
+        type: string
+        enum:
+          - chat
+          - editor
+  responses:
+    '200':
+      description: Previous stage conversation retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/interaction/previousConversationResponse.yaml'
+    '403':
+      description: Previous conversation is disabled or not allowed in the requested view
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/common/errorResponse.yaml'
+    '404':
+      description: Session or replication not found
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/common/errorResponse.yaml'
+    '409':
+      description: Source stage session is unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/common/errorResponse.yaml'

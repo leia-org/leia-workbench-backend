@@ -25,5 +25,29 @@ properties:
           type: string
           format: uuid
           nullable: true
+        outputSources:
+          type: object
+          properties:
+            conversation:
+              type: string
+              nullable: true
+            submitedSolution:
+              type: string
+              nullable: true
+            problem:
+              type: string
+              nullable: true
+        previousConversation:
+          type: object
+          description: Optional workbench configuration allowing students in stages n>1 to review an earlier stage conversation.
+          properties:
+            enabled:
+              type: boolean
+            sourceStageId:
+              type: string
+              nullable: true
+            availability:
+              type: string
+              enum: [chat, both]
         orchestration:
           $ref: './orchestration.yaml'

@@ -11,6 +11,7 @@ import {
   updateReplicationLeiaRunnerConfigurationValidator,
   updateReplicationFormValidator,
   updateSessionScoreValidator,
+  updateStagePreviousConversationValidator,
 } from '../../validators/v1/replicationValidator.js';
 
 
@@ -252,6 +253,23 @@ export const toggleShowSolution = async (req, res, next) => {
   try {
     const { id, leiaId } = req.params;
     const updatedReplication = await ReplicationService.toggleShowSolution(id, leiaId);
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateStagePreviousConversation = async (req, res, next) => {
+  try {
+    const { id, stageId } = req.params;
+    const value = await updateStagePreviousConversationValidator.validateAsync(req.body, {
+      abortEarly: false,
+    });
+    const updatedReplication = await ReplicationService.updateStagePreviousConversation(
+      id,
+      stageId,
+      value
+    );
     res.json(updatedReplication);
   } catch (err) {
     next(err);
