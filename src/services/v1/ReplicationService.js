@@ -99,11 +99,35 @@ class ReplicationService {
   }
   // WRITE METHODS
 
+  _validateExperimentForReplication(experiment) {
+    if (!experiment) {
+      const error = new Error('Experiment not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    for (const flow of activityFlows(experiment)) {
+      if (flow.orchestration?.mode !== 'multi') continue;
+      const leias = flow.leias || [];
+      if (leias.length < 2) {
+        const error = new Error('MultiLEIA requires at least two LEIAs');
+        error.statusCode = 400;
+        throw error;
+      }
+      if (leias.some((entry) => entry.configuration?.mode === 'transcription')) {
+        const error = new Error('MultiLEIA currently supports standard text mode only');
+        error.statusCode = 400;
+        throw error;
+      }
+      validateMultiLeiaProcesses(flow);
+    }
+  }
+
   async create(replicationData, authorization, apiKeyRequesterId) {
     const experiment = await ManagerService.findExperimentById(
       replicationData.experiment,
       authorization
     );
+    this._validateExperimentForReplication(experiment);
     const defaultApiKey = await this.getDefaultApiKey(authorization);
     let initializedDefaultApiKey = defaultApiKey;
     let providerDriver = 'default';
@@ -231,6 +255,7 @@ class ReplicationService {
       throw error;
     }
     const experiment = await ManagerService.findExperimentById(experimentId, authorization);
+    this._validateExperimentForReplication(experiment);
     const initializedExperiment = initializeExperiment(experiment);
     return await ReplicationRepository.update(id, { initializedExperiment });
   }
