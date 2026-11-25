@@ -12,6 +12,7 @@ import {
   updateReplicationFormValidator,
   updateSessionScoreValidator,
   updateStagePreviousConversationValidator,
+  updateDataUsageValidator,
 } from '../../validators/v1/replicationValidator.js';
 
 
@@ -37,6 +38,18 @@ export const getReplicationById = async (req, res, next) => {
     res.json(replication);
   } catch (err) {
     next(err);
+  }
+};
+
+export const updateDataUsage = async (req, res, next) => {
+  try {
+    if (!req.canManageReplication) {
+      return res.status(403).json({ error: 'Only the replication owner or an administrator can change data usage settings' });
+    }
+    const { dataUsageConfig } = await updateDataUsageValidator.validateAsync(req.body);
+    res.json(await ReplicationService.updateDataUsage(req.params.id, dataUsageConfig));
+  } catch (error) {
+    next(error);
   }
 };
 

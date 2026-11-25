@@ -5,6 +5,7 @@ import SessionService from '../../services/v1/SessionService.js';
 import ReplicationService from '../../services/v1/ReplicationService.js';
 import ConversationDynamicsService from '../../services/v1/ConversationDynamicsService.js';
 import SupervisorService from '../../services/v1/SupervisorService.js';
+import { assertConsentDecided, shouldRemoveConversation } from '../../utils/dataUsage.js';
 
 /**
  * Create a Realtime API session
@@ -65,6 +66,10 @@ export const saveAudioTranscription = async (req, res, next) => {
       throw error;
     }
 
+    assertConsentDecided(session);
+    if (session.finishedAt && shouldRemoveConversation(session)) {
+      return res.status(409).json({ error: 'Session already finished' });
+    }
     // Save transcription as a message
     const message = await MessageService.create(transcript, isLeia, sessionId);
     await SessionService.addMessage(sessionId, message.id);

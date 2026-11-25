@@ -1,5 +1,7 @@
 import Joi from 'joi';
 
+export const dataUsageConsentValidator = Joi.object({ accepted: Joi.boolean().strict().required() });
+
 export const startSessionValidator = Joi.object({
   email: Joi.string().email().required(),
   code: Joi.string().required(),

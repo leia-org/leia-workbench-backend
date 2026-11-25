@@ -41,9 +41,9 @@ async function consumeSseStream(stream, onEvent) {
 }
 
 class RunnerService {
-  async evaluateStoppingCondition(condition, transcript, behaviour, runnerConfiguration) {
+  async evaluateStoppingCondition(condition, transcript, behaviour, runnerConfiguration, sessionId) {
     const { data } = await axios.post(`${process.env.RUNNER_URL}/api/v1/conversation-dynamics/evaluate`,
-      { condition, transcript, behaviour, runnerConfiguration },
+      { condition, transcript, behaviour, runnerConfiguration, sessionId },
       { headers: { Authorization: 'Bearer ' + process.env.RUNNER_KEY }, timeout: 60000 });
     return data;
   }
@@ -210,6 +210,7 @@ class RunnerService {
       ...(options.context ? { context: options.context } : {}),
       ...(options.language ? { language: options.language } : {}),
       ...(options.runnerConfiguration ? { runnerConfiguration: options.runnerConfiguration } : {}),
+      ...(options.suppressTracing ? { suppressTracing: true } : {}),
     };
     const response = await axios.post(
       `${process.env.RUNNER_URL}/api/v1/evaluation`,
@@ -240,6 +241,18 @@ class RunnerService {
     );
     return response.data;
   }
+
+  async removeSessionTraces(sessionId, startedAt) {
+    const { data } = await axios.delete(
+      `${process.env.RUNNER_URL}/api/v1/leias/${encodeURIComponent(sessionId)}/traces`,
+      {
+        params: { from: new Date(new Date(startedAt).getTime() - 60000).toISOString() },
+        headers: { Authorization: 'Bearer ' + process.env.RUNNER_KEY },
+        timeout: 25000,
+      }
+    );
+    return data?.complete === true;
+  }
     async getRunnerModels() {
     const response = await axios.get(`${process.env.RUNNER_URL}/api/v1/models`, {
       headers: {
@@ -250,8 +263,8 @@ class RunnerService {
   }
 
   // Stateless supervisor observation. Returns { flags, nudge }.
-  async observeSupervisor({ runnerConfiguration, transcript, supervisorConfig, existingFlags }) {
-    const body = { runnerConfiguration, transcript, supervisorConfig };
+  async observeSupervisor({ runnerConfiguration, transcript, supervisorConfig, existingFlags, sessionId, suppressTracing }) {
+    const body = { runnerConfiguration, transcript, supervisorConfig, sessionId, suppressTracing };
     if (Array.isArray(existingFlags) && existingFlags.length > 0) {
       body.existingFlags = existingFlags;
     }

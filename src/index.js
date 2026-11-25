@@ -19,6 +19,7 @@ import providerRoutes from './routes/v1/providerRoutes.js';
 import { auth, requireAdvanced } from './middlewares/auth.js';
 import { initializeSocket } from './socket/index.js';
 import LukeService from './services/v1/LukeService.js';
+import { startConversationRemoval } from './services/v1/ConversationRemovalService.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -62,6 +63,7 @@ const PORT = process.env.PORT || 3000;
 const startServer = async () => {
   try {
     await connectDB();
+    const stopConversationRemoval = startConversationRemoval();
 
     httpServer.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);
@@ -74,6 +76,7 @@ const startServer = async () => {
     LukeService.initialize(httpServer);
 
     const gracefulShutdown = () => {
+      stopConversationRemoval();
       logger.info('Shutting down server...');
       httpServer.close(() => {
         logger.info('Server has been shut down');

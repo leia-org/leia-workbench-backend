@@ -3,6 +3,9 @@ import { Schema, model } from 'mongoose';
 const sessionSchema = new Schema(
   {
     conversationDynamicsState: { type: Schema.Types.Mixed, default: undefined },
+    dataUsage: { type: Schema.Types.Mixed, default: undefined },
+    conversationRemovalDueAt: { type: Date, select: false },
+    langfuseEmptySince: { type: Date, select: false },
     startedAt: {
       type: Date,
       default: Date.now,
@@ -110,5 +113,6 @@ const sessionSchema = new Schema(
 
 sessionSchema.index({ user: 1, replication: 1, isTest: 1 }, { partialFilterExpression: { isTest: false } });
 sessionSchema.index({ stageRunKey: 1 }, { unique: true, sparse: true });
+sessionSchema.index({ conversationRemovalDueAt: 1 }, { sparse: true });
 
 export default model('Session', sessionSchema);

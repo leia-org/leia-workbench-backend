@@ -78,7 +78,7 @@ describe('shared chat / Luke dynamics lifecycle', () => {
     await Dynamics.observe('session', both);
     expect(RunnerService.evaluateStoppingCondition).toHaveBeenCalledWith('The student refuses to cooperate', [
       { role: 'student', text: 'I refuse' }, { role: 'leia', text: 'Goodbye' },
-    ], undefined, both.runnerConfiguration);
+    ], undefined, both.runnerConfiguration, 'session');
     expect(Session.updateOne).toHaveBeenCalledWith(
       { _id: 'session', 'conversationDynamicsState.stoppingCondition.satisfied': { $ne: true } },
       { $set: { 'conversationDynamicsState.stoppingCondition': { satisfied: true, lastMessageId: 'reply', decidedAt: expect.any(Date) } } });

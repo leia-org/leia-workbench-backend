@@ -119,6 +119,15 @@ class SessionRepository {
     return await Session.findOneAndUpdate({ _id: id, finishedAt: null }, changes, { new: true });
   }
 
+  async recordDataUsageConsent(id, consentStatus, decidedAt) {
+    return await Session.findOneAndUpdate({
+      _id: id,
+      finishedAt: null,
+      'dataUsage.config.dataUsageConsentRequired': true,
+      'dataUsage.consentStatus': { $nin: ['accepted', 'declined', 'not_required'] },
+    }, { $set: { 'dataUsage.consentStatus': consentStatus, 'dataUsage.decidedAt': decidedAt } }, { new: true });
+  }
+
   async addMessage(id, messageId) {
     return await Session.findByIdAndUpdate(id, { $push: { messages: messageId } }, { new: true });
   }
@@ -129,7 +138,9 @@ class SessionRepository {
     if (Array.isArray(flags) && flags.length > 0) {
       update.$push = { supervisorFlags: { $each: flags } };
     }
-    return await Session.findByIdAndUpdate(id, update, { new: true });
+    return await Session.findOneAndUpdate(
+      { _id: id, 'dataUsage.automatedRemovalApplied': { $ne: true } }, update, { new: true }
+    );
   }
 
   // Clear a delivered student nudge. When `value` is given, only clear if the

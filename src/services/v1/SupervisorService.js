@@ -3,6 +3,7 @@ import MessageService from './MessageService.js';
 import RunnerService from './RunnerService.js';
 import { emitToReplicationAdmins } from '../../socket/index.js';
 import logger from '../../utils/logger.js';
+import { shouldRemoveConversation } from '../../utils/dataUsage.js';
 
 const DEFAULT_EVERY_N = 4;
 const TRANSCRIPT_WINDOW = 12; // messages of context sent to the supervisor
@@ -159,6 +160,8 @@ class SupervisorService {
     const existingFlags = Array.isArray(session.supervisorFlags) ? session.supervisorFlags : [];
 
     const result = await RunnerService.observeSupervisor({
+      sessionId: session.id || String(sessionId),
+      ...(session.finishedAt && shouldRemoveConversation(session) ? { suppressTracing: true } : {}),
       // BYOK identity only. The supervisor ALWAYS runs on OpenAI, so we must not
       // pass the LEIA's modelName here — it may be a non-OpenAI model (gemini,
       // ollama). The supervisor model comes from supervisorConfig.model (else a

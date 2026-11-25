@@ -10,6 +10,7 @@ import SessionService from './SessionService.js';
 import SupervisorService from './SupervisorService.js';
 import logger from '../../utils/logger.js';
 import jwt from 'jsonwebtoken';
+import { isConsentPending, shouldRemoveConversation } from '../../utils/dataUsage.js';
 
 class LukeService {
   constructor() {
@@ -110,7 +111,7 @@ class LukeService {
       session: {
         create: async (user) => {
           const session = await SessionRepository.findById(user.sessionId);
-          if (!session || session.finishedAt) return null;
+          if (!session || session.finishedAt || isConsentPending(session)) return null;
 
           const leia = await ReplicationService.findLeia(session.replication, session.leia);
           if (!leia) return null;
@@ -136,6 +137,10 @@ class LukeService {
           const sessionId = String(userSession.sessionId);
           const write = (historyWrites.get(sessionId) || Promise.resolve()).then(async () => {
             try {
+              if (userSession.session && shouldRemoveConversation(userSession.session)) {
+                const current = await SessionRepository.findById(sessionId);
+                if (!current || current.finishedAt) return;
+              }
               const isLeia = transcription.role === 'assistant';
               const message = await MessageService.create(transcription.text, isLeia, userSession.sessionId);
               await SessionService.addMessage(userSession.sessionId, message.id);
