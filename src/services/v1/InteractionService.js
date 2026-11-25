@@ -152,6 +152,27 @@ function chooseStageLeia(entries) {
   return candidates[randomInt(candidates.length)];
 }
 
+function publicStagePlan(replication, session) {
+  const { experiment } = replication;
+  return experiment.stages.map((stage) => {
+    const flow = stageExperiment(experiment, stage);
+    const scope = { experiment: flow };
+    const assignedLeia = stage.id === session.stageId &&
+      flow.leias.find((entry) => String(entry.id) === String(session.leia));
+    const candidates = assignedLeia ? [assignedLeia] : isMultiLeiaEnabled(scope)
+      ? [getProblemLeia(scope)]
+      : flow.leias;
+    const submissions = new Set(candidates.map((entry) => Boolean(entry?.configuration?.askSolution)));
+    const modes = new Set(candidates.map((entry) =>
+      entry?.configuration?.mode === 'transcription' ? 'transcription' : 'conversation'
+    ));
+    return {
+      askSolution: submissions.size === 1 ? [...submissions][0] : null,
+      mode: modes.size === 1 ? [...modes][0] : null,
+    };
+  });
+}
+
 function buildMultiLeiaPayload(replication, session) {
   if (session?.interactionMode !== 'multi') return null;
   const orchestration = replication?.experiment?.orchestration || {};
@@ -689,7 +710,10 @@ class InteractionService {
       delete sessionData.evaluationMode;
       delete sessionData.rubricEvaluation;
     }
-    if (progress) sessionData.stage = progress;
+    if (progress) {
+      sessionData.stage = progress;
+      sessionData.stagePlan = publicStagePlan(replication, session);
+    }
     const previousConversation = publicPreviousConversationConfig(experiment, stage);
     if (previousConversation) sessionData.previousConversation = previousConversation;
     sessionData.conversationDynamics = publicDynamicsState(session, leia);
@@ -1295,6 +1319,7 @@ class InteractionService {
       const replication = await ReplicationService.findById(session.replication);
       if (replication) {
         data.stage = stageProgress(replication.experiment, session);
+        if (data.stage) data.stagePlan = publicStagePlan(replication, session);
         const stage = replication.experiment?.stages?.find(({ id }) => id === session.stageId);
         const previousConversation = publicPreviousConversationConfig(replication.experiment, stage);
         if (previousConversation) data.previousConversation = previousConversation;

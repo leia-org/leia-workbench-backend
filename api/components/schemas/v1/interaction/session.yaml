@@ -13,6 +13,20 @@ properties:
         minimum: 1
       hasNext:
         type: boolean
+  stagePlan:
+    type: array
+    description: Student-facing phases of each stage, in activity order. A null value means the phase depends on the assigned LEIA.
+    items:
+      type: object
+      required: [askSolution, mode]
+      properties:
+        askSolution:
+          type: boolean
+          nullable: true
+        mode:
+          type: string
+          enum: [conversation, transcription]
+          nullable: true
   previousConversation:
     type: object
     description: Present when the current stage (n>1) enables the student Conversation viewer for an earlier stage.
