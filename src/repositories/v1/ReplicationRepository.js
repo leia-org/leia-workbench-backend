@@ -111,10 +111,24 @@ class ReplicationRepository {
     });
   }
 
-  async updateAskSolution(id, leiaId, askSolution) {
+  async updateAskSolution(id, leiaId, askSolution, { clearShowSolution = true } = {}) {
     const update = { 'experiment.leias.$.configuration.askSolution': askSolution };
-    if (!askSolution) {
+    if (!askSolution && clearShowSolution) {
       update['experiment.leias.$.configuration.showSolution'] = false;
+    }
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.leias.id': leiaId },
+      { $set: update },
+      { new: true }
+    );
+  }
+
+  async updateEvaluationConfiguration(id, leiaId, fields) {
+    const update = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) {
+        update[`experiment.leias.$.configuration.${key}`] = value;
+      }
     }
     return await Replication.findOneAndUpdate(
       { _id: id, 'experiment.leias.id': leiaId },
@@ -136,6 +150,9 @@ class ReplicationRepository {
       'experiment.leias.$.configuration.askSolution': askSolution,
       'experiment.leias.$.configuration.evaluateSolution': evaluateSolution,
     };
+    if (!evaluateSolution) {
+      update['experiment.leias.$.configuration.evaluationMode'] = 'none';
+    }
     if (!askSolution) {
       update['experiment.leias.$.configuration.showSolution'] = false;
     }
@@ -171,6 +188,14 @@ class ReplicationRepository {
     return await Replication.findOneAndUpdate(
       { _id: id, 'experiment.leias.id': leiaId },
       { $set: { 'experiment.leias.$.runnerConfiguration': runnerConfiguration } },
+      { new: true }
+    );
+  }
+
+  async updateStagePreviousConversation(id, stageId, previousConversation) {
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.stages.id': stageId },
+      { $set: { 'experiment.stages.$.previousConversation': previousConversation } },
       { new: true }
     );
   }

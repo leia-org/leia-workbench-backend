@@ -121,6 +121,128 @@ describe('create — configuración inicial de las LEIAs', () => {
     );
     expect(ReplicationRepository.create).toHaveBeenCalledWith(expect.objectContaining({ user: 'user1' }));
   });
+
+  test('rechaza crear replicación si un stage no tiene LEIAs', async () => {
+    const experiment = {
+      id: 'exp-empty-stage',
+      stages: [
+        { id: 's1', outputSources: { conversation: null, submitedSolution: null, problem: null }, orchestration: { mode: 'single' } },
+        { id: 's2', outputSources: { conversation: null, submitedSolution: null, problem: null }, orchestration: { mode: 'single' } },
+      ],
+      leias: [
+        {
+          id: 'l1',
+          stageId: 's1',
+          configuration: { mode: 'standard' },
+          leia: { spec: { behaviour: { spec: { description: 'Stage 1' } } } },
+        },
+      ],
+    };
+    ManagerService.findExperimentById.mockResolvedValue(experiment);
+
+    await expect(
+      ReplicationService.create(
+        { name: 'Empty stage replication', experiment: 'exp-empty-stage' },
+        'Bearer token',
+        'user1'
+      )
+    ).rejects.toMatchObject({ statusCode: 400, message: 'Stage 2 requires at least one LEIA' });
+    expect(ReplicationRepository.create).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['conversation', '{{previousStage.outputs.conversation}}', 'conversation'],
+    ['submitedSolution', '{{previousStage.outputs.submitedSolution}}', 'submitted solution'],
+    ['problem', '{{previousStage.leia.problem.description}}', 'problem'],
+  ])('rechaza crear replicación cuando falta la resolución de %s en un stage', async (_output, placeholder, label) => {
+    const experiment = {
+      id: 'exp-unresolved',
+      stages: [
+        { id: 's1', outputSources: { conversation: null, submitedSolution: null, problem: null }, orchestration: { mode: 'single' } },
+        { id: 's2', outputSources: { conversation: null, submitedSolution: null, problem: null }, orchestration: { mode: 'single' } },
+      ],
+      leias: [
+        {
+          id: 'l1',
+          stageId: 's1',
+          configuration: { mode: 'standard' },
+          leia: { spec: { behaviour: { spec: { description: 'Stage 1' } } } },
+        },
+        {
+          id: 'l2',
+          stageId: 's2',
+          configuration: { mode: 'standard' },
+          leia: { spec: { behaviour: { spec: { description: `Use ${placeholder}` } } } },
+        },
+      ],
+    };
+    ManagerService.findExperimentById.mockResolvedValue(experiment);
+
+    await expect(
+      ReplicationService.create(
+        { name: 'Unresolved stage replication', experiment: 'exp-unresolved' },
+        'Bearer token',
+        'user1'
+      )
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      message: `Select an earlier stage for ${label} in stage 2`,
+    });
+    expect(ReplicationRepository.create).not.toHaveBeenCalled();
+  });
+
+  test('rechaza crear replicación para una actividad sin LEIAs', async () => {
+    ManagerService.findExperimentById.mockResolvedValue({ id: 'exp-empty', leias: [] });
+
+    await expect(
+      ReplicationService.create(
+        { name: 'Empty legacy replication', experiment: 'exp-empty' },
+        'Bearer token',
+        'user1'
+      )
+    ).rejects.toMatchObject({ statusCode: 400, message: 'Activity requires at least one LEIA' });
+    expect(ReplicationRepository.create).not.toHaveBeenCalled();
+  });
+
+  test('permite crear replicación cuando todos los stages tienen LEIAs y sus resoluciones configuradas', async () => {
+    const experiment = {
+      id: 'exp-valid-staged',
+      stages: [
+        { id: 's1', outputSources: { conversation: null, submitedSolution: null, problem: null }, orchestration: { mode: 'single' } },
+        { id: 's2', outputSources: { conversation: 's1', submitedSolution: null, problem: 's1' }, orchestration: { mode: 'single' } },
+      ],
+      leias: [
+        {
+          id: 'l1',
+          stageId: 's1',
+          configuration: { mode: 'standard' },
+          leia: { spec: { behaviour: { spec: { description: 'Stage 1' } } } },
+        },
+        {
+          id: 'l2',
+          stageId: 's2',
+          configuration: { mode: 'standard' },
+          leia: {
+            spec: {
+              behaviour: { spec: { description: 'Check {{previousStage.outputs.conversation}}' } },
+              rubric: { spec: { evaluationPrompt: 'Compare {{previousStage.leia.problem.solution}}' } },
+            },
+          },
+        },
+      ],
+    };
+    ManagerService.findExperimentById.mockResolvedValue(experiment);
+    axios.get.mockResolvedValue({ data: [] });
+    ReplicationRepository.create.mockImplementation(async (data) => data);
+
+    await ReplicationService.create(
+      { name: 'Valid staged replication', experiment: 'exp-valid-staged' },
+      'Bearer token',
+      'user1'
+    );
+
+    expect(ReplicationRepository.create).toHaveBeenCalledOnce();
+  });
 });
 
 

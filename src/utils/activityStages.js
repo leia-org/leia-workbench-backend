@@ -1,6 +1,23 @@
-export const referencePattern = /{{\s*previousStage\.outputs\.(conversation|submitedSolution)\s*}}/g;
+export const PREVIOUS_STAGE_PROBLEM_FIELDS = [
+  'description',
+  'details',
+  'personaBackground',
+  'solution',
+  'initialSolution',
+  'solutionFormat',
+  'evaluationPrompt',
+  'process',
+];
+export const referencePattern =
+  /{{\s*previousStage\.(?:outputs\.(conversation|submitedSolution)|leia\.problem\.(description|details|personaBackground|solution|initialSolution|solutionFormat|evaluationPrompt|process))\s*}}/g;
 const anyReference = /{{\s*previousStage\b[^{}]*}}/g;
-export const STAGE_OUTPUTS = ['conversation', 'submitedSolution'];
+export const STAGE_OUTPUTS = ['conversation', 'submitedSolution', 'problem'];
+export const PREVIOUS_CONVERSATION_AVAILABILITIES = ['chat', 'both'];
+const outputLabels = {
+  conversation: 'conversation',
+  submitedSolution: 'submitted solution',
+  problem: 'problem',
+};
 
 export function activityError(message, statusCode = 400) {
   return Object.assign(new Error(message), { statusCode });
@@ -10,12 +27,44 @@ export function getStageOutputSource(stage, output) {
   return stage?.outputSources?.[output] ?? null;
 }
 
+export function getStagePreviousConversationConfig(experiment, stage) {
+  const stages = experiment?.stages;
+  if (!Array.isArray(stages) || !stage?.id) return null;
+  const stageIndex = stages.findIndex(({ id }) => id === stage.id);
+  if (stageIndex <= 0) return null;
+  const config = stage.previousConversation;
+  if (!config?.enabled || !config.sourceStageId) return null;
+  const sourceStageIndex = stages.findIndex(({ id }) => id === config.sourceStageId);
+  if (sourceStageIndex === -1 || !(sourceStageIndex < stageIndex)) return null;
+  return {
+    enabled: true,
+    sourceStageId: config.sourceStageId,
+    stageNumber: sourceStageIndex + 1,
+    availability: config.availability === 'chat' ? 'chat' : 'both',
+  };
+}
+
+export function publicPreviousConversationConfig(experiment, stage) {
+  const config = getStagePreviousConversationConfig(experiment, stage);
+  if (!config) return undefined;
+  return {
+    enabled: true,
+    stageNumber: config.stageNumber,
+    availability: config.availability,
+  };
+}
+
 export function getStageReferencedOutputs(leias) {
   const outputs = new Set();
   for (const entry of leias || []) {
-    const description = entry?.leia?.spec?.behaviour?.spec?.description || '';
-    for (const match of description.matchAll(referencePattern)) {
-      outputs.add(match[1]);
+    const templates = [
+      entry?.leia?.spec?.behaviour?.spec?.description || '',
+      entry?.leia?.spec?.rubric?.spec?.evaluationPrompt || '',
+    ];
+    for (const template of templates) {
+      for (const match of template.matchAll(referencePattern)) {
+        outputs.add(match[1] || 'problem');
+      }
     }
   }
   return outputs;
@@ -113,29 +162,46 @@ export function stageProgress(experiment, session) {
 }
 
 export function activityFlows(experiment) {
-  if (!experiment.stages) return [experiment];
+  if (!experiment?.stages) {
+    if (!Array.isArray(experiment?.leias) || experiment.leias.length === 0) {
+      throw activityError('Activity requires at least one LEIA');
+    }
+    return [experiment];
+  }
   const positions = new Map(experiment.stages.map(({ id }, index) => [id, index]));
   if (!positions.size || positions.size !== experiment.stages.length ||
-      experiment.leias.some(({ stageId }) => !positions.has(stageId))) {
+      (experiment.leias || []).some(({ stageId }) => !positions.has(stageId))) {
     throw activityError('Invalid activity stages');
   }
   return experiment.stages.map((stage, index) => {
     const number = index + 1;
     const flow = stageExperiment(experiment, stage);
-    if (!flow.leias.length || flow.leias.some(({ leia }) => !leia?.spec)) {
+    if (!flow.leias.length) {
+      throw activityError(`Stage ${number} requires at least one LEIA`);
+    }
+    if (flow.leias.some(({ leia }) => !leia?.spec)) {
       throw activityError(`Stage ${number} requires valid LEIAs`);
     }
-    const descriptions = flow.leias.map(({ leia }) => leia.spec.behaviour?.spec?.description || '');
-    const references = descriptions.flatMap((description) => [...description.matchAll(anyReference)]);
-    const supportedReferences = descriptions.flatMap((description) => [...description.matchAll(referencePattern)]);
+    const templates = flow.leias.flatMap(({ leia }) => [
+      leia.spec.behaviour?.spec?.description || '',
+      leia.spec.rubric?.spec?.evaluationPrompt || '',
+    ]);
+    const references = templates.flatMap((template) => [...template.matchAll(anyReference)]);
+    const supportedReferences = templates.flatMap((template) => [...template.matchAll(referencePattern)]);
     if (references.length !== supportedReferences.length) {
       throw activityError(`Stage ${number} contains an unsupported previous stage output`);
     }
-    const referencedOutputs = new Set(supportedReferences.map((match) => match[1]));
+    const referencedOutputs = new Set(supportedReferences.map((match) => match[1] || 'problem'));
+    if (referencedOutputs.size > 0 && index === 0) {
+      throw activityError('The first stage cannot use previous stage references');
+    }
     for (const output of STAGE_OUTPUTS) {
       const sourceId = getStageOutputSource(stage, output);
-      if ((referencedOutputs.has(output) || sourceId) && !(positions.get(sourceId) < index)) {
-        throw activityError(`Stage ${number} requires a valid earlier stage`);
+      if (sourceId && !(positions.get(sourceId) < index)) {
+        throw activityError(`The source of stage ${number} must be an earlier stage`);
+      }
+      if (referencedOutputs.has(output) && !sourceId) {
+        throw activityError(`Select an earlier stage for ${outputLabels[output]} in stage ${number}`);
       }
     }
     const conversationSourceId = getStageOutputSource(stage, 'conversation');
@@ -153,6 +219,25 @@ export function activityFlows(experiment) {
         throw activityError(
           `Stage ${number} cannot use transcription mode because it uses outputs from an earlier stage`
         );
+      }
+    }
+    const previousConversation = stage.previousConversation;
+    if (previousConversation) {
+      if (previousConversation.enabled && index === 0) {
+        throw activityError('The first stage cannot show a previous stage conversation');
+      }
+      if (
+        previousConversation.availability !== undefined &&
+        !PREVIOUS_CONVERSATION_AVAILABILITIES.includes(previousConversation.availability)
+      ) {
+        throw activityError(`Invalid previous conversation availability in stage ${number}`);
+      }
+      const prevConvSourceId = previousConversation.sourceStageId ?? null;
+      if (prevConvSourceId && !(positions.get(prevConvSourceId) < index)) {
+        throw activityError(`The previous conversation source of stage ${number} must be an earlier stage`);
+      }
+      if (previousConversation.enabled && !prevConvSourceId) {
+        throw activityError(`Select an earlier stage for previous conversation in stage ${number}`);
       }
     }
     return flow;

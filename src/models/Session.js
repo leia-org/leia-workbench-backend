@@ -20,6 +20,7 @@ const sessionSchema = new Schema(
     sourceStageIds: {
       conversation: String,
       submitedSolution: String,
+      problem: String,
     },
     previousStageSession: Schema.Types.ObjectId,
     stageRunKey: String,
@@ -31,6 +32,14 @@ const sessionSchema = new Schema(
     },
     score: {
       type: Number,
+    },
+    evaluationMode: {
+      type: String,
+      enum: ['classic', 'rubric'],
+    },
+    rubricEvaluation: {
+      type: Schema.Types.Mixed,
+      default: undefined,
     },
     messages: [
       {

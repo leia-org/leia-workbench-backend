@@ -1,4 +1,5 @@
 import express from 'express';
+import { requireTestRunsPreview } from '../../config/testRuns.js';
 import {
   createReplication,
   getReplicationById,
@@ -14,9 +15,13 @@ import {
   deleteReplicationForm,
   toggleAskSolution,
   toggleEvaluateSolution,
+  updateEvaluationMode,
   toggleShowSolution,
+  updateStagePreviousConversation,
   getReplicationConversations,
   downloadReplicationConversationsCSV,
+  getSessionTestRuns,
+  downloadReplicationTestRunsCSV,
   updateSessionScore,
   regenerateReplicationShareToken,
   toggleReplicationIsShared,
@@ -40,7 +45,9 @@ router.patch('/:id/toggle-shared', requireAdvanced, toggleReplicationIsShared);
 router.patch('/:id/language', authContext, updateReplicationLanguage);
 router.patch('/:id/leia/:leiaId/toggle-ask-solution', authContext, toggleAskSolution);
 router.patch('/:id/leia/:leiaId/toggle-evaluate-solution', authContext, toggleEvaluateSolution);
+router.patch('/:id/leia/:leiaId/evaluation-mode', authContext, updateEvaluationMode);
 router.patch('/:id/leia/:leiaId/toggle-show-solution', authContext, toggleShowSolution);
+router.patch('/:id/stages/:stageId/previous-conversation', authContext, updateStagePreviousConversation);
 router.patch('/:id/duration', authContext, updateReplicationDuration);
 router.patch('/:id/experiment', authContext, updateReplicationExperiment);
 router.patch('/:id/form', authContext, updateReplicationForm);
@@ -50,6 +57,8 @@ router.patch('/:id/sessions/:sessionId/score', authContext, updateSessionScore);
 router.get('/', requireAdvanced, getAllReplicationsByQuery);
 router.get('/:id/conversations', authContext, getReplicationConversations);
 router.get('/:id/conversations/csv', authContext, downloadReplicationConversationsCSV);
+router.get('/:id/test-runs/csv', requireTestRunsPreview, authContext, downloadReplicationTestRunsCSV);
+router.get('/:id/sessions/:sessionId/test-runs', requireTestRunsPreview, authContext, getSessionTestRuns);
 router.get('/:id', authContext, getReplicationById);
 router.get('/exists/:name', requireAdvanced, replicationNameExists);
 // DELETE

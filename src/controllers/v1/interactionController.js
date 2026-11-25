@@ -1,5 +1,7 @@
 import ConversationDynamicsService from '../../services/v1/ConversationDynamicsService.js';
 import InteractionService from '../../services/v1/InteractionService.js';
+import TestRunService from '../../services/v1/TestRunService.js';
+import { createTestRunValidator } from '../../validators/v1/testRunValidator.js';
 import {
   startSessionValidator,
   sendSessionMessageValidator,
@@ -167,6 +169,19 @@ export const saveDraft = async (req, res, next) => {
   }
 };
 
+// Stores one execution of the code editor's test suite, reported by the
+// widget whether the student or the LEIA started it.
+export const createTestRun = async (req, res, next) => {
+  try {
+    const value = await createTestRunValidator.validateAsync(req.body, { stripUnknown: true });
+    const { run, created } = await TestRunService.record(req.params.sessionId, value);
+    // 200 for a repeated clientRunId: the run was already stored.
+    res.status(created ? 201 : 200).json({ id: run.id, createdAt: run.createdAt });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getEvaluation = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
@@ -182,6 +197,17 @@ export const getSolution = async (req, res, next) => {
     const { sessionId } = req.params;
     const solution = await InteractionService.getSolutionAndFormat(sessionId);
     res.json(solution);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPreviousStageConversation = async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+    const view = typeof req.query.view === 'string' ? req.query.view : undefined;
+    const data = await InteractionService.getPreviousStageConversation(sessionId, { view });
+    res.json(data);
   } catch (error) {
     next(error);
   }

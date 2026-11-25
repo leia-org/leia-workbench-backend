@@ -116,7 +116,7 @@ describe('Stage observability (conversations, CSV, spectator & live)', () => {
     const csv = await ReplicationService.getConversationsCSV('rep-1');
     const lines = csv.trim().split('\n');
     expect(lines[0]).toBe(
-      'Session ID,Run ID,Stage,LEIA,User,Started At,Finished At,Message,Is LEIA,Sender,Timestamp,Score,Evaluation,Submitted Solution'
+      'Session ID,Run ID,Stage,LEIA,User,Started At,Finished At,Message,Is LEIA,Sender,Timestamp,Evaluation Mode,Score,Evaluation,Submitted Solution'
     );
     // run-1 (started 10:00) keeps Stage 1 and Stage 2 contiguous before run-2 (started 10:05).
     const stage1Pos = csv.indexOf('sess-1,run-1,1/2,Interviewer');

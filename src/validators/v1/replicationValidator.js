@@ -83,3 +83,9 @@ export const updateReplicationFormValidator = Joi.object({
 export const updateSessionScoreValidator = Joi.object({
   score: Joi.number().min(0).max(100).required(),
 });
+
+export const updateStagePreviousConversationValidator = Joi.object({
+  enabled: Joi.boolean().required(),
+  sourceStageId: Joi.string().trim().min(1).allow(null).optional(),
+  availability: Joi.string().valid('chat', 'both').optional(),
+});
