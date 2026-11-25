@@ -24,9 +24,12 @@ import {
   activityError,
   activityFlows,
   getConversationRequirementForLeia,
+  getLeiaPreviousConversationConfig,
+  getLeiaPreviousSubmittedSolutionConfig,
   getStageOutputSourcesMap,
-  getStagePreviousConversationConfig,
+  getStageProblemLeia,
   publicPreviousConversationConfig,
+  publicPreviousSubmittedSolutionConfig,
   referencePattern,
   stageExperiment,
   stageProgress,
@@ -754,8 +757,14 @@ class InteractionService {
       sessionData.stage = progress;
       sessionData.stagePlan = publicStagePlan(replication, session);
     }
-    const previousConversation = publicPreviousConversationConfig(experiment, stage);
+    const previousConversation = publicPreviousConversationConfig(experiment, stage, leia);
     if (previousConversation) sessionData.previousConversation = previousConversation;
+    const previousSubmittedSolution = publicPreviousSubmittedSolutionConfig(experiment, stage, leia);
+    if (previousSubmittedSolution) sessionData.previousSubmittedSolution = previousSubmittedSolution;
+    if (leia.configuration) {
+      delete leia.configuration.previousConversation;
+      delete leia.configuration.previousSubmittedSolution;
+    }
     sessionData.conversationDynamics = publicDynamicsState(session, leia);
     delete leia.leia.spec.behaviour.spec.conversationDynamics;
     if (leia.leia?.spec) delete leia.leia.spec.supervisorConfig;
@@ -845,13 +854,19 @@ class InteractionService {
     const experiment = replication.experiment;
     const stages = experiment?.stages || [];
     const stage = stages.find(({ id }) => id === session.stageId);
-    const config = getStagePreviousConversationConfig(experiment, stage);
+    const currentLeia = experiment?.leias?.find(
+      (entry) => String(entry.id) === String(session.leia)
+    );
+    const config = getLeiaPreviousConversationConfig(experiment, stage, currentLeia);
     if (!config) {
       throw activityError('Previous conversation is not enabled for this stage', 403);
     }
 
-    if (view === 'editor' && config.availability !== 'both') {
+    if (view === 'editor' && config.availability === 'chat') {
       throw activityError('Previous conversation is only available in chat for this stage', 403);
+    }
+    if (view === 'chat' && config.availability === 'editor') {
+      throw activityError('Previous conversation is only available in the editor for this stage', 403);
     }
 
     const sourceSession = await resolveSourceStageSession(session, config.sourceStageId);
@@ -936,6 +951,67 @@ class InteractionService {
       ...(multiLeia ? { actors: multiLeia.actors } : {}),
       ...(externalTranscriptionLink ? { externalTranscriptionLink } : {}),
       messages,
+    };
+  }
+
+  async getPreviousStageSubmittedSolution(sessionId, { view } = {}) {
+    const session = await SessionService.findById(sessionId);
+    if (!session) {
+      throw activityError('Session not found', 404);
+    }
+
+    const replication = await ReplicationService.findById(session.replication);
+    if (!replication) {
+      throw activityError('Replication not found', 404);
+    }
+
+    const experiment = replication.experiment;
+    const stages = experiment?.stages || [];
+    const stage = stages.find(({ id }) => id === session.stageId);
+    const currentLeia = experiment?.leias?.find(
+      (entry) => String(entry.id) === String(session.leia)
+    );
+    const config = getLeiaPreviousSubmittedSolutionConfig(experiment, stage, currentLeia);
+    if (!config) {
+      throw activityError('Previous submitted solution is not enabled for this stage', 403);
+    }
+
+    if (view === 'editor' && config.availability === 'chat') {
+      throw activityError(
+        'Previous submitted solution is only available in chat for this stage',
+        403
+      );
+    }
+    if (view === 'chat' && config.availability === 'editor') {
+      throw activityError(
+        'Previous submitted solution is only available in the editor for this stage',
+        403
+      );
+    }
+
+    const sourceSession = await resolveSourceStageSession(session, config.sourceStageId);
+    const sourceStage = stages.find(({ id }) => id === config.sourceStageId);
+    const sourceLeia = experiment?.leias?.find(
+      (entry) => String(entry.id) === String(sourceSession.leia)
+    );
+    const sourceProblemLeia =
+      sourceStage?.orchestration?.mode === 'multi'
+        ? getStageProblemLeia(experiment, sourceStage)
+        : sourceLeia;
+    const solutionFormat =
+      sourceProblemLeia?.leia?.spec?.problem?.spec?.solutionFormat ||
+      sourceLeia?.leia?.spec?.problem?.spec?.solutionFormat ||
+      'text';
+
+    return {
+      stage: {
+        number: config.stageNumber,
+        total: stages.length,
+      },
+      availability: config.availability,
+      solution: typeof sourceSession.result === 'string' ? sourceSession.result : null,
+      solutionFormat,
+      submittedAt: sourceSession.finishedAt || null,
     };
   }
 
@@ -1391,8 +1467,21 @@ class InteractionService {
         data.stage = stageProgress(replication.experiment, session);
         if (data.stage) data.stagePlan = publicStagePlan(replication, session);
         const stage = replication.experiment?.stages?.find(({ id }) => id === session.stageId);
-        const previousConversation = publicPreviousConversationConfig(replication.experiment, stage);
+        const currentLeia = replication.experiment?.leias?.find(
+          (entry) => String(entry.id) === String(session.leia)
+        );
+        const previousConversation = publicPreviousConversationConfig(
+          replication.experiment,
+          stage,
+          currentLeia
+        );
         if (previousConversation) data.previousConversation = previousConversation;
+        const previousSubmittedSolution = publicPreviousSubmittedSolutionConfig(
+          replication.experiment,
+          stage,
+          currentLeia
+        );
+        if (previousSubmittedSolution) data.previousSubmittedSolution = previousSubmittedSolution;
       }
     }
     if (!data.stage?.hasNext) {

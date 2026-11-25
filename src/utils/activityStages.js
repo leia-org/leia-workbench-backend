@@ -12,7 +12,8 @@ export const referencePattern =
   /{{\s*previousStage\.(?:outputs\.(conversation|submitedSolution)|leia\.problem\.(description|details|personaBackground|solution|initialSolution|solutionFormat|evaluationPrompt|process))\s*}}/g;
 const anyReference = /{{\s*previousStage\b[^{}]*}}/g;
 export const STAGE_OUTPUTS = ['conversation', 'submitedSolution', 'problem'];
-export const PREVIOUS_CONVERSATION_AVAILABILITIES = ['chat', 'both'];
+export const PREVIOUS_STAGE_VIEW_AVAILABILITIES = ['chat', 'editor', 'both'];
+export const PREVIOUS_CONVERSATION_AVAILABILITIES = PREVIOUS_STAGE_VIEW_AVAILABILITIES;
 const outputLabels = {
   conversation: 'conversation',
   submitedSolution: 'submitted solution',
@@ -27,31 +28,79 @@ export function getStageOutputSource(stage, output) {
   return stage?.outputSources?.[output] ?? null;
 }
 
-export function getStagePreviousConversationConfig(experiment, stage) {
+function resolveTargetLeiaForPreviousStageView(experiment, stage, leia) {
+  if (stage?.orchestration?.mode === 'multi') {
+    return getStageProblemLeia(experiment, stage);
+  }
+  return leia || null;
+}
+
+export function getLeiaPreviousStageResourceConfig(experiment, stage, leia, resourceKey) {
   const stages = experiment?.stages;
   if (!Array.isArray(stages) || !stage?.id) return null;
   const stageIndex = stages.findIndex(({ id }) => id === stage.id);
   if (stageIndex <= 0) return null;
-  const config = stage.previousConversation;
+  const targetLeia = resolveTargetLeiaForPreviousStageView(experiment, stage, leia);
+  const config =
+    targetLeia?.configuration?.[resourceKey] !== undefined
+      ? targetLeia.configuration[resourceKey]
+      : stage?.[resourceKey];
   if (!config?.enabled || !config.sourceStageId) return null;
   const sourceStageIndex = stages.findIndex(({ id }) => id === config.sourceStageId);
   if (sourceStageIndex === -1 || !(sourceStageIndex < stageIndex)) return null;
+  const availability = PREVIOUS_STAGE_VIEW_AVAILABILITIES.includes(config.availability)
+    ? config.availability
+    : 'both';
   return {
     enabled: true,
     sourceStageId: config.sourceStageId,
     stageNumber: sourceStageIndex + 1,
-    availability: config.availability === 'chat' ? 'chat' : 'both',
+    availability,
   };
 }
 
-export function publicPreviousConversationConfig(experiment, stage) {
-  const config = getStagePreviousConversationConfig(experiment, stage);
+export function getLeiaPreviousConversationConfig(experiment, stage, leia = null) {
+  return getLeiaPreviousStageResourceConfig(experiment, stage, leia, 'previousConversation');
+}
+
+export function getStagePreviousConversationConfig(experiment, stage, leia = null) {
+  return getLeiaPreviousConversationConfig(experiment, stage, leia);
+}
+
+export function getLeiaPreviousSubmittedSolutionConfig(experiment, stage, leia = null) {
+  return getLeiaPreviousStageResourceConfig(experiment, stage, leia, 'previousSubmittedSolution');
+}
+
+function toPublicPreviousStageResourceConfig(config) {
   if (!config) return undefined;
   return {
     enabled: true,
     stageNumber: config.stageNumber,
     availability: config.availability,
   };
+}
+
+export function publicPreviousConversationConfig(experiment, stage, leia = null) {
+  return toPublicPreviousStageResourceConfig(
+    getLeiaPreviousConversationConfig(experiment, stage, leia)
+  );
+}
+
+export function publicPreviousSubmittedSolutionConfig(experiment, stage, leia = null) {
+  return toPublicPreviousStageResourceConfig(
+    getLeiaPreviousSubmittedSolutionConfig(experiment, stage, leia)
+  );
+}
+
+export function stageHasAskSolutionEnabled(experiment, stage) {
+  if (!stage?.id) return false;
+  const entries = (experiment?.leias || []).filter((entry) => entry.stageId === stage.id);
+  if (!entries.length) return false;
+  if (stage.orchestration?.mode === 'multi') {
+    const problemLeia = getStageProblemLeia(experiment, stage);
+    return Boolean(problemLeia && problemLeia.configuration?.askSolution !== false);
+  }
+  return entries.every((entry) => entry.configuration?.askSolution !== false);
 }
 
 export function getStageReferencedOutputs(leias) {
@@ -81,20 +130,50 @@ export function getStageOutputSourcesMap(stage, leias) {
 }
 
 export function getStagesRequiringSolution(experiment) {
-  const requiredByStageId = new Map();
+  const requiredSetsByStageId = new Map();
   const stages = experiment?.stages;
-  if (!Array.isArray(stages) || !stages.length) return requiredByStageId;
+  if (!Array.isArray(stages) || !stages.length) return new Map();
   const positions = new Map(stages.map(({ id }, index) => [id, index]));
+
+  const addDependent = (sourceStageId, stageNumber) => {
+    let dependents = requiredSetsByStageId.get(sourceStageId);
+    if (!dependents) {
+      dependents = new Set();
+      requiredSetsByStageId.set(sourceStageId, dependents);
+    }
+    dependents.add(stageNumber);
+  };
 
   for (const [index, stage] of stages.entries()) {
     const entries = (experiment.leias || []).filter((entry) => entry.stageId === stage.id);
     const referenced = getStageReferencedOutputs(entries);
-    if (!referenced.has('submitedSolution')) continue;
-    const sourceStageId = getStageOutputSource(stage, 'submitedSolution');
-    if (!sourceStageId || !(positions.get(sourceStageId) < index)) continue;
-    const dependents = requiredByStageId.get(sourceStageId) || [];
-    dependents.push(index + 1);
-    requiredByStageId.set(sourceStageId, dependents);
+    if (referenced.has('submitedSolution')) {
+      const sourceStageId = getStageOutputSource(stage, 'submitedSolution');
+      if (sourceStageId && positions.get(sourceStageId) < index) {
+        addDependent(sourceStageId, index + 1);
+      }
+    }
+
+    if (index > 0) {
+      const targetLeias =
+        stage.orchestration?.mode === 'multi'
+          ? [getStageProblemLeia(experiment, stage)].filter(Boolean)
+          : entries;
+      for (const entry of targetLeias) {
+        const solConfig = getLeiaPreviousSubmittedSolutionConfig(experiment, stage, entry);
+        if (solConfig?.sourceStageId && positions.get(solConfig.sourceStageId) < index) {
+          addDependent(solConfig.sourceStageId, index + 1);
+        }
+      }
+    }
+  }
+
+  const requiredByStageId = new Map();
+  for (const [sourceStageId, dependents] of requiredSetsByStageId.entries()) {
+    requiredByStageId.set(
+      sourceStageId,
+      [...dependents].sort((a, b) => a - b)
+    );
   }
 
   return requiredByStageId;
@@ -221,23 +300,52 @@ export function activityFlows(experiment) {
         );
       }
     }
-    const previousConversation = stage.previousConversation;
-    if (previousConversation) {
-      if (previousConversation.enabled && index === 0) {
-        throw activityError('The first stage cannot show a previous stage conversation');
+    const validatePreviousStageResource = (config, label) => {
+      if (!config) return;
+      if (config.enabled && index === 0) {
+        throw activityError(`The first stage cannot show a previous stage ${label}`);
       }
       if (
-        previousConversation.availability !== undefined &&
-        !PREVIOUS_CONVERSATION_AVAILABILITIES.includes(previousConversation.availability)
+        config.availability !== undefined &&
+        !PREVIOUS_STAGE_VIEW_AVAILABILITIES.includes(config.availability)
       ) {
-        throw activityError(`Invalid previous conversation availability in stage ${number}`);
+        throw activityError(`Invalid previous ${label} availability in stage ${number}`);
       }
-      const prevConvSourceId = previousConversation.sourceStageId ?? null;
-      if (prevConvSourceId && !(positions.get(prevConvSourceId) < index)) {
-        throw activityError(`The previous conversation source of stage ${number} must be an earlier stage`);
+      const prevSourceId = config.sourceStageId ?? null;
+      if (prevSourceId && !(positions.get(prevSourceId) < index)) {
+        throw activityError(`The previous ${label} source of stage ${number} must be an earlier stage`);
       }
-      if (previousConversation.enabled && !prevConvSourceId) {
-        throw activityError(`Select an earlier stage for previous conversation in stage ${number}`);
+      if (config.enabled && !prevSourceId) {
+        throw activityError(`Select an earlier stage for previous ${label} in stage ${number}`);
+      }
+    };
+
+    validatePreviousStageResource(stage.previousConversation, 'conversation');
+    validatePreviousStageResource(stage.previousSubmittedSolution, 'submitted solution');
+    if (
+      stage.previousConversation?.enabled &&
+      stage.previousSubmittedSolution?.enabled &&
+      stage.previousConversation.sourceStageId !== stage.previousSubmittedSolution.sourceStageId
+    ) {
+      throw activityError(
+        `Previous conversation and submitted solution must use the same source stage in stage ${number}`
+      );
+    }
+    for (const entry of flow.leias) {
+      validatePreviousStageResource(entry.configuration?.previousConversation, 'conversation');
+      validatePreviousStageResource(
+        entry.configuration?.previousSubmittedSolution,
+        'submitted solution'
+      );
+      if (
+        entry.configuration?.previousConversation?.enabled &&
+        entry.configuration?.previousSubmittedSolution?.enabled &&
+        entry.configuration.previousConversation.sourceStageId !==
+          entry.configuration.previousSubmittedSolution.sourceStageId
+      ) {
+        throw activityError(
+          `Previous conversation and submitted solution must use the same source stage in stage ${number}`
+        );
       }
     }
     return flow;

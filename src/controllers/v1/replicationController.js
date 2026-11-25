@@ -12,6 +12,7 @@ import {
   updateReplicationFormValidator,
   updateSessionScoreValidator,
   updateStagePreviousConversationValidator,
+  updateLeiaPreviousStageViewValidator,
   updateDataUsageValidator,
 } from '../../validators/v1/replicationValidator.js';
 
@@ -281,6 +282,23 @@ export const updateStagePreviousConversation = async (req, res, next) => {
     const updatedReplication = await ReplicationService.updateStagePreviousConversation(
       id,
       stageId,
+      value
+    );
+    res.json(updatedReplication);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateLeiaPreviousStageView = async (req, res, next) => {
+  try {
+    const { id, leiaId } = req.params;
+    const value = await updateLeiaPreviousStageViewValidator.validateAsync(req.body, {
+      abortEarly: false,
+    });
+    const updatedReplication = await ReplicationService.updateLeiaPreviousStageView(
+      id,
+      leiaId,
       value
     );
     res.json(updatedReplication);

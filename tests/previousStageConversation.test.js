@@ -7,6 +7,10 @@ vi.mock('../src/repositories/v1/ReplicationRepository.js', () => ({
     findById: vi.fn(),
     findLeia: vi.fn(),
     updateStagePreviousConversation: vi.fn(),
+    updateLeiaPreviousStageView: vi.fn(),
+    updateStageLeiasPreviousStageView: vi.fn(),
+    updateAskSolution: vi.fn(),
+    toggleIsActive: vi.fn(),
   },
 }));
 vi.mock('../src/repositories/v1/SessionRepository.js', () => ({
@@ -38,7 +42,10 @@ import MessageService from '../src/services/v1/MessageService.js';
 import ReplicationService from '../src/services/v1/ReplicationService.js';
 import InteractionService from '../src/services/v1/InteractionService.js';
 import { activityFlows } from '../src/utils/activityStages.js';
-import { updateStagePreviousConversationValidator } from '../src/validators/v1/replicationValidator.js';
+import {
+  updateLeiaPreviousStageViewValidator,
+  updateStagePreviousConversationValidator,
+} from '../src/validators/v1/replicationValidator.js';
 
 const buildReplication = (stageOverrides = {}) => ({
   id: 'rep-1',
@@ -132,6 +139,14 @@ describe('updateStagePreviousConversationValidator', () => {
         sourceStageId: 's1',
         availability: 'editor',
       })
+    ).resolves.toEqual({ enabled: true, sourceStageId: 's1', availability: 'editor' });
+
+    await expect(
+      updateStagePreviousConversationValidator.validateAsync({
+        enabled: true,
+        sourceStageId: 's1',
+        availability: 'invalid',
+      })
     ).rejects.toThrow();
 
     await expect(
@@ -139,6 +154,38 @@ describe('updateStagePreviousConversationValidator', () => {
         sourceStageId: 's1',
       })
     ).rejects.toThrow();
+  });
+
+  test('updateLeiaPreviousStageViewValidator accepts independent or combined payloads and applyToStage', async () => {
+    await expect(
+      updateLeiaPreviousStageViewValidator.validateAsync({
+        previousSubmittedSolution: {
+          enabled: true,
+          sourceStageId: 's1',
+          availability: 'editor',
+        },
+      })
+    ).resolves.toEqual({
+      previousSubmittedSolution: {
+        enabled: true,
+        sourceStageId: 's1',
+        availability: 'editor',
+      },
+    });
+
+    await expect(
+      updateLeiaPreviousStageViewValidator.validateAsync({
+        previousConversation: { enabled: true, sourceStageId: 's1', availability: 'chat' },
+        previousSubmittedSolution: { enabled: true, sourceStageId: 's1', availability: 'both' },
+        applyToStage: true,
+      })
+    ).resolves.toEqual({
+      previousConversation: { enabled: true, sourceStageId: 's1', availability: 'chat' },
+      previousSubmittedSolution: { enabled: true, sourceStageId: 's1', availability: 'both' },
+      applyToStage: true,
+    });
+
+    await expect(updateLeiaPreviousStageViewValidator.validateAsync({})).rejects.toThrow();
   });
 });
 
@@ -482,5 +529,304 @@ describe('InteractionService previous stage conversation', () => {
     expect(res.mode).toBe('transcription');
     expect(res.messages).toHaveLength(2);
     expect(res.messages[0].text).toBe('Preloaded line 1');
+  });
+});
+
+describe('Per-LEIA variability and previous submitted solution', () => {
+  const finishedAt = new Date('2026-11-24T12:00:00Z');
+  const runId = 'run-1';
+
+  const buildAbReplication = () => {
+    const rep = buildReplication();
+    rep.experiment.leias[0].leia.spec.problem.spec.solutionFormat = 'markdown';
+    rep.experiment.leias.push({
+      id: 'l2b',
+      stageId: 's2',
+      configuration: { mode: 'standard', askSolution: true, evaluateSolution: false },
+      runnerConfiguration: {
+        provider: 'openai-responses',
+        modelName: 'gpt-4.1',
+        apiKeyId: 'k1',
+        apiKeyRequesterId: 'u1',
+        audioMode: null,
+      },
+      leia: {
+        id: 'doc-2b',
+        metadata: { name: 'Reviewer LEIA B' },
+        spec: {
+          persona: { id: 'p2b', spec: { firstName: 'Nora' } },
+          behaviour: { spec: { description: 'Stage 2 variant B' } },
+          problem: { spec: { description: 'Stage 2 problem B' } },
+        },
+      },
+    });
+    return rep;
+  };
+
+  test('updateLeiaPreviousStageView updates a single LEIA independently and supports applyToStage', async () => {
+    const rep = buildAbReplication();
+    ReplicationRepository.findById.mockResolvedValue(rep);
+    ReplicationRepository.updateLeiaPreviousStageView.mockResolvedValue(rep);
+    ReplicationRepository.updateStageLeiasPreviousStageView.mockResolvedValue(rep);
+
+    await ReplicationService.updateLeiaPreviousStageView('rep-1', 'l2', {
+      previousConversation: { enabled: true, sourceStageId: 's1', availability: 'editor' },
+      previousSubmittedSolution: { enabled: true, sourceStageId: 's1', availability: 'both' },
+    });
+
+    expect(ReplicationRepository.updateLeiaPreviousStageView).toHaveBeenCalledWith('rep-1', 'l2', {
+      previousConversation: { enabled: true, sourceStageId: 's1', availability: 'editor' },
+      previousSubmittedSolution: { enabled: true, sourceStageId: 's1', availability: 'both' },
+    });
+
+    await ReplicationService.updateLeiaPreviousStageView('rep-1', 'l2', {
+      previousSubmittedSolution: { enabled: true, sourceStageId: 's1', availability: 'chat' },
+      applyToStage: true,
+    });
+
+    expect(ReplicationRepository.updateStageLeiasPreviousStageView).toHaveBeenCalledWith(
+      'rep-1',
+      's2',
+      {
+        previousSubmittedSolution: { enabled: true, sourceStageId: 's1', availability: 'chat' },
+      }
+    );
+  });
+
+  test('rejects enabling previousSubmittedSolution when source stage has askSolution disabled', async () => {
+    const rep = buildAbReplication();
+    rep.experiment.leias[0].configuration.askSolution = false;
+    ReplicationRepository.findById.mockResolvedValue(rep);
+
+    await expect(
+      ReplicationService.updateLeiaPreviousStageView('rep-1', 'l2', {
+        previousSubmittedSolution: { enabled: true, sourceStageId: 's1', availability: 'both' },
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(ReplicationRepository.updateLeiaPreviousStageView).not.toHaveBeenCalled();
+  });
+
+  test('locks toggleAskSolution and blocks activation when a later stage LEIA uses previousSubmittedSolution', async () => {
+    const rep = buildAbReplication();
+    rep.isActive = false;
+    rep.experiment.leias[1].configuration.previousSubmittedSolution = {
+      enabled: true,
+      sourceStageId: 's1',
+      availability: 'editor',
+    };
+    ReplicationRepository.findById.mockResolvedValue(rep);
+
+    await expect(ReplicationService.toggleAskSolution('rep-1', 'l1')).rejects.toMatchObject({
+      statusCode: 400,
+    });
+    expect(ReplicationRepository.updateAskSolution).not.toHaveBeenCalled();
+
+    rep.experiment.leias[0].configuration.askSolution = false;
+    await expect(ReplicationService.toggleIsActive('rep-1')).rejects.toMatchObject({
+      statusCode: 400,
+    });
+    expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+  });
+
+  test('rejects editing secondary MultiLEIA actor for previous stage view', async () => {
+    const rep = buildAbReplication();
+    rep.experiment.stages[1].orchestration = {
+      mode: 'multi',
+      maxInternalTurns: 2,
+      openingLeiaId: 'l2',
+      problemLeiaId: 'l2',
+    };
+    ReplicationRepository.findById.mockResolvedValue(rep);
+
+    await expect(
+      ReplicationService.updateLeiaPreviousStageView('rep-1', 'l2b', {
+        previousSubmittedSolution: { enabled: true, sourceStageId: 's1', availability: 'both' },
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('rejects using different source stages for conversation and submitted solution on the same LEIA', async () => {
+    const rep = buildAbReplication();
+    ReplicationRepository.findById.mockResolvedValue(rep);
+
+    await expect(
+      ReplicationService.updateLeiaPreviousStageView('rep-1', 'l3', {
+        previousConversation: { enabled: true, sourceStageId: 's1', availability: 'both' },
+        previousSubmittedSolution: { enabled: true, sourceStageId: 's2', availability: 'both' },
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(ReplicationRepository.updateLeiaPreviousStageView).not.toHaveBeenCalled();
+
+    const mismatchedFlow = buildAbReplication().experiment;
+    mismatchedFlow.leias[2].configuration.previousConversation = {
+      enabled: true,
+      sourceStageId: 's1',
+      availability: 'both',
+    };
+    mismatchedFlow.leias[2].configuration.previousSubmittedSolution = {
+      enabled: true,
+      sourceStageId: 's2',
+      availability: 'both',
+    };
+    expect(() => activityFlows(mismatchedFlow)).toThrow(/same source stage/i);
+  });
+
+  test('exposes per-LEIA previousConversation and previousSubmittedSolution without leaking sourceStageId', async () => {
+    const rep = buildAbReplication();
+    rep.experiment.leias[1].configuration.previousConversation = {
+      enabled: true,
+      sourceStageId: 's1',
+      availability: 'editor',
+    };
+    rep.experiment.leias[1].configuration.previousSubmittedSolution = {
+      enabled: true,
+      sourceStageId: 's1',
+      availability: 'chat',
+    };
+    // LEIA B in the same stage leaves both disabled.
+    rep.experiment.leias[3].configuration.previousConversation = {
+      enabled: false,
+      sourceStageId: 's1',
+      availability: 'both',
+    };
+    ReplicationRepository.findById.mockResolvedValue(rep);
+    MessageService.findBySession.mockResolvedValue([]);
+
+    SessionService.findById.mockResolvedValueOnce({
+      id: 'sess-2a',
+      run: runId,
+      user: 'student-1',
+      replication: 'rep-1',
+      stageId: 's2',
+      leia: { equals: (other) => String(other) === 'l2', toString: () => 'l2' },
+      isTest: false,
+      interactionMode: 'single',
+      finishedAt: null,
+    });
+    const dataA = await InteractionService.getSessionData('sess-2a');
+    expect(dataA.session.previousConversation).toEqual({
+      enabled: true,
+      stageNumber: 1,
+      availability: 'editor',
+    });
+    expect(dataA.session.previousSubmittedSolution).toEqual({
+      enabled: true,
+      stageNumber: 1,
+      availability: 'chat',
+    });
+    expect(dataA.leia.configuration.previousConversation).toBeUndefined();
+    expect(dataA.leia.configuration.previousSubmittedSolution).toBeUndefined();
+
+    SessionService.findById.mockResolvedValueOnce({
+      id: 'sess-2b',
+      run: runId,
+      user: 'student-2',
+      replication: 'rep-1',
+      stageId: 's2',
+      leia: { equals: (other) => String(other) === 'l2b', toString: () => 'l2b' },
+      isTest: false,
+      interactionMode: 'single',
+      finishedAt: null,
+    });
+    const dataB = await InteractionService.getSessionData('sess-2b');
+    expect(dataB.session.previousConversation).toBeUndefined();
+    expect(dataB.session.previousSubmittedSolution).toBeUndefined();
+  });
+
+  test('getPreviousStageSubmittedSolution returns student result, enforces view availability, and never leaks reference solution', async () => {
+    const rep = buildAbReplication();
+    rep.experiment.leias[1].configuration.previousSubmittedSolution = {
+      enabled: true,
+      sourceStageId: 's1',
+      availability: 'editor',
+    };
+    rep.experiment.leias[1].configuration.previousConversation = {
+      enabled: true,
+      sourceStageId: 's1',
+      availability: 'editor',
+    };
+    ReplicationRepository.findById.mockResolvedValue(rep);
+
+    const stage2Session = {
+      id: 'sess-2',
+      run: runId,
+      user: 'student-1',
+      replication: 'rep-1',
+      stageId: 's2',
+      leia: 'l2',
+      isTest: false,
+      interactionMode: 'single',
+      finishedAt: null,
+    };
+    SessionService.findById.mockResolvedValue(stage2Session);
+
+    // Editor-only blocks chat view for both conversation and submitted solution.
+    await expect(
+      InteractionService.getPreviousStageSubmittedSolution('sess-2', { view: 'chat' })
+    ).rejects.toMatchObject({ statusCode: 403 });
+    await expect(
+      InteractionService.getPreviousStageConversation('sess-2', { view: 'chat' })
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    ActivityRunRepository.findById.mockResolvedValue({
+      id: runId,
+      user: 'student-1',
+      replication: 'rep-1',
+      isTest: false,
+      stages: [
+        { stageId: 's1', stageIndex: 0, session: 'sess-1' },
+        { stageId: 's2', stageIndex: 1, session: 'sess-2' },
+      ],
+    });
+    SessionRepository.findById.mockResolvedValue({
+      id: 'sess-1',
+      run: runId,
+      user: 'student-1',
+      replication: 'rep-1',
+      stageId: 's1',
+      leia: 'l1',
+      isTest: false,
+      interactionMode: 'single',
+      finishedAt,
+      result: '# Student Markdown Solution\n\nDetails here.',
+    });
+
+    const res = await InteractionService.getPreviousStageSubmittedSolution('sess-2', {
+      view: 'editor',
+    });
+    expect(res).toEqual({
+      stage: { number: 1, total: 3 },
+      availability: 'editor',
+      solution: '# Student Markdown Solution\n\nDetails here.',
+      solutionFormat: 'markdown',
+      submittedAt: finishedAt,
+    });
+    expect(JSON.stringify(res)).not.toContain('TOP SECRET');
+  });
+
+  test('activityFlows validates per-LEIA previousSubmittedSolution configs', () => {
+    const firstStageEnabled = buildAbReplication().experiment;
+    firstStageEnabled.leias[0].configuration.previousSubmittedSolution = {
+      enabled: true,
+      sourceStageId: 's1',
+      availability: 'both',
+    };
+    expect(() => activityFlows(firstStageEnabled)).toThrow(/first stage/i);
+
+    const invalidAvailability = buildAbReplication().experiment;
+    invalidAvailability.leias[1].configuration.previousSubmittedSolution = {
+      enabled: true,
+      sourceStageId: 's1',
+      availability: 'nope',
+    };
+    expect(() => activityFlows(invalidAvailability)).toThrow(/availability/i);
+
+    const validEditorOnly = buildAbReplication().experiment;
+    validEditorOnly.leias[1].configuration.previousSubmittedSolution = {
+      enabled: true,
+      sourceStageId: 's1',
+      availability: 'editor',
+    };
+    expect(() => activityFlows(validEditorOnly)).not.toThrow();
   });
 });

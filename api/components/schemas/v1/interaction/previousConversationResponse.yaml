@@ -12,7 +12,7 @@ properties:
         minimum: 1
   availability:
     type: string
-    enum: [chat, both]
+    enum: [chat, editor, both]
   interactionMode:
     type: string
     enum: [single, multi]
