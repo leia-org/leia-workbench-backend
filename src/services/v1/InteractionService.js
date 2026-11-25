@@ -31,7 +31,10 @@ import {
   stageExperiment,
   stageProgress,
 } from '../../utils/activityStages.js';
-import { resolveEvaluationMode } from '../../utils/rubricEvaluation.js';
+import {
+  resolveEvaluationMode,
+  shouldShowEvaluationToParticipant,
+} from '../../utils/rubricEvaluation.js';
 import {
   assertConsentDecided,
   captureDataUsage,
@@ -660,6 +663,7 @@ class InteractionService {
     const showSolutionEnabled =
       (Boolean(leia.configuration?.askSolution) || evaluationMode === 'rubric') &&
       leia.configuration?.showSolution !== false;
+    const showEvaluationEnabled = shouldShowEvaluationToParticipant(leia.configuration);
     const conversationRequiredForNextStage = Boolean(getConversationRequirementForLeia(experiment, leia));
 
     if (!session.finishedAt || !showSolutionEnabled) {
@@ -717,6 +721,7 @@ class InteractionService {
 
     leia.audioMode = audioMode;
     leia.showReferenceSolution = hasReferenceSolution && showSolutionEnabled;
+    leia.showEvaluation = showEvaluationEnabled;
     leia.requiresConversationForNextStage = conversationRequiredForNextStage;
     if (infographicConfig.showToStudent && (infographicSrc || infographicFallbackSrc)) {
       leia.infographic = {
@@ -739,7 +744,7 @@ class InteractionService {
     // Supervisor data is instructor-only: strip it (and the supervisor config)
     // from the payload the student receives.
     const sessionData = stripSupervisorFields(session);
-    if (!showSolutionEnabled) {
+    if (!showEvaluationEnabled) {
       delete sessionData.evaluation;
       delete sessionData.score;
       delete sessionData.evaluationMode;
@@ -1254,15 +1259,13 @@ class InteractionService {
     }
 
     const finalLeia = await ReplicationService.findLeia(session.replication, session.leia);
-    const finalEvalMode = resolveEvaluationMode(finalLeia?.configuration);
-    const hideEvaluation =
-      finalLeia?.configuration?.showSolution === false ||
-      (finalLeia?.configuration?.askSolution === false && finalEvalMode !== 'rubric');
+    const hideEvaluation = !shouldShowEvaluationToParticipant(finalLeia?.configuration);
     return await this.finishedSessionData(session, { hideEvaluation });
   }
 
   async executeSessionEvaluation(session, leia, replication) {
     const evaluationMode = resolveEvaluationMode(leia?.configuration);
+    const emitToSessionRoom = shouldShowEvaluationToParticipant(leia?.configuration);
     if (evaluationMode === 'rubric') {
       const rubric = leia?.leia?.spec?.rubric;
       if (!rubric?.spec?.sections?.length) {
@@ -1320,13 +1323,16 @@ class InteractionService {
       return await SessionService.saveEvaluationAndScore(session.id, res.evaluation, res.score, {
         evaluationMode: 'rubric',
         rubricEvaluation: res.rubricEvaluation,
+        emitToSessionRoom,
       });
     }
 
     const res = session.finishedAt && shouldRemoveConversation(session)
       ? await RunnerService.getEvaluationAndScore(session.id, session.result, { suppressTracing: true })
       : await RunnerService.getEvaluationAndScore(session.id, session.result);
-    return await SessionService.saveEvaluationAndScore(session.id, res.evaluation, res.score);
+    return await SessionService.saveEvaluationAndScore(session.id, res.evaluation, res.score, {
+      emitToSessionRoom,
+    });
   }
 
   evaluateSessionAsync(sessionId, result) {
@@ -1392,7 +1398,11 @@ class InteractionService {
     }
     assertConsentDecided(session);
     if (session.finishedAt) {
-      if (session.stageId) return await this.finishedSessionData(session);
+      if (session.stageId) {
+        const existingLeia = await ReplicationService.findLeia(session.replication, session.leia);
+        const hideEvaluation = !shouldShowEvaluationToParticipant(existingLeia?.configuration);
+        return await this.finishedSessionData(session, { hideEvaluation });
+      }
       const error = new Error('Session already finished');
       error.statusCode = 403;
       throw error;
@@ -1449,9 +1459,7 @@ class InteractionService {
       logger.info(`Cache deleted for session ${session.id}`);
     }
 
-    const hideEvaluation =
-      finishedLeia?.configuration?.showSolution === false ||
-      (finishedLeia?.configuration?.askSolution === false && finishedEvalMode !== 'rubric');
+    const hideEvaluation = !shouldShowEvaluationToParticipant(finishedLeia?.configuration);
     return await this.finishedSessionData(session, { hideEvaluation });
   }
 

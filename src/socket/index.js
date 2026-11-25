@@ -112,17 +112,12 @@ export function initializeSocket(httpServer) {
         }
 
         if (socket.user?.spectate) {
-          if (socket.user.spectate.sessionId !== sessionId) {
-            let authorizedByRun = false;
-            if (socket.user.spectate.runId) {
-              const target = await SessionRepository.findById(sessionId);
-              authorizedByRun = Boolean(
-                target?.run && String(target.run) === String(socket.user.spectate.runId)
-              );
-            }
-            if (!authorizedByRun) {
-              throw new Error('Spectate token does not match the requested session');
-            }
+          const authorized = await SpectatorService.isSessionAuthorizedForSpectateToken(sessionId, {
+            spectateSession: socket.user.spectate.sessionId,
+            spectateRun: socket.user.spectate.runId,
+          });
+          if (!authorized) {
+            throw new Error('Spectate token does not match the requested session');
           }
         } else if (!socket.user?.isAdmin) {
           let authorizedOwner = false;

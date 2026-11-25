@@ -257,7 +257,9 @@ describe('staged activity runtime guards & ActivityRun behavior', () => {
     // Flush microtasks for background evaluation promise.
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(RunnerService.getEvaluationAndScore).toHaveBeenCalledWith('sess-bg', 'Student answer');
-    expect(SessionService.saveEvaluationAndScore).toHaveBeenCalledWith('sess-bg', 'Good work', 9);
+    expect(SessionService.saveEvaluationAndScore).toHaveBeenCalledWith('sess-bg', 'Good work', 9, {
+      emitToSessionRoom: false,
+    });
   });
 
   test('does not expose tool widgets in MultiLEIA sessions', async () => {
