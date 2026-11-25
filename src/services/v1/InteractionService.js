@@ -511,7 +511,6 @@ class InteractionService {
     let session = await SessionService.findById(sessionId);
     if (!session) throw activityError('Session not found', 404);
     if (session.finishedAt) throw activityError('Session already finished', 409);
-    let leia;
     if (!session.isTest && session.dataUsage?.config?.dataUsageConsentRequired) {
       const status = accepted ? 'accepted' : 'declined';
       if (isConsentPending(session)) {
@@ -521,16 +520,13 @@ class InteractionService {
       if (session?.finishedAt || session?.dataUsage?.consentStatus !== status) {
         throw activityError('Data usage consent has already been recorded', 409);
       }
-      leia = await ReplicationService.findLeia(session.replication, session.leia);
+      const leia = await ReplicationService.findLeia(session.replication, session.leia);
       if (leia && session.interactionMode !== 'multi') {
         await ConversationDynamicsService.openText(session.id, leia);
-        session = await SessionService.findById(sessionId) || session;
       }
     }
-    return {
-      session: { ...stripSupervisorFields(session), conversationDynamics: publicDynamicsState(session, leia) },
-      messages: await MessageService.findBySession(sessionId),
-    };
+    const { session: sessionData, messages } = await this.getSessionData(sessionId);
+    return { session: sessionData, messages };
   }
 
   async startTestSession(replicationId, leiaId, multiLeia = false, staged = false) {

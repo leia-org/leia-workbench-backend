@@ -234,6 +234,35 @@ test('keeps a finished stage conversation until the activity run is finished', a
   expect(traceRemovalRequests.some(({ sessionId }) => sessionId === session.id)).toBe(true);
 });
 
+test('the consent response preserves the stage and the plan needed by the student chat', async () => {
+  const created = await request('/replications', 'POST', {
+    name: 'Stage consent context fixture', experiment: stagedExperimentId,
+  });
+  expect(created.status).toBe(201);
+  const { id, code } = await created.json();
+  const dataUsageConfig = {
+    dataUsageConsentRequired: true,
+    dataUsageConsentMessage: 'Choose whether to retain the test conversation.',
+    conversationAutomatedRemoval: true,
+  };
+  expect((await request(`/replications/${id}/data-usage`, 'PATCH', { dataUsageConfig })).status).toBe(200);
+  expect((await request(`/replications/${id}/toggle-active`, 'PATCH')).status).toBe(200);
+  const started = await request('/interactions', 'POST', { email: 'stage-consent@example.com', code }, null);
+  expect(started.status).toBe(201);
+  const { sessionId } = await started.json();
+  const path = `/interactions/${sessionId}`;
+  const { session: before } = await (await request(path, 'GET', undefined, null)).json();
+  const saved = await request(`${path}/data-usage-consent`, 'POST', { accepted: false }, null);
+  expect(saved.status).toBe(200);
+  const { session: after } = await saved.json();
+  expect(after).toMatchObject({
+    stage: { number: 1, total: 3, hasNext: true },
+    stagePlan: before.stagePlan,
+    runId: before.runId,
+    dataUsage: { consentStatus: 'declined' },
+  });
+});
+
 test('replication → activation → student chat → finish persists the conversation and prevents repeating a completed experiment', async () => {
   const created = await request('/replications', 'POST', { name: 'Integration replication', experiment: experimentId });
   expect(created.status).toBe(201);
