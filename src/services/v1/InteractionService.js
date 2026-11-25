@@ -617,7 +617,7 @@ class InteractionService {
     return session.id;
   }
 
-  async getSessionData(sessionId) {
+  async getSessionData(sessionId, { includeSpectateLink = true } = {}) {
     const session = await SessionService.findById(sessionId);
     if (!session) {
       const error = new Error('Session not found');
@@ -759,6 +759,25 @@ class InteractionService {
     sessionData.conversationDynamics = publicDynamicsState(session, leia);
     delete leia.leia.spec.behaviour.spec.conversationDynamics;
     if (leia.leia?.spec) delete leia.leia.spec.supervisorConfig;
+
+    if (
+      includeSpectateLink &&
+      session.finishedAt &&
+      !progress?.hasNext &&
+      typeof SpectatorService.generateSpectateToken === 'function'
+    ) {
+      try {
+        const oneYearInSeconds = 365 * 24 * 60 * 60;
+        const spectatorData = await SpectatorService.generateSpectateToken(session.id, oneYearInSeconds);
+        if (spectatorData?.token) {
+          sessionData.spectateUrl = SpectatorService.generateSpectateUrl(session.id, spectatorData.token);
+          sessionData.spectateToken = spectatorData.token;
+          sessionData.spectateExpiresAt = spectatorData.expiresAt;
+        }
+      } catch (error) {
+        logger.warn(`Failed to generate spectate link for finished session ${session.id}: ${error.message}`);
+      }
+    }
 
     return {
       session: sessionData,
@@ -1376,17 +1395,21 @@ class InteractionService {
         if (previousConversation) data.previousConversation = previousConversation;
       }
     }
-    // Generate spectator link with 1 year expiration
-    const oneYearInSeconds = 365 * 24 * 60 * 60; // 31,536,000 seconds
-    const spectatorData = await SpectatorService.generateSpectateToken(session.id, oneYearInSeconds);
-    const spectateUrl = SpectatorService.generateSpectateUrl(session.id, spectatorData.token);
+    if (!data.stage?.hasNext) {
+      // Generate spectator link with 1 year expiration on the final stage
+      const oneYearInSeconds = 365 * 24 * 60 * 60; // 31,536,000 seconds
+      const spectatorData = await SpectatorService.generateSpectateToken(session.id, oneYearInSeconds);
+      const spectateUrl = SpectatorService.generateSpectateUrl(session.id, spectatorData.token);
 
-    return {
-      ...data,
-      spectateUrl,
-      spectateToken: spectatorData.token,
-      spectateExpiresAt: spectatorData.expiresAt,
-    };
+      return {
+        ...data,
+        spectateUrl,
+        spectateToken: spectatorData.token,
+        spectateExpiresAt: spectatorData.expiresAt,
+      };
+    }
+
+    return data;
   }
 
   async finishSession(sessionId) {

@@ -202,6 +202,7 @@ describe('staged activity runtime guards & ActivityRun behavior', () => {
     ]);
     expect(visibleData.session.evaluation).toBe('Detailed feedback');
     expect(visibleData.session.score).toBe(8);
+    expect(visibleData.session.spectateUrl).toBeUndefined();
     expect(visibleData.leia.showReferenceSolution).toBe(true);
     expect(visibleData.leia.requiresConversationForNextStage).toBe(true);
     await expect(InteractionService.getSolutionAndFormat('sess-1')).resolves.toEqual({
@@ -384,7 +385,16 @@ describe('staged activity runtime guards & ActivityRun behavior', () => {
     ReplicationService.findLeia.mockResolvedValue(buildStagedReplication().experiment.leias[1]);
     SessionService.finishStage.mockResolvedValue({ ...finalSession, finishedAt });
 
-    await InteractionService.finishSession('sess-2');
+    const finished = await InteractionService.finishSession('sess-2');
     expect(ActivityRunService.markFinished).toHaveBeenCalledWith('run-1', finishedAt);
+    expect(finished.spectateUrl).toBe('http://spectate');
+
+    SessionService.findById.mockResolvedValue({
+      ...finalSession,
+      leia: { equals: (other) => String(other) === 'l2', toString: () => 'l2' },
+      finishedAt,
+    });
+    const reloaded = await InteractionService.getSessionData('sess-2');
+    expect(reloaded.session.spectateUrl).toBe('http://spectate');
   });
 });

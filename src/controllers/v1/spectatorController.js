@@ -41,7 +41,7 @@ export const getSessionForSpectator = async (req, res, next) => {
       throw error;
     }
 
-    const data = await InteractionService.getSessionData(sessionId);
+    const data = await InteractionService.getSessionData(sessionId, { includeSpectateLink: false });
     const runStages = await SpectatorService.getRunStagesForSession(sessionId, data);
 
     res.json(runStages ? { ...data, runStages } : data);
