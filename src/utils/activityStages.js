@@ -28,6 +28,14 @@ export function getStageOutputSource(stage, output) {
   return stage?.outputSources?.[output] ?? null;
 }
 
+export function hasTranscriptionMessages(entry) {
+  const messages = entry?.configuration?.data?.messages;
+  return (
+    Array.isArray(messages) &&
+    messages.some((message) => typeof message?.text === 'string' && message.text.trim().length > 0)
+  );
+}
+
 function resolveTargetLeiaForPreviousStageView(experiment, stage, leia) {
   if (stage?.orchestration?.mode === 'multi') {
     return getStageProblemLeia(experiment, stage);
@@ -287,9 +295,13 @@ export function activityFlows(experiment) {
     if (referencedOutputs.has('conversation') && conversationSourceId) {
       const sourceIndex = positions.get(conversationSourceId);
       const sourceEntries = experiment.leias.filter((entry) => entry.stageId === conversationSourceId);
-      if (sourceEntries.some((entry) => entry.configuration?.mode === 'transcription')) {
+      if (
+        sourceEntries.some(
+          (entry) => entry.configuration?.mode === 'transcription' && !hasTranscriptionMessages(entry)
+        )
+      ) {
         throw activityError(
-          `Stage ${sourceIndex + 1} cannot use transcription mode because stage ${number} uses its conversation`
+          `Stage ${sourceIndex + 1} requires non-empty transcription chat messages because stage ${number} uses its conversation`
         );
       }
     }

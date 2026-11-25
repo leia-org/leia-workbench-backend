@@ -1,4 +1,4 @@
-import { activityError, referencePattern } from '../../utils/activityStages.js';
+import { activityError, hasTranscriptionMessages, referencePattern } from '../../utils/activityStages.js';
 import ActivityRunRepository from '../../repositories/v1/ActivityRunRepository.js';
 import ReplicationRepository from '../../repositories/v1/ReplicationRepository.js';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
@@ -85,16 +85,42 @@ export async function resolvePreviousStageOutputs(session, requested) {
   }
 
   const sourcesByStageId = await resolveSourceStageSessions(session, neededStageIds);
+  const sourceLeiasBySessionId = new Map();
+  const findSourceLeia = async (source) => {
+    if (!source?.replication || !source?.leia) return null;
+    const key = `${String(source.replication)}:${String(source.leia)}`;
+    if (!sourceLeiasBySessionId.has(key)) {
+      sourceLeiasBySessionId.set(
+        key,
+        await ReplicationRepository.findLeia(source.replication, source.leia)
+      );
+    }
+    return sourceLeiasBySessionId.get(key);
+  };
 
   const values = {};
   if (requested.has('conversation')) {
     const source = sourcesByStageId.get(targetStageByOutput.get('conversation'));
-    const messages = await MessageService.findBySession(source.id);
-    values.conversation = messages.filter((message) => message.timestamp <= source.finishedAt).map((message) => ({
-      role: message.senderType || (message.isLeia ? 'agent' : 'participant'),
-      ...(message.senderName ? { speaker: message.senderName } : {}),
-      text: message.text,
-    }));
+    const sourceLeia = await findSourceLeia(source);
+    if (sourceLeia?.configuration?.mode === 'transcription') {
+      if (!hasTranscriptionMessages(sourceLeia)) {
+        throw activityError('The source stage transcription is empty', 409);
+      }
+      values.conversation = sourceLeia.configuration.data.messages
+        .filter((message) => typeof message?.text === 'string' && message.text.trim().length > 0)
+        .map((message) => ({
+          role: message.senderType || (message.isLeia ? 'agent' : 'participant'),
+          ...(message.senderName ? { speaker: message.senderName } : {}),
+          text: message.text,
+        }));
+    } else {
+      const messages = await MessageService.findBySession(source.id);
+      values.conversation = messages.filter((message) => message.timestamp <= source.finishedAt).map((message) => ({
+        role: message.senderType || (message.isLeia ? 'agent' : 'participant'),
+        ...(message.senderName ? { speaker: message.senderName } : {}),
+        text: message.text,
+      }));
+    }
   }
   if (requested.has('submitedSolution')) {
     const source = sourcesByStageId.get(targetStageByOutput.get('submitedSolution'));
@@ -102,7 +128,7 @@ export async function resolvePreviousStageOutputs(session, requested) {
   }
   if (requested.has('problem')) {
     const source = sourcesByStageId.get(targetStageByOutput.get('problem'));
-    const sourceLeia = await ReplicationRepository.findLeia(source.replication, source.leia);
+    const sourceLeia = await findSourceLeia(source);
     if (!sourceLeia) throw activityError('The source stage is unavailable', 409);
     values.problem = sourceLeia.leia?.spec?.problem?.spec ?? {};
   }

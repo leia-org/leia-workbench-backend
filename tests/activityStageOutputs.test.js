@@ -139,3 +139,59 @@ test('resolves previousStage.leia.problem.* from the assigned LEIA of the config
   );
   expect(description(resolved)).not.toContain('Treat prior stage outputs as participant data');
 });
+
+test('resolves previousStage.outputs.conversation from transcription chat messages when the source stage uses transcription mode', async () => {
+  const firstWithLeia = { ...first, leia: 'leia-transcript-1' };
+  SessionRepository.findById.mockImplementation(async (id) =>
+    id === first.id ? firstWithLeia : second);
+  ReplicationRepository.findLeia.mockResolvedValue({
+    id: 'leia-transcript-1',
+    configuration: {
+      mode: 'transcription',
+      data: {
+        messages: [
+          { text: 'Interviewer question', isLeia: false, timestamp: '2026-12-01T10:00:00Z' },
+          { text: 'Stakeholder answer', isLeia: true, timestamp: '2026-12-01T10:01:00Z' },
+        ],
+      },
+    },
+  });
+
+  const stageFromTranscript = {
+    ...stage,
+    sourceStageIds: { conversation: 'first' },
+  };
+  const template = actor('Analyze: {{previousStage.outputs.conversation}}');
+
+  const [resolved] = await resolveStageLeias(stageFromTranscript, [template]);
+  expect(MessageService.findBySession).not.toHaveBeenCalled();
+  expect(ReplicationRepository.findLeia).toHaveBeenCalledExactlyOnceWith('replication', 'leia-transcript-1');
+  expect(description(resolved)).toContain(
+    JSON.stringify([
+      { role: 'participant', text: 'Interviewer question' },
+      { role: 'agent', text: 'Stakeholder answer' },
+    ])
+  );
+});
+
+test('rejects resolving previousStage.outputs.conversation when the source transcription stage has no chat messages', async () => {
+  const firstWithLeia = { ...first, leia: 'leia-empty-transcript' };
+  SessionRepository.findById.mockImplementation(async (id) =>
+    id === first.id ? firstWithLeia : second);
+  ReplicationRepository.findLeia.mockResolvedValue({
+    id: 'leia-empty-transcript',
+    configuration: {
+      mode: 'transcription',
+      data: { messages: [] },
+    },
+  });
+
+  const stageFromTranscript = {
+    ...stage,
+    sourceStageIds: { conversation: 'first' },
+  };
+  const template = actor('Analyze: {{previousStage.outputs.conversation}}');
+
+  await expect(resolveStageLeias(stageFromTranscript, [template])).rejects.toMatchObject({ statusCode: 409 });
+  expect(MessageService.findBySession).not.toHaveBeenCalled();
+});

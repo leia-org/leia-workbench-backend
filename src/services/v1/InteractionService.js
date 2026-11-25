@@ -28,6 +28,7 @@ import {
   getLeiaPreviousSubmittedSolutionConfig,
   getStageOutputSourcesMap,
   getStageProblemLeia,
+  hasTranscriptionMessages,
   publicPreviousConversationConfig,
   publicPreviousSubmittedSolutionConfig,
   referencePattern,
@@ -667,7 +668,9 @@ class InteractionService {
       (Boolean(leia.configuration?.askSolution) || evaluationMode === 'rubric') &&
       leia.configuration?.showSolution !== false;
     const showEvaluationEnabled = shouldShowEvaluationToParticipant(leia.configuration);
-    const conversationRequiredForNextStage = Boolean(getConversationRequirementForLeia(experiment, leia));
+    const conversationRequiredForNextStage =
+      leia.configuration?.mode !== 'transcription' &&
+      Boolean(getConversationRequirementForLeia(experiment, leia));
 
     if (!session.finishedAt || !showSolutionEnabled) {
       delete leia.leia.spec.problem.spec.solution;
@@ -1321,13 +1324,21 @@ class InteractionService {
       if (
         replication &&
         getConversationRequirementForLeia(replication.experiment, dynamicsLeia) &&
-        !timerExpired &&
-        !(session.messages?.length > 0)
+        !timerExpired
       ) {
-        throw activityError(
-          'Send at least one message before finishing this stage because a later stage uses its conversation',
-          400
-        );
+        if (dynamicsLeia?.configuration?.mode === 'transcription') {
+          if (!hasTranscriptionMessages(dynamicsLeia)) {
+            throw activityError(
+              'This stage requires non-empty transcription chat messages because a later stage uses its conversation',
+              400
+            );
+          }
+        } else if (!(session.messages?.length > 0)) {
+          throw activityError(
+            'Send at least one message before finishing this stage because a later stage uses its conversation',
+            400
+          );
+        }
       }
       const removalDueAt = conversationRemovalTime(session);
       const removalArgs = removalDueAt ? [removalDueAt] : [];
@@ -1366,9 +1377,12 @@ class InteractionService {
       if (!rubric?.spec?.sections?.length) {
         throw activityError('Rubric is missing for this LEIA', 400);
       }
-      const messages = await MessageService.findBySession(session.id);
-      const currentConversation = (messages || [])
-        .filter((message) => !session.finishedAt || message.timestamp <= session.finishedAt)
+      const isTranscriptionMode = leia?.configuration?.mode === 'transcription';
+      const messages = isTranscriptionMode
+        ? (Array.isArray(leia?.configuration?.data?.messages) ? leia.configuration.data.messages : [])
+        : ((await MessageService.findBySession(session.id)) || []);
+      const currentConversation = messages
+        .filter((message) => isTranscriptionMode || !session.finishedAt || message.timestamp <= session.finishedAt)
         .map((message) => ({
           role: message.senderType || (message.isLeia ? 'agent' : 'participant'),
           ...(message.senderName ? { speaker: message.senderName } : {}),
@@ -1535,13 +1549,21 @@ class InteractionService {
     if (
       replication &&
       getConversationRequirementForLeia(replication.experiment, dynamicsLeia) &&
-      !timerExpired &&
-      !(session.messages?.length > 0)
+      !timerExpired
     ) {
-      throw activityError(
-        'Send at least one message before finishing this stage because a later stage uses its conversation',
-        400
-      );
+      if (dynamicsLeia?.configuration?.mode === 'transcription') {
+        if (!hasTranscriptionMessages(dynamicsLeia)) {
+          throw activityError(
+            'This stage requires non-empty transcription chat messages because a later stage uses its conversation',
+            400
+          );
+        }
+      } else if (!(session.messages?.length > 0)) {
+        throw activityError(
+          'Send at least one message before finishing this stage because a later stage uses its conversation',
+          400
+        );
+      }
     }
     const removalDueAt = conversationRemovalTime(session);
     session = session.stageId

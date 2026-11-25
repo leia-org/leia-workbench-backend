@@ -449,8 +449,8 @@ describe('toggleIsActive — bloqueo de activación incompleta', () => {
     expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
   });
 
-  test('impide activar si un stage citado por conversation tiene una LEIA en modo transcription', async () => {
-    const replication = {
+  test('impide activar si un stage citado por conversation tiene una LEIA en modo transcription sin mensajes y lo permite cuando tiene mensajes', async () => {
+    const buildTranscriptionReplication = (data) => ({
       _id: 'rep1',
       isActive: false,
       experiment: {
@@ -462,7 +462,7 @@ describe('toggleIsActive — bloqueo de activación incompleta', () => {
           {
             id: 'l1',
             stageId: 's1',
-            configuration: { mode: 'transcription', askSolution: true, evaluateSolution: false },
+            configuration: { mode: 'transcription', askSolution: true, evaluateSolution: false, data },
             runnerConfiguration: { ...completeConfig },
             leia: { spec: { behaviour: { spec: { description: 'Transcript' } } } },
           },
@@ -481,11 +481,25 @@ describe('toggleIsActive — bloqueo de activación incompleta', () => {
           },
         ],
       },
-    };
-    ReplicationRepository.findById.mockResolvedValue(replication);
+    });
 
+    ReplicationRepository.findById.mockResolvedValueOnce(buildTranscriptionReplication({ messages: [] }));
     await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({ statusCode: 400 });
     expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+
+    ReplicationRepository.findById.mockResolvedValueOnce(
+      buildTranscriptionReplication({ link: 'https://example.com/transcript' })
+    );
+    await expect(ReplicationService.toggleIsActive('rep1')).rejects.toMatchObject({ statusCode: 400 });
+    expect(ReplicationRepository.toggleIsActive).not.toHaveBeenCalled();
+
+    const populated = buildTranscriptionReplication({
+      messages: [{ text: 'Hello', timestamp: '2026-11-25T10:00:00Z', isLeia: false }],
+    });
+    ReplicationRepository.findById.mockResolvedValueOnce(populated);
+    ReplicationRepository.toggleIsActive.mockResolvedValueOnce({ ...populated, isActive: true });
+    await expect(ReplicationService.toggleIsActive('rep1')).resolves.toMatchObject({ isActive: true });
+    expect(ReplicationRepository.toggleIsActive).toHaveBeenCalledWith('rep1');
   });
 });
 

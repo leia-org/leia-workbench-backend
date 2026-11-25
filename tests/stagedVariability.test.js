@@ -334,6 +334,48 @@ describe('staged activity runtime guards & ActivityRun behavior', () => {
     expect(LukeService.flushSessionHistory).toHaveBeenCalledWith('sess-1');
   });
 
+  test('allows finishing a transcription stage with 0 session messages when its transcription has chat messages, and sets requiresConversationForNextStage to false', async () => {
+    const transcriptionRep = buildStagedReplication();
+    transcriptionRep.experiment.leias[0].configuration = {
+      ...transcriptionRep.experiment.leias[0].configuration,
+      mode: 'transcription',
+      data: {
+        messages: [{ text: 'Prepared transcript message', timestamp: '2026-11-25T10:00:00Z', isLeia: false }],
+      },
+    };
+    const transcriptionSession = {
+      id: 'sess-t1',
+      run: 'run-1',
+      replication: 'rep-1',
+      stageId: 's1',
+      leia: { equals: (other) => String(other) === 'l1', toString: () => 'l1' },
+      startedAt: new Date(),
+      messages: [],
+      conversationDynamicsState: { stoppingCondition: { satisfied: true } },
+    };
+    ReplicationService.findById.mockResolvedValue(transcriptionRep);
+    ReplicationService.findLeia.mockResolvedValue(transcriptionRep.experiment.leias[0]);
+    SessionService.findById.mockResolvedValue(transcriptionSession);
+
+    const sessionData = await InteractionService.getSessionData('sess-t1');
+    expect(sessionData.leia.requiresConversationForNextStage).toBe(false);
+
+    SessionService.finishStage.mockResolvedValue({ ...transcriptionSession, finishedAt: new Date() });
+    const finished = await InteractionService.finishSession('sess-t1');
+    expect(finished.finishedAt).toBeInstanceOf(Date);
+
+    // Empty transcription is still rejected when a later stage consumes its conversation.
+    const emptyTranscriptionRep = buildStagedReplication();
+    emptyTranscriptionRep.experiment.leias[0].configuration = {
+      ...emptyTranscriptionRep.experiment.leias[0].configuration,
+      mode: 'transcription',
+      data: { messages: [] },
+    };
+    ReplicationService.findById.mockResolvedValue(emptyTranscriptionRep);
+    ReplicationService.findLeia.mockResolvedValue(emptyTranscriptionRep.experiment.leias[0]);
+    await expect(InteractionService.finishSession('sess-t1')).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   test('allows continuing to the next stage inside an open ActivityRun even when replication.isActive is false', async () => {
     const prevSession = {
       id: 'sess-1',
