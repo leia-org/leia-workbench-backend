@@ -1,0 +1,59 @@
+type: object
+properties:
+  stage:
+    type: object
+    required: [number, total]
+    properties:
+      number:
+        type: integer
+        minimum: 1
+      total:
+        type: integer
+        minimum: 1
+  availability:
+    type: string
+    enum: [chat, both]
+  interactionMode:
+    type: string
+    enum: [single, multi]
+  mode:
+    type: string
+  audioMode:
+    type: string
+    nullable: true
+  leiaName:
+    type: string
+  personaAvatar:
+    type: string
+    nullable: true
+  leiaId:
+    type: string
+    nullable: true
+  personaId:
+    type: string
+    nullable: true
+  actors:
+    type: array
+    items:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        avatar:
+          type: string
+          nullable: true
+        leiaId:
+          type: string
+          nullable: true
+        personaId:
+          type: string
+          nullable: true
+  externalTranscriptionLink:
+    type: string
+    nullable: true
+  messages:
+    type: array
+    items:
+      $ref: './message.yaml'

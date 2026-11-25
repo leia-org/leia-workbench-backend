@@ -3,6 +3,7 @@ import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
 import {
+  PREVIOUS_CONVERSATION_AVAILABILITIES,
   activityError,
   activityFlows,
   getSolutionRequirementForLeia,
@@ -99,11 +100,35 @@ class ReplicationService {
   }
   // WRITE METHODS
 
+  _validateExperimentForReplication(experiment) {
+    if (!experiment) {
+      const error = new Error('Experiment not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    for (const flow of activityFlows(experiment)) {
+      if (flow.orchestration?.mode !== 'multi') continue;
+      const leias = flow.leias || [];
+      if (leias.length < 2) {
+        const error = new Error('MultiLEIA requires at least two LEIAs');
+        error.statusCode = 400;
+        throw error;
+      }
+      if (leias.some((entry) => entry.configuration?.mode === 'transcription')) {
+        const error = new Error('MultiLEIA currently supports standard text mode only');
+        error.statusCode = 400;
+        throw error;
+      }
+      validateMultiLeiaProcesses(flow);
+    }
+  }
+
   async create(replicationData, authorization, apiKeyRequesterId) {
     const experiment = await ManagerService.findExperimentById(
       replicationData.experiment,
       authorization
     );
+    this._validateExperimentForReplication(experiment);
     const defaultApiKey = await this.getDefaultApiKey(authorization);
     let initializedDefaultApiKey = defaultApiKey;
     let providerDriver = 'default';
@@ -231,6 +256,7 @@ class ReplicationService {
       throw error;
     }
     const experiment = await ManagerService.findExperimentById(experimentId, authorization);
+    this._validateExperimentForReplication(experiment);
     const initializedExperiment = initializeExperiment(experiment);
     return await ReplicationRepository.update(id, { initializedExperiment });
   }
@@ -435,6 +461,58 @@ class ReplicationService {
       );
     }
     return await ReplicationRepository.updateShowSolution(id, leiaId, showSolutionStatus);
+  }
+
+  async updateStagePreviousConversation(id, stageId, { enabled, sourceStageId, availability } = {}) {
+    const replication = await ReplicationRepository.findById(id);
+    if (!replication) {
+      throw activityError('Replication not found', 404);
+    }
+
+    const stages = replication.experiment?.stages;
+    if (!Array.isArray(stages)) {
+      throw activityError('Stage not found', 404);
+    }
+
+    const stageIndex = stages.findIndex((stage) => stage.id === stageId);
+    if (stageIndex === -1) {
+      throw activityError('Stage not found', 404);
+    }
+
+    if (stageIndex === 0) {
+      throw activityError('Previous conversation is only available for stages after the first stage', 400);
+    }
+
+    const existing = stages[stageIndex].previousConversation || {};
+    const nextAvailability =
+      availability !== undefined
+        ? availability
+        : PREVIOUS_CONVERSATION_AVAILABILITIES.includes(existing.availability)
+          ? existing.availability
+          : 'both';
+    if (!PREVIOUS_CONVERSATION_AVAILABILITIES.includes(nextAvailability)) {
+      throw activityError("Invalid availability. Expected 'chat' or 'both'", 400);
+    }
+
+    const nextSourceStageId =
+      sourceStageId !== undefined ? sourceStageId : (existing.sourceStageId ?? null);
+
+    if (nextSourceStageId !== null) {
+      const sourceIndex = stages.findIndex((stage) => stage.id === nextSourceStageId);
+      if (sourceIndex === -1 || !(sourceIndex < stageIndex)) {
+        throw activityError('The source stage for previous conversation must be an earlier stage', 400);
+      }
+    }
+
+    if (enabled && !nextSourceStageId) {
+      throw activityError('Select an earlier stage for the previous conversation', 400);
+    }
+
+    return await ReplicationRepository.updateStagePreviousConversation(id, stageId, {
+      enabled: Boolean(enabled),
+      sourceStageId: nextSourceStageId,
+      availability: nextAvailability,
+    });
   }
 
   async getConversations(id) {

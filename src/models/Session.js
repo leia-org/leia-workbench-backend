@@ -20,6 +20,7 @@ const sessionSchema = new Schema(
     sourceStageIds: {
       conversation: String,
       submitedSolution: String,
+      problem: String,
     },
     previousStageSession: Schema.Types.ObjectId,
     stageRunKey: String,

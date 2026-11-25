@@ -132,7 +132,7 @@ class LukeService {
             : instructions;
         },
         saveHistory: async (userSession, transcription) => {
-          if (!userSession?.sessionId || !transcription.final) return;
+          if (!userSession?.sessionId || !transcription.final || !transcription.text?.trim()) return;
           const sessionId = String(userSession.sessionId);
           const write = (historyWrites.get(sessionId) || Promise.resolve()).then(async () => {
             try {

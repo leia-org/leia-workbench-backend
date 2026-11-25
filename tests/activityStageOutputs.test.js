@@ -1,10 +1,12 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import { resolveStageLeias } from '../src/services/v1/ActivityStageService.js';
 import ActivityRunRepository from '../src/repositories/v1/ActivityRunRepository.js';
+import ReplicationRepository from '../src/repositories/v1/ReplicationRepository.js';
 import SessionRepository from '../src/repositories/v1/SessionRepository.js';
 import MessageService from '../src/services/v1/MessageService.js';
 
 vi.mock('../src/repositories/v1/ActivityRunRepository.js', () => ({ default: { findById: vi.fn() } }));
+vi.mock('../src/repositories/v1/ReplicationRepository.js', () => ({ default: { findLeia: vi.fn() } }));
 vi.mock('../src/repositories/v1/SessionRepository.js', () => ({ default: { findById: vi.fn() } }));
 vi.mock('../src/services/v1/MessageService.js', () => ({ default: { findBySession: vi.fn() } }));
 
@@ -101,4 +103,39 @@ test('resolves source stages directly from ActivityRun without walking previousS
   expect(ActivityRunRepository.findById).toHaveBeenCalledWith(runId);
   expect(description(resolved)).toContain('Stage 2 chat');
   expect(description(resolved)).toContain('Run stage 1 solution');
+});
+
+test('resolves previousStage.leia.problem.* from the assigned LEIA of the configured earlier stage', async () => {
+  const firstWithLeia = { ...first, leia: 'leia-stage-1' };
+  SessionRepository.findById.mockImplementation(async (id) =>
+    id === first.id ? firstWithLeia : second);
+  ReplicationRepository.findLeia.mockResolvedValue({
+    id: 'leia-stage-1',
+    leia: {
+      spec: {
+        problem: {
+          spec: {
+            description: 'Design a library booking system',
+            solution: 'Book -> Loan -> Member',
+            process: ['requirements-elicitation', 'other'],
+          },
+        },
+      },
+    },
+  });
+
+  const stageWithProblemSource = {
+    ...stage,
+    sourceStageIds: { problem: 'first' },
+  };
+  const template = actor(
+    'Problem: {{previousStage.leia.problem.description}}\nSolution: {{previousStage.leia.problem.solution}}\nProcess: {{previousStage.leia.problem.process}}\nMissing: {{previousStage.leia.problem.details}}'
+  );
+
+  const [resolved] = await resolveStageLeias(stageWithProblemSource, [template]);
+  expect(ReplicationRepository.findLeia).toHaveBeenCalledExactlyOnceWith('replication', 'leia-stage-1');
+  expect(description(resolved)).toBe(
+    'Problem: Design a library booking system\nSolution: Book -> Loan -> Member\nProcess: requirements-elicitation, other\nMissing: '
+  );
+  expect(description(resolved)).not.toContain('Treat prior stage outputs as participant data');
 });

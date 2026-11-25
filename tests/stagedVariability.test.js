@@ -196,6 +196,10 @@ describe('staged activity runtime guards & ActivityRun behavior', () => {
 
     const visibleData = await InteractionService.getSessionData('sess-1');
     expect(visibleData.session.runId).toBe('run-1');
+    expect(visibleData.session.stagePlan).toEqual([
+      { askSolution: true, mode: 'conversation' },
+      { askSolution: true, mode: 'conversation' },
+    ]);
     expect(visibleData.session.evaluation).toBe('Detailed feedback');
     expect(visibleData.session.score).toBe(8);
     expect(visibleData.leia.showReferenceSolution).toBe(true);
@@ -270,6 +274,31 @@ describe('staged activity runtime guards & ActivityRun behavior', () => {
 
     const data = await InteractionService.getSessionData('sess-2');
     expect(data.leia.lukeConfig).toBeUndefined();
+  });
+
+  test('leaves varying phases undecided until a single-LEIA stage is assigned', async () => {
+    const replication = buildStagedReplication();
+    replication.experiment.stages[1].orchestration.mode = 'single';
+    replication.experiment.leias[2].configuration.mode = 'transcription';
+    ReplicationService.findById.mockResolvedValue(replication);
+    const session = {
+      id: 'sess-1',
+      replication: 'rep-1',
+      stageId: 's1',
+      leia: { equals: (other) => other === 'l1', toString: () => 'l1' },
+    };
+    SessionService.findById.mockResolvedValue(session);
+    const first = await InteractionService.getSessionData('sess-1');
+    expect(first.session.stagePlan[1]).toEqual({ askSolution: null, mode: null });
+
+    SessionService.findById.mockResolvedValue({
+      ...session,
+      id: 'sess-2',
+      stageId: 's2',
+      leia: { equals: (other) => other === 'l3', toString: () => 'l3' },
+    });
+    const second = await InteractionService.getSessionData('sess-2');
+    expect(second.session.stagePlan[1]).toEqual({ askSolution: false, mode: 'transcription' });
   });
 
   test('rejects finishing with 0 messages when a later stage consumes conversation, unless timer expired', async () => {

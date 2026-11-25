@@ -61,6 +61,8 @@ paths:
     $ref: './paths/v1/replications/_id-leia-_leiaId-toggleEvaluateSolution.yaml'
   /v1/replications/{id}/leia/{leiaId}/toggle-show-solution:
     $ref: './paths/v1/replications/_id-leia-_leiaId-toggleShowSolution.yaml'
+  /v1/replications/{id}/stages/{stageId}/previous-conversation:
+    $ref: './paths/v1/replications/_id-stages-_stageId-previousConversation.yaml'
   /v1/replications/{id}/regenerate-code:
     $ref: './paths/v1/replications/_id-regenerateCode.yaml'
   /v1/replications/{id}/duration:
@@ -107,6 +109,8 @@ paths:
     $ref: './paths/v1/interactions/_sessionId-evaluation.yaml'
   /v1/interactions/{sessionId}/solution:
     $ref: './paths/v1/interactions/_sessionId-solution.yaml'
+  /v1/interactions/{sessionId}/previous-conversation:
+    $ref: './paths/v1/interactions/_sessionId-previous-conversation.yaml'
   /v1/interactions/{sessionId}/draft:
     $ref: './paths/v1/interactions/_sessionId-draft.yaml'
   /v1/interactions/{sessionId}/test-runs:

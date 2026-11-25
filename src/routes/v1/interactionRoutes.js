@@ -14,6 +14,7 @@ import {
   getConversationDynamics,
   continueStage,
   createTestRun,
+  getPreviousStageConversation,
 } from '../../controllers/v1/interactionController.js';
 import { authContext } from '../../middlewares/auth.js';
 
@@ -35,4 +36,5 @@ router.get('/:sessionId', getSessionData);
 router.get('/:sessionId/conversation-dynamics', getConversationDynamics);
 router.get('/:sessionId/solution', getSolution);
 router.get('/:sessionId/evaluation', getEvaluation);
+router.get('/:sessionId/previous-conversation', getPreviousStageConversation);
 export default router;
