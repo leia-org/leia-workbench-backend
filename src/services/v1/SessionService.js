@@ -64,6 +64,7 @@ class SessionService {
       isTest,
       interactionMode: options.interactionMode || 'single',
     };
+    if (options.dataUsage) sessionData.dataUsage = options.dataUsage;
     if (Array.isArray(options.leias) && options.leias.length > 0) {
       sessionData.leias = options.leias;
     }
@@ -73,14 +74,21 @@ class SessionService {
     return await SessionRepository.create(sessionData);
   }
 
-  async finish(id) {
-    const session = await SessionRepository.update(id, { finishedAt: new Date() });
+  async finish(id, conversationRemovalDueAt) {
+    const session = await SessionRepository.update(id, {
+      finishedAt: new Date(),
+      ...(conversationRemovalDueAt ? { conversationRemovalDueAt } : {}),
+    });
     this.emitFinished(id, session);
     return session;
   }
 
-  async finishStage(id, result) {
-    const changes = { finishedAt: new Date(), ...(result !== undefined ? { result } : {}) };
+  async finishStage(id, result, conversationRemovalDueAt) {
+    const changes = {
+      finishedAt: new Date(),
+      ...(result !== undefined ? { result } : {}),
+      ...(conversationRemovalDueAt ? { conversationRemovalDueAt } : {}),
+    };
     const session = await SessionRepository.finishStage(id, changes);
     if (session) {
       this.emitFinished(id, session);
@@ -109,8 +117,12 @@ class SessionService {
     return await SessionRepository.update(id, { result });
   }
 
-  async saveResultAndFinish(id, result) {
-    return await SessionRepository.update(id, { result, finishedAt: new Date() });
+  async saveResultAndFinish(id, result, conversationRemovalDueAt) {
+    return await SessionRepository.update(id, {
+      result,
+      finishedAt: new Date(),
+      ...(conversationRemovalDueAt ? { conversationRemovalDueAt } : {}),
+    });
   }
 
   async saveEvaluation(id, evaluation) {

@@ -32,6 +32,13 @@ import {
   stageProgress,
 } from '../../utils/activityStages.js';
 import { resolveEvaluationMode } from '../../utils/rubricEvaluation.js';
+import {
+  assertConsentDecided,
+  captureDataUsage,
+  conversationRemovalTime,
+  isConsentPending,
+  shouldRemoveConversation,
+} from '../../utils/dataUsage.js';
 
 const stageInitializations = new Map();
 const TIMER_EXPIRY_GRACE_MS = 5000;
@@ -219,11 +226,13 @@ class InteractionService {
       typeof stageIndex === 'number'
         ? stageIndex
         : (replication.experiment.stages || []).findIndex(({ id }) => id === stage.id);
+    const dataUsage = isTest ? undefined : previous ? previous.dataUsage : captureDataUsage(replication);
     const { session, created } = await SessionRepository.createStageOnce({
       user: userId,
       replication: replication.id,
       leia: leia.id,
       isTest,
+      ...(dataUsage ? { dataUsage } : {}),
       interactionMode: multi ? 'multi' : 'single',
       ...(multi ? { leias: flow.leias.map((entry) => entry.id) } : {}),
       ...(run ? { run: run.id } : {}),
@@ -308,7 +317,7 @@ class InteractionService {
       }
       await SessionService.updateIsRunnerInitialized(session.id, true);
     }
-    if (!multi) await ConversationDynamicsService.openText(session.id, leia);
+    if (!multi && !isConsentPending(session)) await ConversationDynamicsService.openText(session.id, leia);
     return session.id;
   }
 
@@ -446,16 +455,20 @@ class InteractionService {
         throw error;
       } else {
         logger.info(`Creating new session for user ${userEmail} and replication ${replicationCode}`);
+        const dataUsage = captureDataUsage(replication);
         if (isMultiLeiaEnabled(replication)) {
           const entries = getMultiLeiaEntries(replication);
           const problemLeia = getProblemLeia(replication);
           session = await SessionService.create(user.id, replication.id, problemLeia.id, false, {
             interactionMode: 'multi',
             leias: entries.map((entry) => entry.id),
+            ...(dataUsage ? { dataUsage } : {}),
           });
         } else {
           const nextLeiaId = await ReplicationService.getAndIncrementNextLeia(replication.id);
-          session = await SessionService.create(user.id, replication.id, nextLeiaId, false);
+          session = dataUsage
+            ? await SessionService.create(user.id, replication.id, nextLeiaId, false, { dataUsage })
+            : await SessionService.create(user.id, replication.id, nextLeiaId, false);
         }
         logger.info(`Session created for user ${userEmail} and replication ${replicationCode}`);
       }
@@ -487,11 +500,37 @@ class InteractionService {
       logger.info(`Runner initialized for session ${session.id} with Leia ${leia.id}`);
     }
 
-    if (session.interactionMode !== 'multi') {
+    if (session.interactionMode !== 'multi' && !isConsentPending(session)) {
       const activeLeia = replication.experiment.leias.find((entry) => session.leia.equals(entry.id));
       await ConversationDynamicsService.openText(session.id, activeLeia);
     }
     return session.id;
+  }
+
+  async recordDataUsageConsent(sessionId, accepted) {
+    let session = await SessionService.findById(sessionId);
+    if (!session) throw activityError('Session not found', 404);
+    if (session.finishedAt) throw activityError('Session already finished', 409);
+    let leia;
+    if (!session.isTest && session.dataUsage?.config?.dataUsageConsentRequired) {
+      const status = accepted ? 'accepted' : 'declined';
+      if (isConsentPending(session)) {
+        session = await SessionRepository.recordDataUsageConsent(sessionId, status, new Date())
+          || await SessionService.findById(sessionId);
+      }
+      if (session?.finishedAt || session?.dataUsage?.consentStatus !== status) {
+        throw activityError('Data usage consent has already been recorded', 409);
+      }
+      leia = await ReplicationService.findLeia(session.replication, session.leia);
+      if (leia && session.interactionMode !== 'multi') {
+        await ConversationDynamicsService.openText(session.id, leia);
+        session = await SessionService.findById(sessionId) || session;
+      }
+    }
+    return {
+      session: { ...stripSupervisorFields(session), conversationDynamics: publicDynamicsState(session, leia) },
+      messages: await MessageService.findBySession(sessionId),
+    };
   }
 
   async startTestSession(replicationId, leiaId, multiLeia = false, staged = false) {
@@ -887,6 +926,8 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
+    assertConsentDecided(session);
+    if (session.finishedAt && shouldRemoveConversation(session)) throw activityError('Session already finished', 409);
     if (session.interactionMode !== 'multi') {
       const error = new Error('Streaming group chat is only available for MultiLEIA sessions');
       error.statusCode = 400;
@@ -981,6 +1022,8 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
+    assertConsentDecided(session);
+    if (session.finishedAt && shouldRemoveConversation(session)) throw activityError('Session already finished', 409);
 
     const leia = await ReplicationService.findLeia(session.replication, session.leia);
 
@@ -1157,6 +1200,7 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
+    assertConsentDecided(session);
 
     if (session.finishedAt && session.result !== result) {
       const error = new Error('Session already finished');
@@ -1189,9 +1233,11 @@ class InteractionService {
           400
         );
       }
+      const removalDueAt = conversationRemovalTime(session);
+      const removalArgs = removalDueAt ? [removalDueAt] : [];
       session = session.stageId
-        ? await SessionService.finishStage(session.id, result)
-        : await SessionService.saveResultAndFinish(session.id, result);
+        ? await SessionService.finishStage(session.id, result, ...removalArgs)
+        : await SessionService.saveResultAndFinish(session.id, result, ...removalArgs);
       if (
         session.stageId &&
         session.run &&
@@ -1204,7 +1250,7 @@ class InteractionService {
       const evalMode = resolveEvaluationMode(dynamicsLeia?.configuration);
       if (
         evalMode !== 'none' &&
-        dynamicsLeia?.configuration?.showSolution === false &&
+        (dynamicsLeia?.configuration?.showSolution === false || (removalDueAt && evalMode === 'rubric')) &&
         (evalMode === 'rubric' || (typeof result === 'string' && result.trim()))
       ) {
         this.evaluateSessionAsync(session.id, result);
@@ -1273,6 +1319,7 @@ class InteractionService {
         },
         language: replication?.language || 'en',
         runnerConfiguration,
+        ...(session.finishedAt && shouldRemoveConversation(session) ? { suppressTracing: true } : {}),
       });
       return await SessionService.saveEvaluationAndScore(session.id, res.evaluation, res.score, {
         evaluationMode: 'rubric',
@@ -1280,7 +1327,9 @@ class InteractionService {
       });
     }
 
-    const res = await RunnerService.getEvaluationAndScore(session.id, session.result);
+    const res = session.finishedAt && shouldRemoveConversation(session)
+      ? await RunnerService.getEvaluationAndScore(session.id, session.result, { suppressTracing: true })
+      : await RunnerService.getEvaluationAndScore(session.id, session.result);
     return await SessionService.saveEvaluationAndScore(session.id, res.evaluation, res.score);
   }
 
@@ -1345,6 +1394,7 @@ class InteractionService {
       error.statusCode = 404;
       throw error;
     }
+    assertConsentDecided(session);
     if (session.finishedAt) {
       if (session.stageId) return await this.finishedSessionData(session);
       const error = new Error('Session already finished');
@@ -1375,9 +1425,10 @@ class InteractionService {
         400
       );
     }
+    const removalDueAt = conversationRemovalTime(session);
     session = session.stageId
-      ? await SessionService.finishStage(session.id)
-      : await SessionService.finish(session.id);
+      ? await SessionService.finishStage(session.id, ...(removalDueAt ? [undefined, removalDueAt] : []))
+      : await SessionService.finish(session.id, ...(removalDueAt ? [removalDueAt] : []));
 
     if (
       session.stageId &&
@@ -1394,7 +1445,7 @@ class InteractionService {
 
     const finishedEvalMode = resolveEvaluationMode(finishedLeia?.configuration);
     if (finishedEvalMode === 'rubric') {
-      if (finishedLeia?.configuration?.showSolution === false) {
+      if (finishedLeia?.configuration?.showSolution === false || removalDueAt) {
         this.evaluateSessionAsync(session.id);
       }
     } else {

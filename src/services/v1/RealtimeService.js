@@ -2,6 +2,7 @@ import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ReplicationService from './ReplicationService.js';
 import logger from '../../utils/logger.js';
 import { resolveStageLeias } from './ActivityStageService.js';
+import { assertConsentDecided, shouldRemoveConversation } from '../../utils/dataUsage.js';
 
 class RealtimeService {
   async createRealtimeSession(sessionId, sdpOffer) {
@@ -14,6 +15,10 @@ class RealtimeService {
       throw error;
     }
 
+    assertConsentDecided(session);
+    if (session.finishedAt && shouldRemoveConversation(session)) {
+      throw Object.assign(new Error('Session already finished'), { statusCode: 409 });
+    }
     const template = await ReplicationService.findLeia(session.replication, session.leia);
     if (!template) {
       const error = new Error('Leia not found');

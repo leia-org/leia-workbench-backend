@@ -59,6 +59,14 @@ function validateMultiLeiaProcesses(experiment) {
 }
 
 class ReplicationService {
+  async updateDataUsage(id, config) {
+    return await ReplicationRepository.update(id, {
+      dataUsageConfig: {
+        ...config,
+        conversationAutomatedRemoval: config.dataUsageConsentRequired && config.conversationAutomatedRemoval,
+      },
+    });
+  }
   // READ METHODS
 
   async findAll(lastReplicationId, text) {
@@ -542,10 +550,11 @@ class ReplicationService {
   }
 
   async getConversationsCSV(id) {
-    const [replication, sessions] = await Promise.all([
+    const [replication, storedSessions] = await Promise.all([
       ReplicationRepository.findById(id),
       SessionRepository.findByReplicationAndPopulateMessages(id),
     ]);
+    const sessions = storedSessions.filter((session) => session.dataUsage?.consentStatus !== 'declined');
     const stages = replication?.experiment?.stages || [];
     const stageIndexById = new Map(stages.map(({ id: stageId }, index) => [stageId, index]));
     const leiaNameById = new Map();

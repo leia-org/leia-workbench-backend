@@ -12,6 +12,7 @@ import replicationRoutes from '../../src/routes/v1/replicationRoutes.js';
 import interactionRoutes from '../../src/routes/v1/interactionRoutes.js';
 import { auth } from '../../src/middlewares/auth.js';
 import errorHandler from '../../src/middlewares/errorHandler.js';
+import { processConversationRemoval } from '../../src/services/v1/ConversationRemovalService.js';
 import { connectMongo, closeMongo, listen } from './support.js';
 
 let http, peers;
@@ -19,6 +20,7 @@ const owner = new mongoose.Types.ObjectId().toString();
 const experimentId = new mongoose.Types.ObjectId().toString();
 const leiaConfigId = new mongoose.Types.ObjectId().toString();
 const forwarded = [];
+const traceRemovalRequests = [];
 const stagedExperimentId = new mongoose.Types.ObjectId().toString();
 let stagedExperiment;
 const bearer = jwt.sign({ id: owner, role: 'advanced' }, 'integration-signing-secret');
@@ -49,6 +51,12 @@ beforeAll(async () => {
   peer.post('/api/v1/multi-leias', (req, res) => res.status(201).json({ sessionId: req.body.sessionId, state: {} }));
   peer.post('/api/v1/leias/:id/messages', (req, res) => res.json({ message: `Answer: ${req.body.message}` }));
   peer.delete('/api/v1/cache/purge', (_req, res) => res.json({ success: true }));
+  peer.delete('/api/v1/leias/:id/traces', (req, res) => {
+    const previous = traceRemovalRequests.filter(({ sessionId }) => sessionId === req.params.id);
+    traceRemovalRequests.push({ sessionId: req.params.id, from: req.query.from, authorization: req.headers.authorization });
+    if (previous.length === 0) return res.status(502).json({ error: 'Test outage' });
+    return res.json({ complete: previous.length > 1 });
+  });
   peers = await listen(peer);
   for (const key of ['AUTH_URL', 'MANAGER_URL', 'RUNNER_URL']) vi.stubEnv(key, peers.url);
   const app = express(); app.use(express.json(), auth);
@@ -144,6 +152,87 @@ test('stage transitions are sequential and retryable and only the selected stage
   expect((await start()).status).toBe(403);
 });
 afterAll(async () => { await http?.close(); await peers?.close(); await closeMongo(); vi.unstubAllEnvs(); });
+
+test('data usage settings remove a declined conversation and its traces at completion, with durable retries', async () => {
+  const created = await request('/replications', 'POST', { name: 'Retention integration replication', experiment: experimentId });
+  expect(created.status).toBe(201);
+  const { id, code } = await created.json();
+  const config = {
+    dataUsageConsentRequired: true,
+    dataUsageConsentMessage: 'Choose whether to retain the test conversation.',
+    conversationAutomatedRemoval: true,
+  };
+  const patch = '/replications/' + id + '/data-usage';
+  const outsider = jwt.sign({ id: new mongoose.Types.ObjectId().toString(), role: 'advanced' }, 'integration-signing-secret');
+  expect((await request(patch, 'PATCH', { dataUsageConfig: config }, outsider)).status).toBe(403);
+  expect((await request(patch, 'PATCH', { dataUsageConfig: config })).status).toBe(200);
+  expect((await request(`/replications/${id}/toggle-active`, 'PATCH')).status).toBe(200);
+
+  const join = async (email) => {
+    const response = await request('/interactions', 'POST', { email, code }, null);
+    expect(response.status).toBe(201);
+    return (await response.json()).sessionId;
+  };
+  const declined = await join('declined-fixture@example.com');
+  const accepted = await join('accepted-fixture@example.com');
+  const post = (sessionId, endpoint, body) => request(`/interactions/${sessionId}/${endpoint}`, 'POST', body, null);
+  expect((await post(declined, 'messages', { message: 'Too early' })).status).toBe(403);
+  expect((await (await post(declined, 'data-usage-consent', { accepted: false })).json())
+    .session.dataUsage.consentStatus).toBe('declined');
+  expect((await post(declined, 'data-usage-consent', { accepted: true })).status).toBe(409);
+  expect((await post(accepted, 'data-usage-consent', { accepted: true })).status).toBe(200);
+  for (const sessionId of [declined, accepted]) {
+    expect((await post(sessionId, 'messages', { message: 'Synthetic test message' })).status).toBe(200);
+    expect(await Message.countDocuments({ session: sessionId })).toBe(2);
+  }
+  const csv = await (await request(`/replications/${id}/conversations/csv`)).text();
+  expect(csv).toContain(accepted);
+  expect(csv).not.toContain(declined);
+  expect(await processConversationRemoval(new Date(Date.now() + 3600000))).toBe(false);
+  expect((await post(declined, 'finish')).status).toBe(200);
+  expect((await post(accepted, 'result', { result: 'Synthetic answer' })).status).toBe(200);
+  const marked = await Session.findById(declined).select('+conversationRemovalDueAt');
+  const untouched = await Session.findById(accepted).select('+conversationRemovalDueAt');
+  expect(marked.conversationRemovalDueAt).toBeInstanceOf(Date);
+  expect(untouched.conversationRemovalDueAt).toBeUndefined();
+  expect(await processConversationRemoval()).toBe(false);
+  const firstAttempt = marked.conversationRemovalDueAt.getTime();
+  for (let attempt = 0; attempt < 4; attempt++) {
+    expect(await processConversationRemoval(new Date(firstAttempt + attempt * 120000))).toBe(true);
+  }
+  expect(await processConversationRemoval(new Date(firstAttempt + 600000))).toBe(false);
+  expect(traceRemovalRequests.map(({ sessionId }) => sessionId)).toEqual(Array(4).fill(declined));
+  expect(traceRemovalRequests.every(({ authorization }) => authorization === 'Bearer integration-runner')).toBe(true);
+  expect(await Message.countDocuments({ session: declined })).toBe(0);
+  expect(await Message.countDocuments({ session: accepted })).toBe(2);
+  expect(await Session.findById(declined)).toMatchObject({ dataUsage: { automatedRemovalApplied: true } });
+});
+
+test('keeps a finished stage conversation until the activity run is finished', async () => {
+  const replication = new mongoose.Types.ObjectId();
+  const run = await ActivityRun.create({ replication, isTest: true });
+  const due = new Date();
+  const session = await Session.create({
+    replication,
+    leia: leiaConfigId,
+    stageId: 'first-stage',
+    run: run.id,
+    finishedAt: due,
+    conversationRemovalDueAt: due,
+    dataUsage: {
+      config: { dataUsageConsentRequired: true, conversationAutomatedRemoval: true },
+      consentStatus: 'declined',
+    },
+  });
+  await Message.create({ session: session.id, text: 'Required by the next stage', isLeia: false });
+  expect(await processConversationRemoval(due)).toBe(true);
+  expect(await Message.countDocuments({ session: session.id })).toBe(1);
+  expect(traceRemovalRequests.some(({ sessionId }) => sessionId === session.id)).toBe(false);
+  await ActivityRun.updateOne({ _id: run.id }, { $set: { finishedAt: new Date() } });
+  expect(await processConversationRemoval(new Date(due.getTime() + 120000))).toBe(true);
+  expect(await Message.countDocuments({ session: session.id })).toBe(0);
+  expect(traceRemovalRequests.some(({ sessionId }) => sessionId === session.id)).toBe(true);
+});
 
 test('replication → activation → student chat → finish persists the conversation and prevents repeating a completed experiment', async () => {
   const created = await request('/replications', 'POST', { name: 'Integration replication', experiment: experimentId });

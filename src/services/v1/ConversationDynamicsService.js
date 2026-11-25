@@ -80,7 +80,7 @@ class ConversationDynamicsService {
       const [resolved] = await resolveStageLeias(session, [leia]);
       const decision = await RunnerService.evaluateStoppingCondition(stopping.config.condition,
       messages.map((message) => ({ role: message.isLeia ? 'leia' : 'student', text: message.text })),
-        resolved.leia?.spec?.behaviour?.spec?.description, leia.runnerConfiguration);
+        resolved.leia?.spec?.behaviour?.spec?.description, leia.runnerConfiguration, sessionId);
     // A fulfilled condition is monotonic, including across concurrent turns.
     await Session.updateOne({ _id: sessionId, 'conversationDynamicsState.stoppingCondition.satisfied': { $ne: true } },
       { $set: { 'conversationDynamicsState.stoppingCondition': {

@@ -12,6 +12,7 @@ import {
   updateReplicationLeiaRunnerConfiguration,
   toggleReplicationIsRepeatable,
   updateReplicationForm,
+  updateDataUsage,
   deleteReplicationForm,
   toggleAskSolution,
   toggleEvaluateSolution,
@@ -51,6 +52,7 @@ router.patch('/:id/stages/:stageId/previous-conversation', authContext, updateSt
 router.patch('/:id/duration', authContext, updateReplicationDuration);
 router.patch('/:id/experiment', authContext, updateReplicationExperiment);
 router.patch('/:id/form', authContext, updateReplicationForm);
+router.patch('/:id/data-usage', authContext, updateDataUsage);
 router.patch('/:id/leia/:leiaId/runner-configuration', authContext, updateReplicationLeiaRunnerConfiguration);
 router.patch('/:id/sessions/:sessionId/score', authContext, updateSessionScore);
 // GET

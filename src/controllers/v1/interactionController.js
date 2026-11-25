@@ -9,6 +9,7 @@ import {
   saveResultAndFinishSessionValidator,
   startTestSessionValidator,
   saveDraftValidator,
+  dataUsageConsentValidator,
 } from '../../validators/v1/interactionValidator.js';
 
 export const getConversationDynamics = async (req, res, next) => {
@@ -21,6 +22,15 @@ export const startSession = async (req, res, next) => {
     const value = await startSessionValidator.validateAsync(req.body);
     const sessionId = await InteractionService.startSession(value.email, value.code);
     res.status(201).json({ sessionId });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const recordDataUsageConsent = async (req, res, next) => {
+  try {
+    const { accepted } = await dataUsageConsentValidator.validateAsync(req.body);
+    res.json(await InteractionService.recordDataUsageConsent(req.params.sessionId, accepted));
   } catch (error) {
     next(error);
   }

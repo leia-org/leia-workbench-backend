@@ -39,6 +39,10 @@ const ReplicationSchema = new Schema(
     form: {
       type: String,
     },
+    dataUsageConfig: {
+      type: Schema.Types.Mixed,
+      default: undefined,
+    },
     isShared: {
       type: Boolean,
       required: true,
