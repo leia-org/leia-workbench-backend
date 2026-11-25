@@ -5,6 +5,7 @@ import SpectatorService from '../services/v1/SpectatorService.js';
 import ReplicationService from '../services/v1/ReplicationService.js';
 import SessionRepository from '../repositories/v1/SessionRepository.js';
 import { verifyToken } from '../utils/jwt.js';
+import { ownsReplication } from '../utils/replicationOwnership.js';
 
 let io = null;
 
@@ -43,23 +44,40 @@ export function initializeSocket(httpServer) {
     }
 
     // User JWT issued by the auth service — the frontend sends it as auth.token.
-    // An admin gets full dashboard/spectate access; this replaces the legacy
-    // adminSecret after the auth migration. Falls through to share-token
-    // handling if it isn't a valid user JWT.
+    // Admins get full dashboard/spectate access; authenticated owners (e.g.
+    // advanced users) are checked against replication ownership on room join.
+    // Falls through to share-token handling if it isn't a valid user JWT.
+    const explicitShareToken =
+      typeof auth.shareToken === 'string' && auth.shareToken ? auth.shareToken : null;
     const potentialUserJwt =
       typeof auth.token === 'string' && auth.token.split('.').length === 3 ? auth.token : null;
     if (potentialUserJwt) {
       try {
         const decoded = verifyToken(potentialUserJwt);
         if (decoded?.role === 'admin') {
-          return { isAdmin: true, userId: decoded.id, role: decoded.role };
+          return {
+            isAdmin: true,
+            id: decoded.id,
+            userId: decoded.id,
+            role: decoded.role,
+            ...(explicitShareToken ? { shareToken: explicitShareToken } : {}),
+          };
+        }
+        if (decoded?.id) {
+          return {
+            isAdmin: false,
+            id: decoded.id,
+            userId: decoded.id,
+            role: decoded.role,
+            ...(explicitShareToken ? { shareToken: explicitShareToken } : {}),
+          };
         }
       } catch {
         // Not a valid user JWT — fall through to share-token handling below.
       }
     }
 
-    const shareToken = auth.shareToken || (typeof auth.token === 'string' ? auth.token : null);
+    const shareToken = explicitShareToken || (typeof auth.token === 'string' ? auth.token : null);
     if (shareToken) {
       return {
         isAdmin: false,
@@ -107,7 +125,17 @@ export function initializeSocket(httpServer) {
             }
           }
         } else if (!socket.user?.isAdmin) {
-          throw new Error('Spectate access denied');
+          let authorizedOwner = false;
+          if (socket.user?.id) {
+            const session = await SessionRepository.findById(sessionId);
+            if (session?.replication) {
+              const replication = await ReplicationService.findById(session.replication.toString());
+              authorizedOwner = Boolean(replication && ownsReplication(replication, socket.user));
+            }
+          }
+          if (!authorizedOwner) {
+            throw new Error('Spectate access denied');
+          }
         }
 
         socket.join(`session:${sessionId}`);
@@ -132,7 +160,23 @@ export function initializeSocket(httpServer) {
           throw new Error('Replication ID is required');
         }
 
-        await ReplicationService.checkAccess(replicationId, Boolean(socket.user?.isAdmin), socket.user?.shareToken);
+        let canManageReplication = Boolean(socket.user?.isAdmin);
+        if (!canManageReplication && socket.user?.id) {
+          const replication = await ReplicationService.findById(replicationId);
+          if (!replication) {
+            throw new Error('Replication not found');
+          }
+          canManageReplication = ownsReplication(replication, socket.user);
+        }
+
+        await ReplicationService.checkAccess(replicationId, canManageReplication, socket.user?.shareToken);
+
+        if (canManageReplication) {
+          if (!socket.managedReplications) {
+            socket.managedReplications = new Set();
+          }
+          socket.managedReplications.add(String(replicationId));
+        }
 
         socket.join(`replication:${replicationId}`);
         logger.info(`Socket ${socket.id} joined replication room: ${replicationId}`);
@@ -145,6 +189,7 @@ export function initializeSocket(httpServer) {
 
     // Leave replication room
     socket.on('dashboard:leave', (replicationId) => {
+      socket.managedReplications?.delete(String(replicationId));
       socket.leave(`replication:${replicationId}`);
       logger.info(`Socket ${socket.id} left replication room: ${replicationId}`);
     });
@@ -188,9 +233,10 @@ export function emitToReplication(replicationId, event, data) {
   io.to(`replication:${replicationId}`).emit(event, data);
 }
 
-// Like emitToReplication but only to ADMIN sockets in the room. Used for
-// instructor-only data (e.g. supervisor flags) that share-token dashboard
-// viewers must not receive.
+// Like emitToReplication but only to sockets authorized to manage the
+// replication (admins and owning advanced users). Used for instructor-only
+// data (e.g. supervisor flags) that share-token dashboard viewers must not
+// receive.
 export function emitToReplicationAdmins(replicationId, event, data) {
   if (!io) {
     logger.warn('Socket.IO not initialized, cannot emit event');
@@ -198,9 +244,10 @@ export function emitToReplicationAdmins(replicationId, event, data) {
   }
   const room = io.sockets.adapter.rooms.get(`replication:${replicationId}`);
   if (!room) return;
+  const replicationKey = String(replicationId);
   for (const socketId of room) {
     const socket = io.sockets.sockets.get(socketId);
-    if (socket?.user?.isAdmin) {
+    if (socket?.user?.isAdmin || socket?.managedReplications?.has(replicationKey)) {
       socket.emit(event, data);
     }
   }

@@ -2,6 +2,7 @@ import { ownsReplication } from '../utils/replicationOwnership.js';
 import { verifyToken } from '../utils/jwt.js';
 import logger from '../utils/logger.js';
 import ReplicationService from '../services/v1/ReplicationService.js';
+import SessionRepository from '../repositories/v1/SessionRepository.js';
 export function auth(req, res, next) {
   req.auth = null;
 
@@ -83,38 +84,45 @@ export function admin(req, res, next) {
   }
 }
 
+function resolveAuthUser(req) {
+  const authorization = req.headers.authorization;
+  const shareToken = req.query.token;
+
+  if (authorization) {
+    const parts = authorization.split(' ');
+
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      const error = new Error('Invalid authorization header format');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    let decoded;
+    try {
+      decoded = verifyToken(parts[1]);
+    } catch {
+      const error = new Error('Invalid or expired token');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    return {
+      ...decoded,
+      isAdmin: decoded.role === 'admin',
+      ...(shareToken ? { shareToken } : {}),
+    };
+  }
+
+  if (shareToken) {
+    return { shareToken };
+  }
+
+  return {};
+}
+
 export async function authContext(req, res, next) {
     try {
-      const authorization = req.headers.authorization;
-      const shareToken = req.query.token;
-
-      req.user = {};
-
-      if (authorization) {
-        const parts = authorization.split(' ');
-
-        if (parts.length !== 2 || parts[0] !== 'Bearer') {
-          const error = new Error('Invalid authorization header format');
-          error.statusCode = 401;
-          return next(error);
-        }
-
-        let decoded;
-        try {
-          decoded = verifyToken(parts[1]);
-        } catch {
-          const error = new Error('Invalid or expired token');
-          error.statusCode = 401;
-          return next(error);
-        }
-
-        req.user = {
-          ...decoded,
-          isAdmin: decoded.role === 'admin',
-        };
-      } else if (shareToken) {
-        req.user = { shareToken };
-      }
+      req.user = resolveAuthUser(req);
 
       const replicationId = req.params.id || req.body.replicationId;
       const replication = await ReplicationService.findById(replicationId);
@@ -137,7 +145,51 @@ export async function authContext(req, res, next) {
         req.user.shareToken
       );
 
+      req.canManageReplication = canAccessReplication;
       req.replication = replication;
+      return next();
+    } catch (error) {
+      error.statusCode ??= error.status ?? 500;
+      return next(error);
+    }
+}
+
+export async function sessionAuthContext(req, res, next) {
+    try {
+      req.user = resolveAuthUser(req);
+
+      const sessionId = req.params.id;
+      const session = await SessionRepository.findById(sessionId);
+
+      if (!session) {
+        const error = new Error('Session not found');
+        error.statusCode = 404;
+        return next(error);
+      }
+
+      const replicationId = session.replication?.toString();
+      const replication = replicationId
+        ? await ReplicationService.findById(replicationId)
+        : null;
+
+      if (!replication) {
+        const error = new Error('Replication not found');
+        error.statusCode = 404;
+        return next(error);
+      }
+
+      const isOwner = ownsReplication(replication, req.user);
+      const canAccessReplication = req.user.isAdmin === true || isOwner;
+
+      await ReplicationService.checkAccess(
+        replicationId,
+        canAccessReplication,
+        req.user.shareToken
+      );
+
+      req.canManageReplication = canAccessReplication;
+      req.replication = replication;
+      req.session = session;
       return next();
     } catch (error) {
       error.statusCode ??= error.status ?? 500;

@@ -5,12 +5,14 @@ import ReplicationService from '../../services/v1/ReplicationService.js';
 import InteractionService from '../../services/v1/InteractionService.js';
 import TestRunService from '../../services/v1/TestRunService.js';
 import { isTestRunsPreviewEnabled } from '../../config/testRuns.js';
+import { ownsReplication } from '../../utils/replicationOwnership.js';
 
 export const generateSpectateToken = async (req, res, next) => {
   try {
     const { id: sessionId } = req.params;
     const { expiresIn = 3600 } = req.body;
-    await SessionService.checkReplicationAccess(sessionId, req.user.isAdmin, req.user.shareToken);
+    const canManageReplication = Boolean(req.canManageReplication ?? req.user?.isAdmin);
+    await SessionService.checkReplicationAccess(sessionId, canManageReplication, req.user?.shareToken);
     const result = await SpectatorService.generateSpectateToken(sessionId, expiresIn);
     const spectateUrl = SpectatorService.generateSpectateUrl(sessionId, result.token);
 
@@ -60,11 +62,13 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
     if (userId) {
       options.userId = userId;
     }
-    await ReplicationService.checkAccess(replicationId, req.user.isAdmin, req.user.shareToken);
-    const [replication, sessions] = await Promise.all([
-      ReplicationService.findById(replicationId),
-      SessionRepository.findByReplicationAndPopulateMessages(replicationId),
-    ]);
+    const replication = req.replication ?? (await ReplicationService.findById(replicationId));
+    const canManageReplication = Boolean(
+      req.canManageReplication ??
+        (req.user?.isAdmin || (replication && ownsReplication(replication, req.user)))
+    );
+    await ReplicationService.checkAccess(replicationId, canManageReplication, req.user?.shareToken);
+    const sessions = await SessionRepository.findByReplicationAndPopulateMessages(replicationId);
     const stages = Array.isArray(replication?.experiment?.stages) ? replication.experiment.stages : [];
     const stageIndexById = new Map(stages.filter((stage) => stage?.id).map(({ id }, index) => [id, index]));
     const stageTotal = stages.length || null;
@@ -84,7 +88,10 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
           : session.stageId && stageIndexById.has(session.stageId)
             ? stageIndexById.get(session.stageId)
             : null;
-      const flags = req.user.isAdmin && Array.isArray(session.supervisorFlags) ? session.supervisorFlags : undefined;
+      const flags =
+        canManageReplication && Array.isArray(session.supervisorFlags)
+          ? session.supervisorFlags
+          : undefined;
       const testRuns = testRunsBySession?.get(String(session.id));
 
       return {
