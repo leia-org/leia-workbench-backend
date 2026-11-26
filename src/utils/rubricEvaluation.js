@@ -24,6 +24,15 @@ export function resolveEvaluationMode(configuration) {
   return configuration.evaluateSolution ? 'classic' : 'none';
 }
 
+export function shouldShowEvaluationToParticipant(configuration) {
+  const evaluationMode = resolveEvaluationMode(configuration);
+  if (evaluationMode === 'none') return false;
+  return (
+    (Boolean(configuration?.askSolution) || evaluationMode === 'rubric') &&
+    configuration?.showSolution !== false
+  );
+}
+
 export function getRubricCurrentStageReferences(leiaEntry) {
   const prompt = leiaEntry?.leia?.spec?.rubric?.spec?.evaluationPrompt || '';
   const outputs = new Set();

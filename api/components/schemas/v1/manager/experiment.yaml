@@ -48,6 +48,6 @@ properties:
               nullable: true
             availability:
               type: string
-              enum: [chat, both]
+              enum: [chat, editor, both]
         orchestration:
           $ref: './orchestration.yaml'

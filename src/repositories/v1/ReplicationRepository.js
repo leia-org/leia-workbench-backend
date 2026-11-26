@@ -200,6 +200,34 @@ class ReplicationRepository {
     );
   }
 
+  async updateLeiaPreviousStageView(id, leiaId, fields) {
+    const update = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) {
+        update[`experiment.leias.$.configuration.${key}`] = value;
+      }
+    }
+    return await Replication.findOneAndUpdate(
+      { _id: id, 'experiment.leias.id': leiaId },
+      { $set: update },
+      { new: true }
+    );
+  }
+
+  async updateStageLeiasPreviousStageView(id, stageId, fields) {
+    const update = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) {
+        update[`experiment.leias.$[leia].configuration.${key}`] = value;
+      }
+    }
+    return await Replication.findByIdAndUpdate(
+      id,
+      { $set: update },
+      { new: true, arrayFilters: [{ 'leia.stageId': stageId }] }
+    );
+  }
+
   async incrementLeiaSessionCount(id, leiaId) {
     return await Replication.findOneAndUpdate(
       { _id: id, 'experiment.leias.id': leiaId },

@@ -1,0 +1,26 @@
+type: object
+properties:
+  stage:
+    type: object
+    required: [number, total]
+    properties:
+      number:
+        type: integer
+        minimum: 1
+      total:
+        type: integer
+        minimum: 1
+  availability:
+    type: string
+    enum: [chat, editor, both]
+  solution:
+    type: string
+    nullable: true
+    description: The student's submitted solution from the configured earlier stage.
+  solutionFormat:
+    type: string
+    description: Display format of the earlier stage solution (e.g. text, markdown, mermaid, json, yaml, xml, html).
+  submittedAt:
+    type: string
+    format: date-time
+    nullable: true

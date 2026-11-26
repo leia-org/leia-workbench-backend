@@ -202,6 +202,7 @@ describe('staged activity runtime guards & ActivityRun behavior', () => {
     ]);
     expect(visibleData.session.evaluation).toBe('Detailed feedback');
     expect(visibleData.session.score).toBe(8);
+    expect(visibleData.session.spectateUrl).toBeUndefined();
     expect(visibleData.leia.showReferenceSolution).toBe(true);
     expect(visibleData.leia.requiresConversationForNextStage).toBe(true);
     await expect(InteractionService.getSolutionAndFormat('sess-1')).resolves.toEqual({
@@ -257,7 +258,9 @@ describe('staged activity runtime guards & ActivityRun behavior', () => {
     // Flush microtasks for background evaluation promise.
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(RunnerService.getEvaluationAndScore).toHaveBeenCalledWith('sess-bg', 'Student answer');
-    expect(SessionService.saveEvaluationAndScore).toHaveBeenCalledWith('sess-bg', 'Good work', 9);
+    expect(SessionService.saveEvaluationAndScore).toHaveBeenCalledWith('sess-bg', 'Good work', 9, {
+      emitToSessionRoom: false,
+    });
   });
 
   test('does not expose tool widgets in MultiLEIA sessions', async () => {
@@ -331,6 +334,48 @@ describe('staged activity runtime guards & ActivityRun behavior', () => {
     expect(LukeService.flushSessionHistory).toHaveBeenCalledWith('sess-1');
   });
 
+  test('allows finishing a transcription stage with 0 session messages when its transcription has chat messages, and sets requiresConversationForNextStage to false', async () => {
+    const transcriptionRep = buildStagedReplication();
+    transcriptionRep.experiment.leias[0].configuration = {
+      ...transcriptionRep.experiment.leias[0].configuration,
+      mode: 'transcription',
+      data: {
+        messages: [{ text: 'Prepared transcript message', timestamp: '2026-11-25T10:00:00Z', isLeia: false }],
+      },
+    };
+    const transcriptionSession = {
+      id: 'sess-t1',
+      run: 'run-1',
+      replication: 'rep-1',
+      stageId: 's1',
+      leia: { equals: (other) => String(other) === 'l1', toString: () => 'l1' },
+      startedAt: new Date(),
+      messages: [],
+      conversationDynamicsState: { stoppingCondition: { satisfied: true } },
+    };
+    ReplicationService.findById.mockResolvedValue(transcriptionRep);
+    ReplicationService.findLeia.mockResolvedValue(transcriptionRep.experiment.leias[0]);
+    SessionService.findById.mockResolvedValue(transcriptionSession);
+
+    const sessionData = await InteractionService.getSessionData('sess-t1');
+    expect(sessionData.leia.requiresConversationForNextStage).toBe(false);
+
+    SessionService.finishStage.mockResolvedValue({ ...transcriptionSession, finishedAt: new Date() });
+    const finished = await InteractionService.finishSession('sess-t1');
+    expect(finished.finishedAt).toBeInstanceOf(Date);
+
+    // Empty transcription is still rejected when a later stage consumes its conversation.
+    const emptyTranscriptionRep = buildStagedReplication();
+    emptyTranscriptionRep.experiment.leias[0].configuration = {
+      ...emptyTranscriptionRep.experiment.leias[0].configuration,
+      mode: 'transcription',
+      data: { messages: [] },
+    };
+    ReplicationService.findById.mockResolvedValue(emptyTranscriptionRep);
+    ReplicationService.findLeia.mockResolvedValue(emptyTranscriptionRep.experiment.leias[0]);
+    await expect(InteractionService.finishSession('sess-t1')).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   test('allows continuing to the next stage inside an open ActivityRun even when replication.isActive is false', async () => {
     const prevSession = {
       id: 'sess-1',
@@ -382,7 +427,16 @@ describe('staged activity runtime guards & ActivityRun behavior', () => {
     ReplicationService.findLeia.mockResolvedValue(buildStagedReplication().experiment.leias[1]);
     SessionService.finishStage.mockResolvedValue({ ...finalSession, finishedAt });
 
-    await InteractionService.finishSession('sess-2');
+    const finished = await InteractionService.finishSession('sess-2');
     expect(ActivityRunService.markFinished).toHaveBeenCalledWith('run-1', finishedAt);
+    expect(finished.spectateUrl).toBe('http://spectate');
+
+    SessionService.findById.mockResolvedValue({
+      ...finalSession,
+      leia: { equals: (other) => String(other) === 'l2', toString: () => 'l2' },
+      finishedAt,
+    });
+    const reloaded = await InteractionService.getSessionData('sess-2');
+    expect(reloaded.session.spectateUrl).toBe('http://spectate');
   });
 });

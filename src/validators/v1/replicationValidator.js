@@ -92,8 +92,16 @@ export const updateSessionScoreValidator = Joi.object({
   score: Joi.number().min(0).max(100).required(),
 });
 
-export const updateStagePreviousConversationValidator = Joi.object({
+const previousStageResourceValidator = Joi.object({
   enabled: Joi.boolean().required(),
   sourceStageId: Joi.string().trim().min(1).allow(null).optional(),
-  availability: Joi.string().valid('chat', 'both').optional(),
+  availability: Joi.string().valid('chat', 'editor', 'both').optional(),
 });
+
+export const updateStagePreviousConversationValidator = previousStageResourceValidator;
+
+export const updateLeiaPreviousStageViewValidator = Joi.object({
+  previousConversation: previousStageResourceValidator.optional(),
+  previousSubmittedSolution: previousStageResourceValidator.optional(),
+  applyToStage: Joi.boolean().optional(),
+}).or('previousConversation', 'previousSubmittedSolution');

@@ -3,12 +3,13 @@ import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ManagerService from './ManagerService.js';
 import { initializeExperiment } from '../../utils/entity.js';
 import {
-  PREVIOUS_CONVERSATION_AVAILABILITIES,
+  PREVIOUS_STAGE_VIEW_AVAILABILITIES,
   activityError,
   activityFlows,
   getSolutionRequirementForLeia,
   getStageProblemLeia,
   getStagesRequiringSolution,
+  stageHasAskSolutionEnabled,
 } from '../../utils/activityStages.js';
 import {
   collectRubricCsvColumns,
@@ -471,6 +472,57 @@ class ReplicationService {
     return await ReplicationRepository.updateShowSolution(id, leiaId, showSolutionStatus);
   }
 
+  _resolvePreviousStageResourceUpdate(
+    replication,
+    stageIndex,
+    existingConfig,
+    incoming,
+    { label, requireAskSolution = false }
+  ) {
+    const stages = replication.experiment.stages;
+    const existing = existingConfig || {};
+    const nextAvailability =
+      incoming.availability !== undefined
+        ? incoming.availability
+        : PREVIOUS_STAGE_VIEW_AVAILABILITIES.includes(existing.availability)
+          ? existing.availability
+          : 'both';
+    if (!PREVIOUS_STAGE_VIEW_AVAILABILITIES.includes(nextAvailability)) {
+      throw activityError("Invalid availability. Expected 'chat', 'editor', or 'both'", 400);
+    }
+
+    const nextSourceStageId =
+      incoming.sourceStageId !== undefined ? incoming.sourceStageId : (existing.sourceStageId ?? null);
+
+    let sourceStage = null;
+    let sourceIndex = -1;
+    if (nextSourceStageId !== null) {
+      sourceIndex = stages.findIndex((stage) => stage.id === nextSourceStageId);
+      if (sourceIndex === -1 || !(sourceIndex < stageIndex)) {
+        throw activityError(`The source stage for previous ${label} must be an earlier stage`, 400);
+      }
+      sourceStage = stages[sourceIndex];
+    }
+
+    const enabled = Boolean(incoming.enabled);
+    if (enabled && !nextSourceStageId) {
+      throw activityError(`Select an earlier stage for the previous ${label}`, 400);
+    }
+
+    if (enabled && requireAskSolution && !stageHasAskSolutionEnabled(replication.experiment, sourceStage)) {
+      throw activityError(
+        `Stage ${sourceIndex + 1} must have "Ask for student solution" enabled to show its submitted solution`,
+        400
+      );
+    }
+
+    return {
+      enabled,
+      sourceStageId: nextSourceStageId,
+      availability: nextAvailability,
+    };
+  }
+
   async updateStagePreviousConversation(id, stageId, { enabled, sourceStageId, availability } = {}) {
     const replication = await ReplicationRepository.findById(id);
     if (!replication) {
@@ -491,36 +543,111 @@ class ReplicationService {
       throw activityError('Previous conversation is only available for stages after the first stage', 400);
     }
 
-    const existing = stages[stageIndex].previousConversation || {};
-    const nextAvailability =
-      availability !== undefined
-        ? availability
-        : PREVIOUS_CONVERSATION_AVAILABILITIES.includes(existing.availability)
-          ? existing.availability
-          : 'both';
-    if (!PREVIOUS_CONVERSATION_AVAILABILITIES.includes(nextAvailability)) {
-      throw activityError("Invalid availability. Expected 'chat' or 'both'", 400);
+    const resolved = this._resolvePreviousStageResourceUpdate(
+      replication,
+      stageIndex,
+      stages[stageIndex].previousConversation,
+      { enabled, sourceStageId, availability },
+      { label: 'conversation' }
+    );
+
+    return await ReplicationRepository.updateStagePreviousConversation(id, stageId, resolved);
+  }
+
+  async updateLeiaPreviousStageView(
+    id,
+    leiaId,
+    { previousConversation, previousSubmittedSolution, applyToStage = false } = {}
+  ) {
+    const replication = await ReplicationRepository.findById(id);
+    if (!replication) {
+      throw activityError('Replication not found', 404);
     }
 
-    const nextSourceStageId =
-      sourceStageId !== undefined ? sourceStageId : (existing.sourceStageId ?? null);
+    const leia = replication.experiment?.leias?.find(
+      (entry) => String(entry.id) === String(leiaId)
+    );
+    if (!leia) {
+      throw activityError('Leia not found', 404);
+    }
 
-    if (nextSourceStageId !== null) {
-      const sourceIndex = stages.findIndex((stage) => stage.id === nextSourceStageId);
-      if (sourceIndex === -1 || !(sourceIndex < stageIndex)) {
-        throw activityError('The source stage for previous conversation must be an earlier stage', 400);
+    const stages = replication.experiment?.stages;
+    if (!Array.isArray(stages) || !leia.stageId) {
+      throw activityError('Previous stage view is only available for multi-stage activities', 400);
+    }
+
+    const stageIndex = stages.findIndex((stage) => stage.id === leia.stageId);
+    if (stageIndex === -1) {
+      throw activityError('Stage not found', 404);
+    }
+
+    if (stageIndex === 0) {
+      throw activityError(
+        'Previous stage view is only available for stages after the first stage',
+        400
+      );
+    }
+
+    const stage = stages[stageIndex];
+    const isMulti = stage.orchestration?.mode === 'multi';
+    if (isMulti) {
+      const problemLeia = getStageProblemLeia(replication.experiment, stage);
+      if (problemLeia && String(problemLeia.id) !== String(leia.id)) {
+        throw activityError(
+          'Configure previous stage view settings on the shared problem LEIA for MultiLEIA stages',
+          400
+        );
       }
     }
 
-    if (enabled && !nextSourceStageId) {
-      throw activityError('Select an earlier stage for the previous conversation', 400);
+    const existingPrevConv =
+      leia.configuration?.previousConversation !== undefined
+        ? leia.configuration.previousConversation
+        : stage.previousConversation;
+    const existingPrevSol =
+      leia.configuration?.previousSubmittedSolution !== undefined
+        ? leia.configuration.previousSubmittedSolution
+        : stage.previousSubmittedSolution;
+
+    const updates = {};
+    if (previousConversation !== undefined) {
+      updates.previousConversation = this._resolvePreviousStageResourceUpdate(
+        replication,
+        stageIndex,
+        existingPrevConv,
+        previousConversation,
+        { label: 'conversation' }
+      );
     }
 
-    return await ReplicationRepository.updateStagePreviousConversation(id, stageId, {
-      enabled: Boolean(enabled),
-      sourceStageId: nextSourceStageId,
-      availability: nextAvailability,
-    });
+    if (previousSubmittedSolution !== undefined) {
+      updates.previousSubmittedSolution = this._resolvePreviousStageResourceUpdate(
+        replication,
+        stageIndex,
+        existingPrevSol,
+        previousSubmittedSolution,
+        { label: 'submitted solution', requireAskSolution: true }
+      );
+    }
+
+    const finalPrevConv = updates.previousConversation ?? existingPrevConv;
+    const finalPrevSol = updates.previousSubmittedSolution ?? existingPrevSol;
+    if (
+      finalPrevConv?.enabled &&
+      finalPrevSol?.enabled &&
+      finalPrevConv.sourceStageId !== finalPrevSol.sourceStageId
+    ) {
+      throw activityError(
+        'Conversation and submitted solution buttons must use the same source stage',
+        400
+      );
+    }
+
+    if (applyToStage && !isMulti) {
+      return await ReplicationRepository.updateStageLeiasPreviousStageView(id, stage.id, updates);
+    }
+
+    return await ReplicationRepository.updateLeiaPreviousStageView(id, leiaId, updates);
   }
 
   async getConversations(id) {

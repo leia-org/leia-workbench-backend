@@ -102,11 +102,17 @@ class SessionService {
   emitFinished(id, session) {
     // Emit WebSocket event
     try {
-      emitToSession(id, 'session:finished', { sessionId: id, finishedAt: session.finishedAt });
-      emitToReplication(session.replication.toString(), 'session:finished', {
+      emitToSession(id, 'session:finished', {
         sessionId: id,
         finishedAt: session.finishedAt,
+        ...(session.result !== undefined ? { result: session.result } : {}),
       });
+      if (session.replication) {
+        emitToReplication(session.replication.toString(), 'session:finished', {
+          sessionId: id,
+          finishedAt: session.finishedAt,
+        });
+      }
     } catch (error) {
       console.error('Failed to emit session finished via WebSocket:', error);
     }
@@ -118,11 +124,15 @@ class SessionService {
   }
 
   async saveResultAndFinish(id, result, conversationRemovalDueAt) {
-    return await SessionRepository.update(id, {
+    const session = await SessionRepository.update(id, {
       result,
       finishedAt: new Date(),
       ...(conversationRemovalDueAt ? { conversationRemovalDueAt } : {}),
     });
+    if (session) {
+      this.emitFinished(id, session);
+    }
+    return session;
   }
 
   async saveEvaluation(id, evaluation) {
@@ -142,12 +152,14 @@ class SessionService {
     };
     const updated = await SessionRepository.update(id, updates);
     if (updated) {
-      this.emitEvaluated(id, updated);
+      this.emitEvaluated(id, updated, {
+        emitToSessionRoom: details.emitToSessionRoom !== false,
+      });
     }
     return updated;
   }
 
-  emitEvaluated(id, session) {
+  emitEvaluated(id, session, { emitToSessionRoom = true } = {}) {
     try {
       const payload = {
         sessionId: id,
@@ -156,7 +168,9 @@ class SessionService {
         evaluation: session.evaluation,
         ...(session.rubricEvaluation ? { rubricEvaluation: session.rubricEvaluation } : {}),
       };
-      emitToSession(id, 'session:evaluated', payload);
+      if (emitToSessionRoom) {
+        emitToSession(id, 'session:evaluated', payload);
+      }
       if (session.replication) {
         emitToReplication(session.replication.toString(), 'session:evaluated', payload);
       }

@@ -19,6 +19,30 @@ properties:
         type: boolean
       mode:
         type: string
+      previousConversation:
+        type: object
+        description: Optional workbench configuration allowing students in stages n>1 to review an earlier stage conversation for this LEIA.
+        properties:
+          enabled:
+            type: boolean
+          sourceStageId:
+            type: string
+            nullable: true
+          availability:
+            type: string
+            enum: [chat, editor, both]
+      previousSubmittedSolution:
+        type: object
+        description: Optional workbench configuration allowing students in stages n>1 to review their submitted solution from an earlier stage for this LEIA.
+        properties:
+          enabled:
+            type: boolean
+          sourceStageId:
+            type: string
+            nullable: true
+          availability:
+            type: string
+            enum: [chat, editor, both]
   runnerConfiguration:
     $ref: '../replication/runnerConfiguration.yaml'
   sessionCount:

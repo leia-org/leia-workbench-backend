@@ -15,6 +15,10 @@ class SessionRepository {
     return await Session.findById(id).populate('messages');
   }
 
+  async findByRun(runId) {
+    return await Session.find({ run: runId }).sort({ stageIndex: 1, startedAt: 1, _id: 1 });
+  }
+
   async findByReplication(replicationId) {
     return await Session.find({ replication: replicationId, isTest: false });
   }

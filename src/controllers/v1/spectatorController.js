@@ -31,23 +31,20 @@ export const getSessionForSpectator = async (req, res, next) => {
 
     // Verify token (already done in middleware)
     // Token payload is in req.spectateSession / req.spectateRun
-
-    if (req.spectateSession !== sessionId) {
-      let authorizedByRun = false;
-      if (req.spectateRun) {
-        const target = await SessionRepository.findById(sessionId);
-        authorizedByRun = Boolean(target?.run && String(target.run) === String(req.spectateRun));
-      }
-      if (!authorizedByRun) {
-        const error = new Error('Spectate token does not match session');
-        error.statusCode = 403;
-        throw error;
-      }
+    const authorized = await SpectatorService.isSessionAuthorizedForSpectateToken(sessionId, {
+      spectateSession: req.spectateSession,
+      spectateRun: req.spectateRun,
+    });
+    if (!authorized) {
+      const error = new Error('Spectate token does not match session');
+      error.statusCode = 403;
+      throw error;
     }
 
-    const data = await InteractionService.getSessionData(sessionId)
+    const data = await InteractionService.getSessionData(sessionId, { includeSpectateLink: false });
+    const runStages = await SpectatorService.getRunStagesForSession(sessionId, data);
 
-    res.json(data)
+    res.json(runStages ? { ...data, runStages } : data);
   } catch (error) {
     next(error);
   }

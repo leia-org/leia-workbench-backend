@@ -29,4 +29,42 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../../components/schemas/v1/interaction/sessionData.yaml'
+            allOf:
+              - $ref: '../../../components/schemas/v1/interaction/sessionData.yaml'
+              - type: object
+                properties:
+                  runStages:
+                    type: array
+                    description: Ordered summaries of stages reached so far in the same ActivityRun.
+                    items:
+                      type: object
+                      properties:
+                        sessionId:
+                          type: string
+                        stageId:
+                          type: string
+                          nullable: true
+                        stageIndex:
+                          type: integer
+                        stageNumber:
+                          type: integer
+                        stageTotal:
+                          type: integer
+                        startedAt:
+                          type: string
+                          format: date-time
+                        finishedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        isActive:
+                          type: boolean
+                        messageCount:
+                          type: integer
+                        hasSubmittedSolution:
+                          type: boolean
+                        mode:
+                          type: string
+                        leiaName:
+                          type: string
+                          nullable: true

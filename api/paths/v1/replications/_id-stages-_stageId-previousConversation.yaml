@@ -34,6 +34,7 @@ patch:
               type: string
               enum:
                 - chat
+                - editor
                 - both
   responses:
     '200':
