@@ -2,7 +2,8 @@ import { ownsReplication as isReplicationOwner } from '../../utils/replicationOw
 import ReplicationService from '../../services/v1/ReplicationService.js';
 import SessionService from '../../services/v1/SessionService.js';
 import TestRunService from '../../services/v1/TestRunService.js';
-import { isTestRunsPreviewEnabled } from '../../config/testRuns.js';
+import EventService from '../../services/v1/EventService.js';
+import { isInteractionEventsEnabled } from '../../config/features.js';
 import {
   createReplicationValidator,
   updateReplicationNameValidator,
@@ -310,11 +311,51 @@ export const updateLeiaPreviousStageView = async (req, res, next) => {
 export const getReplicationConversations = async (req, res, next) => {
   try {
     const conversations = await ReplicationService.getConversations(req.params.id);
-    // Each session also carries its test runs, without the code snapshots
-    // (those are loaded on demand, see getSessionTestRuns).
-    res.json(isTestRunsPreviewEnabled()
-      ? await TestRunService.attachSummaries(req.params.id, conversations)
-      : conversations);
+    if (!isInteractionEventsEnabled()) {
+      res.json(conversations);
+      return;
+    }
+    // Each session carries how many events of each type it has; the events
+    // themselves are loaded when a session is opened (getSessionEvents).
+    const withCounts = await EventService.attachCounts(req.params.id, conversations);
+    // Test runs still travel inline, without code, for clients that predate
+    // the events API.
+    res.json(await TestRunService.attachSummaries(req.params.id, withCounts));
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Timeline of interaction events of one session, without heavy content.
+export const getSessionEvents = async (req, res, next) => {
+  try {
+    const { id, sessionId } = req.params;
+    const events = await EventService.findForSession(id, sessionId);
+    res.json({ events, total: events.length });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// One event with its content: the code of a test run, the text of a paste.
+export const getSessionEvent = async (req, res, next) => {
+  try {
+    const { id, sessionId, eventId } = req.params;
+    res.json({ event: await EventService.findOne(id, sessionId, eventId) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const downloadReplicationEventsCSV = async (req, res, next) => {
+  try {
+    const replication = req.replication;
+    const csv = await EventService.getReplicationCSV(req.params.id);
+    const filename = `${replication.name.replace(/\s+/g, '_')}_events.csv`;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
   } catch (err) {
     next(err);
   }

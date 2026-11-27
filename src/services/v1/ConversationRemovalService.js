@@ -1,6 +1,7 @@
 import ActivityRun from '../../models/ActivityRun.js';
 import Session from '../../models/Session.js';
 import MessageRepository from '../../repositories/v1/MessageRepository.js';
+import EventRepository from '../../repositories/v1/EventRepository.js';
 import logger from '../../utils/logger.js';
 import RunnerService from './RunnerService.js';
 
@@ -32,6 +33,8 @@ export async function processConversationRemoval(now = new Date()) {
 
   try {
     await MessageRepository.deleteBySession(session._id);
+    // Whatever was recorded of the student's activity goes with the messages.
+    await EventRepository.deleteBySession(session._id);
     await Session.updateOne(claim, {
       $set: { messages: [], 'dataUsage.automatedRemovalApplied': true },
       $unset: { supervisorFlags: 1, supervisorState: 1 },

@@ -3,10 +3,12 @@ get:
     - Replications v1
   summary: Download the test runs of a Replication as CSV
   description: >
-    One row per test run. Columns: Session ID, User, Run ID, Run Number,
+    One row per test run (the events of type test_run). Columns: Session ID,
+    Run ID (the activity run), Stage, User, Test Run ID, Run Number,
     Timestamp, Trigger, Language, Function, Status, Passed, Failed, Total,
     Duration Ms, Error, Failed Tests, Results JSON, Reported To LEIA At,
-    Code Truncated, Code. Test sessions are excluded.
+    Code Truncated, Code. Test sessions and sessions that declined data usage
+    are excluded.
   operationId: downloadReplicationTestRunsCSV
   parameters:
     - name: id

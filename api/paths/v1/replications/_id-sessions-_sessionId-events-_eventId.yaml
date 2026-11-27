@@ -1,0 +1,36 @@
+get:
+  tags:
+    - Replications v1
+  summary: Retrieve one interaction event with its content
+  operationId: getSessionEvent
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the replication
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+    - name: sessionId
+      in: path
+      required: true
+      description: Unique identifier for the session (must belong to the replication)
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+    - name: eventId
+      in: path
+      required: true
+      description: Unique identifier for the event (must belong to the session)
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+  responses:
+    '200':
+      description: The event, including the code under test or the clipboard text
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              event:
+                $ref: '../../../components/schemas/v1/interaction/event.yaml'
+    '404':
+      description: Event not found, or interaction events are disabled

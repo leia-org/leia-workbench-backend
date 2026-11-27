@@ -1,0 +1,38 @@
+post:
+  tags:
+    - Interactions v1
+  summary: Record a batch of student interaction events
+  description: >
+    Called by the student client. Each event gets its own outcome, so one that
+    cannot be stored never fails the rest. Accepts a larger JSON body (512 kB)
+    than the rest of the API. Only available where interaction events are
+    enabled.
+  operationId: recordEvents
+  parameters:
+    - name: sessionId
+      in: path
+      required: true
+      description: The ID of the session
+      schema:
+        type: string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../../components/schemas/v1/interaction/recordEventsRequest.yaml'
+  responses:
+    '200':
+      description: Outcome of each event
+      content:
+        application/json:
+          schema:
+            $ref: '../../../components/schemas/v1/interaction/recordEventsResponse.yaml'
+    '400':
+      description: Malformed batch
+    '403':
+      description: Data usage consent is still pending
+    '404':
+      description: Session not found, or interaction events are disabled
+    '413':
+      description: Batch larger than 512 kB

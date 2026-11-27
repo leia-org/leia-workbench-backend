@@ -1,0 +1,34 @@
+get:
+  tags:
+    - Replications v1
+  summary: Retrieve the interaction events of a session, without content
+  operationId: getSessionEvents
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the replication
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+    - name: sessionId
+      in: path
+      required: true
+      description: Unique identifier for the session (must belong to the replication)
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+  responses:
+    '200':
+      description: Events of the session in chronological order
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              events:
+                type: array
+                items:
+                  $ref: '../../../components/schemas/v1/interaction/event.yaml'
+              total:
+                type: integer
+    '404':
+      description: Interaction events are disabled

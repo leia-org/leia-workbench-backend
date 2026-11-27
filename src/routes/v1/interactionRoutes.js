@@ -17,8 +17,10 @@ import {
   getPreviousStageConversation,
   getPreviousStageSubmittedSolution,
   recordDataUsageConsent,
+  recordEvents,
 } from '../../controllers/v1/interactionController.js';
 import { authContext } from '../../middlewares/auth.js';
+import { requireInteractionEvents } from '../../config/features.js';
 
 const router = Router();
 
@@ -33,6 +35,7 @@ router.post('/:sessionId/finish', finishSession);
 router.post('/:sessionId/next-stage', continueStage);
 router.post('/:sessionId/draft', saveDraft);
 router.post('/:sessionId/test-runs', requireTestRunsPreview, createTestRun);
+router.post('/:sessionId/events', requireInteractionEvents, recordEvents);
 
 // GET
 router.get('/:sessionId', getSessionData);

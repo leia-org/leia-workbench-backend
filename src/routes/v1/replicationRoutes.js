@@ -1,5 +1,6 @@
 import express from 'express';
 import { requireTestRunsPreview } from '../../config/testRuns.js';
+import { requireInteractionEvents } from '../../config/features.js';
 import {
   createReplication,
   getReplicationById,
@@ -24,6 +25,9 @@ import {
   downloadReplicationConversationsCSV,
   getSessionTestRuns,
   downloadReplicationTestRunsCSV,
+  getSessionEvents,
+  getSessionEvent,
+  downloadReplicationEventsCSV,
   updateSessionScore,
   regenerateReplicationShareToken,
   toggleReplicationIsShared,
@@ -63,6 +67,9 @@ router.get('/:id/conversations', authContext, getReplicationConversations);
 router.get('/:id/conversations/csv', authContext, downloadReplicationConversationsCSV);
 router.get('/:id/test-runs/csv', requireTestRunsPreview, authContext, downloadReplicationTestRunsCSV);
 router.get('/:id/sessions/:sessionId/test-runs', requireTestRunsPreview, authContext, getSessionTestRuns);
+router.get('/:id/events/csv', requireInteractionEvents, authContext, downloadReplicationEventsCSV);
+router.get('/:id/sessions/:sessionId/events', requireInteractionEvents, authContext, getSessionEvents);
+router.get('/:id/sessions/:sessionId/events/:eventId', requireInteractionEvents, authContext, getSessionEvent);
 router.get('/:id', authContext, getReplicationById);
 router.get('/exists/:name', requireAdvanced, replicationNameExists);
 // DELETE
