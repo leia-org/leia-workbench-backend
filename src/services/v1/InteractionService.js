@@ -746,6 +746,8 @@ class InteractionService {
     if (isTestRunsPreviewEnabled() && widgets.some((widget) => widget?.widgetType === 'codeEditor')) {
       leia.testRunsEnabled = true;
     }
+    // Tells the student client to report interaction events for this session.
+    if (isTestRunsPreviewEnabled()) leia.eventsEnabled = true;
 
     // Supervisor data is instructor-only: strip it (and the supervisor config)
     // from the payload the student receives.

@@ -5,6 +5,8 @@ import ReplicationService from '../../services/v1/ReplicationService.js';
 import InteractionService from '../../services/v1/InteractionService.js';
 import TestRunService from '../../services/v1/TestRunService.js';
 import { isTestRunsPreviewEnabled } from '../../config/testRuns.js';
+import EventService from '../../services/v1/EventService.js';
+import { isInteractionEventsEnabled } from '../../config/features.js';
 import { ownsReplication } from '../../utils/replicationOwnership.js';
 
 export const generateSpectateToken = async (req, res, next) => {
@@ -74,6 +76,12 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
     const testRunsBySession = isTestRunsPreviewEnabled()
       ? await TestRunService.liveSummariesBySession(replicationId)
       : null;
+    // How many interaction events of each type every session has so far
+    // (new ones arrive as session:events). The events of a session are
+    // loaded when it is opened.
+    const eventCountsBySession = isInteractionEventsEnabled()
+      ? await EventService.countsBySession(replicationId)
+      : null;
 
     // Format sessions for dashboard
     const formattedSessions = sessions.map((session) => {
@@ -110,6 +118,9 @@ export const getLiveSessionsByReplication = async (req, res, next) => {
         ...(testRunsBySession && {
           testRunCount: testRuns?.testRunCount || 0,
           testRuns: testRuns?.testRuns || [],
+        }),
+        ...(eventCountsBySession && {
+          eventCounts: eventCountsBySession.get(String(session.id)) || {},
         }),
         lastMessage: lastMessage
           ? {

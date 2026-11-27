@@ -1,0 +1,50 @@
+type: object
+required:
+  - events
+properties:
+  sentAt:
+    type: string
+    format: date-time
+    description: Client clock when the batch was sent; used to place events on the server clock.
+  events:
+    type: array
+    minItems: 1
+    maxItems: 50
+    items:
+      type: object
+      required:
+        - clientEventId
+        - type
+        - clientAt
+      properties:
+        clientEventId:
+          type: string
+          maxLength: 100
+          description: Client-generated id; a repeated id is not stored twice.
+        type:
+          type: string
+          enum: [test_run, clipboard_copy, clipboard_cut, clipboard_paste, page_leave, page_return]
+        source:
+          type: string
+          enum: [chat_input, code_editor, solution_editor, notes, previous_solution, page, other]
+        actor:
+          type: string
+          enum: [student, leia]
+          default: student
+        view:
+          type: string
+          enum: [chat, edit]
+        clientAt:
+          type: string
+          format: date-time
+        seq:
+          type: integer
+          minimum: 0
+        payload:
+          type: object
+          additionalProperties: true
+        content:
+          type: string
+          description: Code under test or clipboard text. Cut at 60000 characters and flagged.
+        contentTruncated:
+          type: boolean

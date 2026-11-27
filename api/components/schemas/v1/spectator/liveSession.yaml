@@ -28,6 +28,11 @@ properties:
     description: The most recent test runs, without code snapshots.
     items:
       $ref: '../interaction/testRun.yaml'
+  eventCounts:
+    type: object
+    description: How many interaction events of each type the session has so far.
+    additionalProperties:
+      type: integer
   lastMessage:
     nullable: true
     type: object

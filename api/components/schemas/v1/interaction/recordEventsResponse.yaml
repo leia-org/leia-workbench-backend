@@ -1,0 +1,26 @@
+type: object
+properties:
+  results:
+    type: array
+    description: One outcome per event of the batch, in the same order.
+    items:
+      type: object
+      properties:
+        clientEventId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [stored, duplicate, skipped, rejected]
+        reason:
+          type: string
+          description: >
+            skipped: consent_declined, test_session. rejected: validation,
+            unknown_type, not_applicable, cap_reached, session_finished.
+        message:
+          type: string
+        id:
+          type: string
+        at:
+          type: string
+          format: date-time

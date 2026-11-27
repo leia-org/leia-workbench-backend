@@ -1,0 +1,29 @@
+get:
+  tags:
+    - Replications v1
+  summary: Download the interaction events of a Replication as CSV
+  description: >
+    One row per event. Columns: Session ID, Run ID, Stage, User, Event ID,
+    Event Number, Timestamp, Received At, Client Timestamp, Type, Source, View,
+    Actor, Method, Origin, Matched Event ID, Matched Source, Length, Lines,
+    Truncated, Hash, Away Ms, Reason, Status, Passed, Failed, Total,
+    Duration Ms, Reported To LEIA At, Text, Payload JSON. Text carries
+    clipboard content; the code of a test run is in the test-runs export.
+    Test sessions and sessions that declined data usage are excluded.
+  operationId: downloadReplicationEventsCSV
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Unique identifier for the replication
+      schema:
+        $ref: '../../../components/schemas/mongoId.yaml'
+  responses:
+    '200':
+      description: CSV export of the interaction events of the replication
+      content:
+        text/csv:
+          schema:
+            type: string
+    '404':
+      description: Interaction events are disabled

@@ -1,14 +1,17 @@
-import TestRunRepository from '../../repositories/v1/TestRunRepository.js';
+import { randomUUID } from 'crypto';
+import EventRepository from '../../repositories/v1/EventRepository.js';
 import SessionRepository from '../../repositories/v1/SessionRepository.js';
 import ReplicationRepository from '../../repositories/v1/ReplicationRepository.js';
-import { emitToReplication } from '../../socket/index.js';
+import EventService from './EventService.js';
 import { buildTestRunNote } from '../../utils/testRunNote.js';
+import { toTestRun } from '../../utils/testRunView.js';
 import { csvRow } from '../../utils/csv.js';
-import logger from '../../utils/logger.js';
 
-// Upper bound of stored runs per session. The endpoint is unauthenticated
-// (the session id is the credential), so this caps what one session can write.
-export const MAX_RUNS_PER_SESSION = 300;
+// Test runs are stored as events of type `test_run` (see EventService). This
+// service is their typed view: the note for the LEIA, the per-run export and
+// the test-run endpoints that predate the generic event API.
+
+export { hasCodeEditorWidget, deriveOutcome } from '../../utils/eventTypes.js';
 
 // How many pending runs are loaded to build the LEIA note. The note describes
 // the latest one and only counts the rest.
@@ -17,10 +20,16 @@ const MAX_RUNS_IN_NOTE = 20;
 // How many recent runs the live dashboard list carries per session.
 const LIVE_RECENT_RUNS = 5;
 
+const TEST_RUN = 'test_run';
+// Runs the student started: the ones the LEIA has to be told about.
+const STUDENT_RUNS = { type: TEST_RUN, actor: 'student' };
+
 export const TEST_RUNS_CSV_HEADER = [
   'Session ID',
-  'User',
   'Run ID',
+  'Stage',
+  'User',
+  'Test Run ID',
   'Run Number',
   'Timestamp',
   'Trigger',
@@ -39,6 +48,15 @@ export const TEST_RUNS_CSV_HEADER = [
   'Code',
 ];
 
+// How a rejected event maps onto the status codes of POST /test-runs.
+const REJECTION_STATUS = {
+  validation: [400, 'Invalid test run'],
+  unknown_type: [400, 'Invalid test run'],
+  not_applicable: [409, 'This activity has no code editor'],
+  cap_reached: [429, 'Too many test runs for this session'],
+  session_finished: [403, 'Session is already finished'],
+};
+
 function httpError(message, statusCode) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -47,36 +65,9 @@ function httpError(message, statusCode) {
 
 const toIso = (value) => (value ? new Date(value).toISOString() : '');
 
-// Widgets live in the problem definition; LEIAs configured before that
-// migration carry them in the runner's luke configuration (same dual-read as
-// InteractionService.getSessionData).
-export function hasCodeEditorWidget(leia) {
-  const problemWidgets = leia?.leia?.spec?.problem?.spec?.widgets;
-  const legacyWidgets = leia?.runnerConfiguration?.lukeConfig?.widgets;
-  const widgets =
-    Array.isArray(problemWidgets) && problemWidgets.length > 0
-      ? problemWidgets
-      : Array.isArray(legacyWidgets)
-        ? legacyWidgets
-        : [];
-  return widgets.some((widget) => widget?.widgetType === 'codeEditor');
-}
-
-// Counters and status come from the per-test results, never from the client.
-export function deriveOutcome(results, error) {
-  const list = Array.isArray(results) ? results : [];
-  const passed = list.filter((result) => result.ok === true).length;
-  const total = list.length;
-  const failed = total - passed;
-  const status = error ? 'error' : failed > 0 ? 'failed' : 'passed';
-  return { passed, failed, total, status };
-}
-
 // A run without its code snapshot, as plain JSON.
-export function toSummary(run) {
-  const data = run && typeof run.toJSON === 'function' ? run.toJSON() : { ...run };
-  delete data.code;
-  return data;
+export function toSummary(event) {
+  return toTestRun(event);
 }
 
 function groupBySession(runs) {
@@ -93,84 +84,54 @@ class TestRunService {
   // WRITE METHODS
 
   /**
-   * Stores a test run reported by the code editor widget.
+   * Stores a test run reported through POST /test-runs as a `test_run` event.
    * @returns {Promise<{ run: object, created: boolean }>}
    */
   async record(sessionId, payload) {
-    const session = await SessionRepository.findById(sessionId);
-    if (!session) throw httpError('Session not found', 404);
-    if (session.finishedAt) throw httpError('Session is already finished', 403);
+    const clientEventId = payload.clientRunId || randomUUID();
+    const { results, stored } = await EventService.recordBatch(
+      sessionId,
+      {
+        events: [
+          {
+            clientEventId,
+            type: TEST_RUN,
+            source: 'code_editor',
+            actor: payload.trigger,
+            view: 'chat',
+            clientAt: payload.clientRunAt || new Date(),
+            payload: {
+              language: payload.language,
+              fnName: payload.fnName,
+              results: payload.results,
+              error: payload.error,
+              durationMs: payload.durationMs,
+            },
+            content: payload.code ?? '',
+            contentTruncated: payload.codeTruncated === true,
+          },
+        ],
+      },
+      // This endpoint never accepted anything once the session was finished.
+      { finishedGraceMs: 0 }
+    );
 
-    const leia = await ReplicationRepository.findLeia(session.replication, session.leia);
-    if (!hasCodeEditorWidget(leia)) {
-      throw httpError('This activity has no code editor', 409);
+    const [result] = results;
+    if (result.status === 'stored') {
+      return { run: toTestRun(stored[0], { withCode: true }), created: true };
     }
-
-    if (payload.clientRunId) {
-      const existing = await TestRunRepository.findBySessionAndClientRunId(session.id, payload.clientRunId);
-      if (existing) return { run: existing, created: false };
-    }
-
-    const storedRuns = await TestRunRepository.countBySession(session.id);
-    if (storedRuns >= MAX_RUNS_PER_SESSION) {
-      throw httpError('Too many test runs for this session', 429);
-    }
-
-    const results = (payload.results || []).map((result) => ({
-      name: result.name || '',
-      ok: result.ok === true,
-      ...(result.error ? { error: result.error } : {}),
-      ...(result.expected !== undefined && result.expected !== null ? { expected: result.expected } : {}),
-      ...(result.actual !== undefined && result.actual !== null ? { actual: result.actual } : {}),
-    }));
-    const error = payload.error || null;
-
-    let run;
-    try {
-      run = await TestRunRepository.create({
-        session: session.id,
-        replication: session.replication,
-        trigger: payload.trigger,
-        language: payload.language,
-        fnName: payload.fnName || '',
-        code: payload.code ?? '',
-        codeTruncated: payload.codeTruncated === true,
-        ...deriveOutcome(results, error),
-        results,
-        error,
-        durationMs: payload.durationMs || 0,
-        clientRunAt: payload.clientRunAt,
-        clientRunId: payload.clientRunId,
+    if (result.status === 'duplicate') {
+      const existing = await EventRepository.findBySessionAndClientEventId(sessionId, clientEventId, {
+        withContent: true,
       });
-    } catch (err) {
-      // Two reports of the same run raced past the lookup above.
-      if (err?.code === 11000 && payload.clientRunId) {
-        const existing = await TestRunRepository.findBySessionAndClientRunId(session.id, payload.clientRunId);
-        if (existing) return { run: existing, created: false };
-      }
-      throw err;
+      if (existing) return { run: toTestRun(existing, { withCode: true }), created: false };
     }
-
-    // Test sessions are hidden from the monitoring views, so nothing is pushed.
-    if (!session.isTest) {
-      try {
-        // Whole dashboard room (like session:message), not admins only: owners
-        // without the admin role join with a share token. No code in the event.
-        emitToReplication(String(session.replication), 'session:testRun', {
-          sessionId: String(session.id),
-          testRun: toSummary(run),
-          testRunCount: storedRuns + 1,
-        });
-      } catch (err) {
-        logger.warn(`Failed to emit test run via WebSocket: ${err.message}`);
-      }
-    }
-
-    return { run, created: true };
+    const [statusCode, message] = REJECTION_STATUS[result.reason] || [400, 'Test run was not stored'];
+    throw httpError(result.message ? `${message}: ${result.message}` : message, statusCode);
   }
 
   async markReported(sessionId, upTo) {
-    return await TestRunRepository.markStudentRunsReported(sessionId, upTo);
+    return await EventRepository.markReported(sessionId, STUDENT_RUNS, upTo);
   }
 
   // READ METHODS
@@ -178,14 +139,18 @@ class TestRunService {
   /**
    * Hidden context for the LEIA about student-triggered runs it has not seen.
    * @returns {Promise<{ context: string, upTo: Date } | null>} `upTo` is the
-   *   time of the latest run described, to stamp once the runner confirms.
+   *   reception time of the latest run described, to stamp once the runner
+   *   confirms.
    */
   async pendingNote(sessionId, now = new Date()) {
-    const runs = await TestRunRepository.findUnreportedStudentRuns(sessionId, MAX_RUNS_IN_NOTE);
-    if (runs.length === 0) return null;
+    const events = await EventRepository.findUnreported(sessionId, STUDENT_RUNS, MAX_RUNS_IN_NOTE);
+    if (events.length === 0) return null;
 
     const totalCount =
-      runs.length < MAX_RUNS_IN_NOTE ? runs.length : await TestRunRepository.countUnreportedStudentRuns(sessionId);
+      events.length < MAX_RUNS_IN_NOTE
+        ? events.length
+        : await EventRepository.countUnreported(sessionId, STUDENT_RUNS);
+    const runs = events.map((event) => toTestRun(event));
     const context = buildTestRunNote(runs, { now, totalCount });
     if (!context) return null;
 
@@ -194,8 +159,8 @@ class TestRunService {
 
   // Map of session id -> run summaries (no code), chronological.
   async summariesBySession(replicationId) {
-    const runs = await TestRunRepository.findSummariesByReplication(replicationId);
-    return groupBySession(runs.map(toSummary));
+    const events = await EventRepository.findByReplication(replicationId, { type: TEST_RUN });
+    return groupBySession(events.map((event) => toTestRun(event)));
   }
 
   // Adds `testRuns` (summaries, no code) to each session of a replication.
@@ -221,37 +186,48 @@ class TestRunService {
 
   // Full runs of one session, including the code snapshots.
   async findForSession(replicationId, sessionId) {
-    return await TestRunRepository.findBySessionAndReplication(sessionId, replicationId);
+    const events = await EventRepository.findBySession(sessionId, replicationId, {
+      type: TEST_RUN,
+      withContent: true,
+    });
+    return events.map((event) => toTestRun(event, { withCode: true }));
   }
 
-  // One row per test run. Driven by the non-test session list, so runs of
-  // test sessions never reach the export.
+  // One row per test run. Driven by the non-test session list, and without
+  // the sessions that declined data usage, like the conversations export.
   async getReplicationCSV(replicationId) {
-    const sessions = await SessionRepository.findByReplicationWithUser(replicationId);
-    const runs = await TestRunRepository.findByReplication(replicationId);
-    const bySession = groupBySession(runs);
+    const [replication, storedSessions, events] = await Promise.all([
+      ReplicationRepository.findById(replicationId),
+      SessionRepository.findByReplicationWithUser(replicationId),
+      EventRepository.findByReplication(replicationId, { type: TEST_RUN, withContent: true }),
+    ]);
+    const sessions = storedSessions.filter((session) => session.dataUsage?.consentStatus !== 'declined');
+    const stages = replication?.experiment?.stages || [];
+    const stageIndexById = new Map(stages.map(({ id }, index) => [id, index]));
+    const bySession = groupBySession(events.map((event) => toTestRun(event, { withCode: true })));
 
     let csv = csvRow(TEST_RUNS_CSV_HEADER);
     for (const session of sessions) {
       const sessionRuns = bySession.get(String(session.id)) || [];
       const user = session.user?.email || session.user?.id || 'Anonymous';
+      const stageIndex =
+        typeof session.stageIndex === 'number'
+          ? session.stageIndex
+          : session.stageId && stageIndexById.has(session.stageId)
+            ? stageIndexById.get(session.stageId)
+            : null;
+      const stage = stageIndex === null ? '' : `${stageIndex + 1}/${stages.length || stageIndex + 1}`;
 
       sessionRuns.forEach((run, index) => {
-        const results = Array.isArray(run.results) ? run.results : [];
-        const plainResults = results.map((result) => ({
-          name: result.name,
-          ok: result.ok,
-          ...(result.error ? { error: result.error } : {}),
-          ...(result.expected !== undefined ? { expected: result.expected } : {}),
-          ...(result.actual !== undefined ? { actual: result.actual } : {}),
-        }));
-        const failedTests = plainResults
+        const failedTests = run.results
           .filter((result) => !result.ok)
           .map((result) => result.name)
           .join('; ');
 
         csv += csvRow([
           session.id,
+          session.run ? String(session.run) : '',
+          stage,
           user,
           run.id,
           index + 1,
@@ -266,7 +242,7 @@ class TestRunService {
           run.durationMs,
           run.error || '',
           failedTests,
-          JSON.stringify(plainResults),
+          JSON.stringify(run.results),
           toIso(run.reportedToLeiaAt),
           run.codeTruncated ? 'TRUE' : 'FALSE',
           run.code || '',

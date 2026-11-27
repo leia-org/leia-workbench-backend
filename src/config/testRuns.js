@@ -1,9 +1,9 @@
-const PRE_WORKBENCH_ORIGIN = 'https://pre.workbench.leia.ovh';
-const PRODUCTION_WORKBENCH_ORIGIN = 'https://workbench.leia.ovh';
+import { isInteractionEventsEnabled } from './features.js';
 
+// Test runs are one kind of interaction event and share its preview switch.
+// Kept for the test-run specific routes until they are folded into events.
 export function isTestRunsPreviewEnabled() {
-  const origins = (process.env.FRONTEND_URL || '').split(',').map((origin) => origin.trim().replace(/\/$/, ''));
-  return origins.includes(PRE_WORKBENCH_ORIGIN) && !origins.includes(PRODUCTION_WORKBENCH_ORIGIN);
+  return isInteractionEventsEnabled();
 }
 
 export function requireTestRunsPreview(_req, res, next) {

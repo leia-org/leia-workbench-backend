@@ -7,6 +7,7 @@ import logger from './utils/logger.js';
 import connectDB from './config/db.js';
 import errorHandler from './middlewares/errorHandler.js';
 import requestLogger from './middlewares/requestLogger.js';
+import { EVENTS_BODY_PATH, eventsBodyParser } from './middlewares/eventsBodyParser.js';
 import SwaggerParser from 'swagger-parser';
 import managerRoutes from './routes/v1/managerRoutes.js';
 import replicationRoutes from './routes/v1/replicationRoutes.js';
@@ -31,6 +32,8 @@ app.use(
     credentials: true,
   })
 );
+// Before the global parser: once a body is parsed, later parsers skip it.
+app.use(EVENTS_BODY_PATH, eventsBodyParser);
 app.use(express.json());
 app.use(requestLogger);
 app.use(auth);

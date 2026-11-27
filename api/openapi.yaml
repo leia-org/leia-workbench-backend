@@ -85,6 +85,12 @@ paths:
     $ref: './paths/v1/replications/_id-test-runs-csv.yaml'
   /v1/replications/{id}/sessions/{sessionId}/test-runs:
     $ref: './paths/v1/replications/_id-sessions-_sessionId-test-runs.yaml'
+  /v1/replications/{id}/events/csv:
+    $ref: './paths/v1/replications/_id-events-csv.yaml'
+  /v1/replications/{id}/sessions/{sessionId}/events:
+    $ref: './paths/v1/replications/_id-sessions-_sessionId-events.yaml'
+  /v1/replications/{id}/sessions/{sessionId}/events/{eventId}:
+    $ref: './paths/v1/replications/_id-sessions-_sessionId-events-_eventId.yaml'
   /v1/replications/exists/{name}:
     $ref: './paths/v1/replications/exists-_name.yaml'
 
@@ -119,6 +125,8 @@ paths:
     $ref: './paths/v1/interactions/_sessionId-draft.yaml'
   /v1/interactions/{sessionId}/test-runs:
     $ref: './paths/v1/interactions/_sessionId-test-runs.yaml'
+  /v1/interactions/{sessionId}/events:
+    $ref: './paths/v1/interactions/_sessionId-events.yaml'
 
   # Runner
   /v1/runner/models:

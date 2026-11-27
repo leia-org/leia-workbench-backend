@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import Replication from '../../src/models/Replication.js';
 import Session from '../../src/models/Session.js';
 import Message from '../../src/models/Message.js';
-import TestRun from '../../src/models/TestRun.js';
+import Event from '../../src/models/Event.js';
 import replicationRoutes from '../../src/routes/v1/replicationRoutes.js';
 import interactionRoutes from '../../src/routes/v1/interactionRoutes.js';
 import spectatorRoutes from '../../src/routes/v1/spectatorRoutes.js';
@@ -44,7 +44,7 @@ beforeAll(async () => {
   vi.stubEnv('JWT_SECRET', 'integration-signing-secret'); vi.stubEnv('JWT_ISSUER', ''); vi.stubEnv('JWT_AUDIENCE', '');
   vi.stubEnv('RUNNER_KEY', 'integration-runner');
   vi.stubEnv('FRONTEND_URL', 'https://pre.workbench.leia.ovh');
-  await connectMongo(); await Replication.init(); await TestRun.init();
+  await connectMongo(); await Replication.init(); await Event.init();
   const peer = express(); peer.use(express.json());
   peer.post('/api/v1/leias', (req, res) => res.status(201).json({ sessionId: req.body.sessionId }));
   // Runner contract: a context is acknowledged, unless the message asks to
@@ -81,10 +81,13 @@ test('a test run is stored once, with server-derived outcome, and only for activ
   const repeated = await request(`/interactions/${sessionId}/test-runs`, 'POST', body);
   expect(repeated.status).toBe(200);
   expect((await repeated.json()).id).toBe(id);
-  expect(await TestRun.countDocuments({ session: sessionId })).toBe(1);
-  const stored = await TestRun.findById(id);
-  expect(stored).toMatchObject({ passed: 1, failed: 1, total: 2, status: 'failed', trigger: 'student', reportedToLeiaAt: null });
-  expect(stored.code).toBe(body.code);
+  // A test run is stored as one event of type test_run, with the code as its content.
+  expect(await Event.countDocuments({ session: sessionId })).toBe(1);
+  const stored = await Event.findById(id).select('+content');
+  expect(stored).toMatchObject({ type: 'test_run', source: 'code_editor', actor: 'student', hasContent: true });
+  expect(stored.payload).toMatchObject({ passed: 1, failed: 1, total: 2, status: 'failed' });
+  expect(stored.reportedToLeiaAt ?? null).toBeNull();
+  expect(stored.content).toBe(body.code);
   expect(String(stored.replication)).toBe(replication.id);
 
   expect((await request(`/interactions/${sessionId}/test-runs`, 'POST', { ...report(), language: 'text' })).status).toBe(400);
@@ -103,7 +106,7 @@ test('student-triggered runs reach the LEIA once as separate context; the stored
   // A runner that does not acknowledge leaves the run pending.
   await request(`/interactions/${sessionId}/messages`, 'POST', { message: 'hello [old runner]' });
   expect(runnerMessages.at(-1).context).toContain('1/2 tests passed');
-  expect((await TestRun.findOne({ session: sessionId, trigger: 'student' })).reportedToLeiaAt).toBeNull();
+  expect((await Event.findOne({ session: sessionId, type: 'test_run', actor: 'student' })).reportedToLeiaAt ?? null).toBeNull();
 
   const sent = await request(`/interactions/${sessionId}/messages`, 'POST', { message: 'why does it fail?' });
   expect(sent.status).toBe(200);
@@ -111,9 +114,9 @@ test('student-triggered runs reach the LEIA once as separate context; the stored
   expect(delivered.message).toBe('why does it fail?');
   expect(delivered.context).toContain('ran the test suite themself 1 time');
   expect(delivered.context).toContain('- empty list: expected [], got undefined');
-  expect((await TestRun.findOne({ session: sessionId, trigger: 'student' })).reportedToLeiaAt).toBeInstanceOf(Date);
+  expect((await Event.findOne({ session: sessionId, type: 'test_run', actor: 'student' })).reportedToLeiaAt).toBeInstanceOf(Date);
   // The LEIA's own run is never reported back to it.
-  expect((await TestRun.findOne({ session: sessionId, trigger: 'leia' })).reportedToLeiaAt).toBeNull();
+  expect((await Event.findOne({ session: sessionId, type: 'test_run', actor: 'leia' })).reportedToLeiaAt ?? null).toBeNull();
 
   await request(`/interactions/${sessionId}/messages`, 'POST', { message: 'thanks' });
   expect(runnerMessages.at(-1).context).toBeUndefined();
@@ -148,9 +151,10 @@ test('instructors read summaries in lists, code on demand and a CSV; students an
   expect(csvResponse.headers.get('content-disposition')).toContain('Coding_integration_test_runs.csv');
   const csv = await csvResponse.text();
   expect(csv.split('\n')[0]).toBe(
-    'Session ID,User,Run ID,Run Number,Timestamp,Trigger,Language,Function,Status,Passed,Failed,Total,Duration Ms,Error,Failed Tests,Results JSON,Reported To LEIA At,Code Truncated,Code'
+    'Session ID,Run ID,Stage,User,Test Run ID,Run Number,Timestamp,Trigger,Language,Function,Status,Passed,Failed,Total,Duration Ms,Error,Failed Tests,Results JSON,Reported To LEIA At,Code Truncated,Code'
   );
-  expect(csv).toContain(`${sessionId},reader@example.com,`);
+  // Run ID (the activity run) and Stage are empty for a session outside the staged model.
+  expect(csv).toContain(`${sessionId},,,reader@example.com,`);
   expect(csv).toContain(',failed,1,1,2,12,,empty list,');
   expect(csv).toContain(',error,0,0,0,12,SyntaxError: Unexpected token,,[],,FALSE,');
   expect(csv).toContain('"function twoSum(nums, target) {\n  return ""a, b"";\n}\n"');
@@ -176,8 +180,12 @@ test('production keeps test-run routes and student capability disabled', async (
     const sessionId = await join('production-guard@example.com', 'RCODE1');
     const data = await (await request(`/interactions/${sessionId}`)).json();
     expect(data.leia).not.toHaveProperty('testRunsEnabled');
+    expect(data.leia).not.toHaveProperty('eventsEnabled');
     expect((await request(`/interactions/${sessionId}/test-runs`, 'POST', report())).status).toBe(404);
+    expect((await request(`/interactions/${sessionId}/events`, 'POST', { events: [] })).status).toBe(404);
     expect((await request(`/replications/${replication.id}/test-runs/csv?token=share-coding`)).status).toBe(404);
+    expect((await request(`/replications/${replication.id}/events/csv?token=share-coding`)).status).toBe(404);
+    expect((await request(`/replications/${replication.id}/sessions/${sessionId}/events?token=share-coding`)).status).toBe(404);
   } finally {
     vi.stubEnv('FRONTEND_URL', 'https://pre.workbench.leia.ovh');
   }

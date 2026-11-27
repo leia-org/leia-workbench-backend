@@ -1,0 +1,69 @@
+type: object
+description: >
+  One student interaction event: a test run of the code editor, a copy / cut /
+  paste, leaving or returning to the page. Events are reported by the browser
+  of the student; the server derives part of `payload` and places the event on
+  its own clock (`at`). `content` (code under test, clipboard text) is only
+  returned by the single-event endpoint.
+properties:
+  id:
+    type: string
+  session:
+    type: string
+  replication:
+    type: string
+  run:
+    type: string
+    description: Activity run of the session when the event was stored, if any.
+  stageId:
+    type: string
+  stageIndex:
+    type: integer
+  type:
+    type: string
+    enum: [test_run, clipboard_copy, clipboard_cut, clipboard_paste, page_leave, page_return]
+  source:
+    type: string
+    enum: [chat_input, code_editor, solution_editor, notes, previous_solution, page, other]
+    description: Surface of the student UI where the event happened.
+  actor:
+    type: string
+    enum: [student, leia]
+  view:
+    type: string
+    enum: [chat, edit]
+  payload:
+    type: object
+    additionalProperties: true
+    description: >
+      Light, type-specific data. test_run: language, fnName, results, error,
+      durationMs, status, passed, failed, total. clipboard_*: method, length,
+      lines, hash, preview, wholeLine, clipboardTypes; clipboard_paste adds
+      origin (internal | external | unknown) and match (the copy it comes
+      from). page_leave: reason. page_return: awayMs, reason, becameHidden.
+  content:
+    type: string
+    description: Code under test or clipboard text. Only in the single-event endpoint.
+  hasContent:
+    type: boolean
+  contentTruncated:
+    type: boolean
+  clientEventId:
+    type: string
+  clientAt:
+    type: string
+    format: date-time
+  seq:
+    type: integer
+  at:
+    type: string
+    format: date-time
+    description: When the event happened, on the server clock.
+  reportedToLeiaAt:
+    type: string
+    format: date-time
+    description: When the LEIA was told about the event (student-triggered test runs).
+  createdAt:
+    type: string
+    format: date-time
+    description: When the server received the event.

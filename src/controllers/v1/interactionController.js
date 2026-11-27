@@ -2,6 +2,8 @@ import ConversationDynamicsService from '../../services/v1/ConversationDynamicsS
 import InteractionService from '../../services/v1/InteractionService.js';
 import TestRunService from '../../services/v1/TestRunService.js';
 import { createTestRunValidator } from '../../validators/v1/testRunValidator.js';
+import EventService from '../../services/v1/EventService.js';
+import { eventBatchValidator } from '../../validators/v1/eventValidator.js';
 import {
   startSessionValidator,
   sendSessionMessageValidator,
@@ -229,6 +231,19 @@ export const getPreviousStageSubmittedSolution = async (req, res, next) => {
     const view = typeof req.query.view === 'string' ? req.query.view : undefined;
     const data = await InteractionService.getPreviousStageSubmittedSolution(sessionId, { view });
     res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Stores a batch of student interaction events (test runs, clipboard, page
+// presence). Always answers with one outcome per event: an event that cannot
+// be stored is reported, it does not fail the batch.
+export const recordEvents = async (req, res, next) => {
+  try {
+    const batch = await eventBatchValidator.validateAsync(req.body, { stripUnknown: true });
+    const { results } = await EventService.recordBatch(req.params.sessionId, batch);
+    res.json({ results });
   } catch (error) {
     next(error);
   }
